@@ -167,7 +167,7 @@
   function hazelLikes(p, n) { if (!sp(p).exotic) return; if (G.emit) G.emit('exoticCare', { pet: p.id, amount: n }); try { if (window.NPCS && NPCS.changeRep) NPCS.changeRep(G.state, 'hazel', n, true); } catch (e) {} }
   function stress(d) { if (G.change) G.change('stats.needs.stress', d); }
   function dormHas(id) { try { return !!(G.dorm && G.dorm.has && G.dorm.has(id)); } catch (e) { return false; } }
-  function opt(label, run, extra) { var o = { label: label, run: run }; if (extra) for (var k in extra) o[k] = extra[k]; return o; }
+  function opt(label, run, extra) { var o = { label: label, run: run }; if (run && run.time) o.time = run.time; if (extra) for (var k in extra) o[k] = extra[k]; return o; }
   function sp(p) { return SPECIES[p.species]; }
   function has(p, t) { return p.traits.indexOf(t) !== -1; }
   function trait(p, key, def) { var v = def; p.traits.forEach(function (t) { var x = PERSONALITIES[t]; if (x && x[key] !== undefined) v *= x[key]; }); return v; }
@@ -380,7 +380,7 @@
         st.supplies[S.food]--; need(p, 'hunger', 600 * tb()); bond(p, rnd(8 * tb())); trainTending(2); hazelLikes(p, 1);
         return { text: '<p>You fill a dish for ' + p.name + '. ' + (has(p, 'greedy') ? x.S + ' inhales it before you have even straightened up.' : x.S + ' eats with quiet focus.') + '</p>', minutes: 5 };
       }));
-      if (p.hunger < 850 && st.supplies[S.food] <= 0 && home) out.other.push(opt('You are out of ' + FOODS[S.food].label.split(' (')[0].toLowerCase() + ' for ' + p.name, function () { return { text: '<p>The bag is empty. Paws & Whiskers at the shopping centre sells more.</p>', minutes: 0 }; }, { disabled: true, hint: 'Buy food at the pet shop' }));
+      if (p.hunger < 850 && st.supplies[S.food] <= 0 && home) out.other.push(opt('You are out of ' + FOODS[S.food].label.split(' (')[0].toLowerCase() + ' for ' + p.name, function () { return { text: '<p>The bag is empty. Paws & Whiskers at the shopping centre sells more.</p>', minutes: 0 }; }, { time: false, disabled: true, hint: 'Buy food at the pet shop' }));
       out.actions.push(opt((p.lastPetDay === day() ? 'Cuddle ' : 'Pet ') + p.name, function () {
         var gain = rnd(15 * trait(p, 'pet', 1)), first = p.lastPetDay !== day();
         p.lastPetDay = day(); need(p, 'happiness', 120 * trait(p, 'pet', 1) * tb()); trainTending(1); bond(p, first ? gain + 10 : Math.max(2, rnd(gain / 3))); stress(-25);
@@ -398,7 +398,7 @@
         var kit = st.supplies.groomkit; need(p, 'hygiene', (kit ? 650 : 350) * tb()); bond(p, rnd((kit ? 8 : 3) * tb())); trainTending(kit ? 4 : 2); hazelLikes(p, 1);
         if (!kit) need(p, 'happiness', -20);
         return { text: '<p>' + (kit ? 'You brush ' + p.name + ' out properly and tidy the bedding. ' + x.S + ' looks almost smug.' : 'You do what you can with a damp cloth and fresh bedding. A grooming kit would make this easier.') + '</p>', minutes: kit ? 25 : 15 };
-      }));
+      }, { time: st.supplies.groomkit ? 25 : 15 }));
       if ((p.sick || p.happiness < 300 || p.health < 500) && p.soothedToday !== day()) out.actions.push(opt('Soothe ' + p.name, function () {
         p.soothedToday = day();
         if (chance(soothe())) { need(p, 'happiness', 150 * tb()); need(p, 'health', 60); bond(p, 10); trainTending(3); hazelLikes(p, 1);
@@ -448,7 +448,7 @@
       if (!sp(p).follow) return;
       if (p.following) out.other.push(opt('Leave ' + p.name + ' at home', function () { p.following = false; return { text: '<p>' + p.name + ' settles in to wait for you.</p>', minutes: 1 }; }));
       else if (canFollow(p)) out.other.push(opt('Bring ' + p.name + ' along', function () { p.following = true; return { text: '<p>' + (sp(p).follow === 'shoulder' ? p.name + ' hops onto your shoulder and grips on.' : sp(p).follow === 'pouch' ? p.name + ' scrambles into the pouch under your jacket and goes quiet.' : 'You clip on ' + p.name + '\'s ' + sp(p).follow + '. ' + pron(p).S + ' is already at the door.') + '</p>', minutes: 2 }; }));
-      else out.other.push(opt('Bring ' + p.name + ' along (needs a ' + sp(p).follow + ')', function () { return { text: '', minutes: 0 }; }, { disabled: true, hint: 'Buy one at Paws & Whiskers' }));
+      else out.other.push(opt('Bring ' + p.name + ' along (needs a ' + sp(p).follow + ')', function () { return { text: '', minutes: 0 }; }, { time: false, disabled: true, hint: 'Buy one at Paws & Whiskers' }));
     });
   }
 
@@ -461,16 +461,16 @@
         var S = SPECIES[k];
         if (S.exotic && !exoticsOpen()) return;
         var needsTank = ['lizard', 'axolotl', 'cornsnake'].indexOf(k) !== -1;
-        if (room && needsTank && !dormHas('tank')) { out.other.push(opt('Adopt a' + (/^[aeiou]/i.test(S.label) ? 'n ' : ' ') + S.label.toLowerCase() + ' (needs a terrarium at home)', function () { return { text: '', minutes: 0 }; }, { disabled: true, hint: 'Hearth & Home sells a glass terrarium' })); return; }
+        if (room && needsTank && !dormHas('tank')) { out.other.push(opt('Adopt a' + (/^[aeiou]/i.test(S.label) ? 'n ' : ' ') + S.label.toLowerCase() + ' (needs a terrarium at home)', function () { return { text: '', minutes: 0 }; }, { time: false, disabled: true, hint: 'Hearth & Home sells a glass terrarium' })); return; }
         if (room) out.actions.push(opt('Adopt a' + (/^[aeiou]/i.test(S.label) ? 'n ' : ' ') + S.label.toLowerCase() + ' ($' + S.price + ')' + (S.exotic ? ' (exotic)' : ''), function () {
           if (money() < S.price) return { text: '<p>You look at the price tag, then at your wallet. Not today.</p>', minutes: 2 };
           spend(S.price);
           var p = newPet(k); p.name = askName(k, p.name); st.list.push(p); memo(p, 'You brought ' + p.name + ' home from Paws & Whiskers.');
           if (G.emit) G.emit('petAdopted', { pet: p.id, species: k });
           return { text: '<p>The clerk brings out a ' + p.breed + '. ' + p.name + ' ' + (has(p, 'shy') ? 'hides behind the clerk\'s ankles before peeking out at you.' : 'looks you over and decides you will do.') + ' You sign the forms, and ' + p.name + ' is coming home with you.</p><p>' + (S.follow ? 'You can bring ' + pron(p).o + ' out with you if you have a ' + S.follow + '.' : '') + ' Don\'t forget food: ' + FOODS[S.food].label.split(' (')[0].toLowerCase() + '.</p>' + describe(p), minutes: 30 };
-        }, { hint: S.label + ': ' + S.perk.label + ' perk at Devoted' }));
+        }, { time: 30, hint: S.label + ': ' + S.perk.label + ' perk at Devoted' }));
       });
-      if (!room) out.other.push(opt('Adopt another pet (your dorm allows ' + capacity() + ')', function () { return { text: '', minutes: 0 }; }, { disabled: true, hint: hasPermit() ? 'Your room is full' : 'Get a pet permit at the dean\'s office' }));
+      if (!room) out.other.push(opt('Adopt another pet (your dorm allows ' + capacity() + ')', function () { return { text: '', minutes: 0 }; }, { time: false, disabled: true, hint: hasPermit() ? 'Your room is full' : 'Get a pet permit at the dean\'s office' }));
       Object.keys(FOODS).forEach(function (f) {
         var owner = activePets().some(function (p) { return sp(p).food === f; });
         if (owner) out.actions.push(opt('Buy ' + FOODS[f].label + ' ($' + FOODS[f].price + ')', buy(function () { st.supplies[f] += FOODS[f].servings; }, FOODS[f].price, 'You heft the bag onto your hip.')));
@@ -497,11 +497,12 @@
     }
   }
   function buy(fn, price, text) {
-    return function () {
+    var f = function () {
       if (money() < price) return { text: '<p>You don\'t have enough money for that.</p>', minutes: 1 };
       spend(price); fn(); trainTending(1);
       return { text: '<p>' + text + '</p>', minutes: 5 };
     };
+    f.time = 5; return f;
   }
 
   // ---------- strays & runaways ----------
@@ -521,7 +522,7 @@
         memo(p, 'You found ' + p.name + ' safe at the Hollowbrook Dog Pound after ' + pron(p).s + ' ran away.');
         if (G.emit) G.emit('petReturned', { pet: p.id });
         return { text: '<p>A volunteer leads you to the back kennels, and there is ' + p.name + ', clean and fed. ' + pron(p).S + ' spots you and goes still, then bolts into your arms.</p>', minutes: 20 };
-      }));
+      }, { time: 15 }));
     });
     out.actions.push(opt('Volunteer walking the kennel dogs (1 hour)', function () {
       stress(-30); trainTending(3); if (G.stats && G.stats.fame) G.stats.fame('kindness', 4);
@@ -539,7 +540,7 @@
         st.pound.list[i] = null;
         if (G.stats && G.stats.fame) G.stats.fame('kindness', 10);
         return { text: '<p>You sign the forms, and the volunteer hands over ' + p.name + ' with a vaccination card and a worn blanket. ' + pron(p).S + ' sniffs your hand, then leans against your leg.</p>', minutes: 30 };
-      }, full ? { disabled: true, hint: 'Your dorm is at its pet limit.' } : null));
+      }, full ? { time: 30, disabled: true, hint: 'Your dorm is at its pet limit.' } : { time: 30 }));
     });
   }
 

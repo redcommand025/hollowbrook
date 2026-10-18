@@ -236,7 +236,7 @@
           newItem(id); syncSpare();
           G_().emit('clothesBought', { id: id });
           return { text: '<p>The clerk folds the ' + esc(d.name) + ' into a paper bag with a sprig of lavender. ' + esc(d.desc) + '</p><p class="hint">You can change into it in the fitting room or at home.</p>', minutes: 5 };
-        }, { disabled: money() < price, hint: d.desc }));
+        }, { time: 5, disabled: money() < price, hint: d.desc }));
       });
       out.actions.push(opt('Step back from the racks', function () { w.mode = null; return { text: '<p>You drift back toward the front of the shop.</p>', minutes: 1 }; }));
       return;
@@ -258,12 +258,12 @@
       var cost = torn.length * 5; if (money() < cost) return { text: '<p>The tailor quotes you a price you can\'t cover today.</p>', minutes: 1 };
       G_().change('money', -cost); torn.forEach(function (it) { it.integ = 100; }); pushLive('top'); pushLive('bottom');
       return { text: '<p>The owner\'s nephew does alterations in the back. An hour later your clothes come back with neat, nearly invisible stitches.</p>', minutes: 60 };
-    }, { disabled: money() < torn.length * 5 }));
+    }, { time: 60, disabled: money() < torn.length * 5 }));
     if (!w.sewingKit) out.actions.push(opt('Buy a sewing kit ($10)', function () {
       if (money() < 10) return { text: '<p>Not today.</p>', minutes: 1 };
       G_().change('money', -10); w.sewingKit = true;
       return { text: '<p>A little tin of needles, thread in twelve colours, and a thimble you will lose within the week. You can mend clothes at home now.</p>', minutes: 2 };
-    }, { disabled: money() < 10, hint: 'Lets you mend torn clothes yourself at home.' }));
+    }, { time: 2, disabled: money() < 10, hint: 'Lets you mend torn clothes yourself at home.' }));
     var junk = w.items.filter(function (it) { return it.integ < 40 && SLOTS.every(function (s) { return w.worn[s] !== it.uid; }); });
     if (junk.length) out.actions.push(opt('Drop worn-out clothes in the recycling bin (+$' + (junk.length * 2) + ' store credit)', function () {
       junk.forEach(function (it) { w.items.splice(w.items.indexOf(it), 1); });
@@ -299,7 +299,7 @@
       if (G_().stats && G_().stats.trainSkill) G_().stats.trainSkill('housekeeping', 6);
       syncSpare();
       return { text: '<p>You haul the laundry bag down to the basement machines and wait out the spin cycle with a textbook. Everything comes out warm and smelling of cheap detergent.</p>', minutes: 90 };
-    }));
+    }, { time: 90 }));
     if (w.mode === 'wardrobe:acc') out.actions.push(opt('Back to your clothes', function () { w.mode = 'wardrobe'; return { text: '<p>You close the little drawer.</p>', minutes: 0 }; }));
     else if (w.items.some(function (it) { return ACC.indexOf(def(it).slot) >= 0; })) out.actions.push(opt('Open the accessories drawer', function () { w.mode = 'wardrobe:acc'; return { text: '<p>Hats, glasses, earrings and scarves, in a tangle that is almost organised.</p>', minutes: 1 }; }));
     pullLive();

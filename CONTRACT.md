@@ -60,4 +60,4 @@ Event `hairChanged {what: cut|dye|grow|style, style, color}`. Location `hair_sal
 
 
 ## Action times
-Every option should declare `time: <minutes>` matching the minutes its run() returns. The engine appends it to the label as (h:mm), e.g. `Nap for an hour (1:00)`, `Look around (0:05)`. Labels that already contain (h:mm) are left alone. For variable actions, declare the typical or minimum time. Instant UI options (menus, checks costing 0 minutes) can omit it.
+Every option should declare `minutes` (aliases `mins`, `time`; a number or a function(state) returning one) matching the minutes its run() returns. The engine appends it to the label as (h:mm), e.g. `Nap for an hour (1:00)`, `Look around (0:05)`. Labels that already contain (h:mm) are left alone. For variable actions, declare the typical or minimum time. Instant UI options (menus, checks costing 0 minutes) can omit it.

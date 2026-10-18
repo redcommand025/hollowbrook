@@ -1110,6 +1110,7 @@
 
   function boot() {
     if (!window.G || !G.register) return setTimeout(boot, 50);
+    var _go = mod.getOptions; mod.getOptions = function (st) { return addMins(_go.call(mod, st) || {}); };
     G.register(mod);
     if (G.world && G.world.addLocation && !(G.world.location && G.world.location('deans_office'))) G.world.addLocation('deans_office', {
       name: "Dean's Office", district: 'Campus', indoor: true, open: [8, 17], restroom: false,

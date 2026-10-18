@@ -747,17 +747,17 @@
       if (w.bike && !w.bikeFlat && m >= 4 && w.weather !== 'storm' && w.weather !== 'snow' && (!LOCATIONS[here].indoor || !l.indoor)) m = Math.max(2, Math.ceil(m * 0.5));
       var special = LINK_LABEL[here + '>' + id], road = isRoad(id) || id === 'park';
       var label = special || (road ? 'Travel to ' : 'Go to ') + l.name;
-      (roadHere && road ? travel : goTo).push({ label: label + ' ' + fmtT(m) + closed, run: travelTo(id), locationId: id, mins: m, minutes: m, sub: roadHere ? (road ? 'Travel to' : 'Go to') : null });
+      (roadHere && road ? travel : goTo).push({ label: label + closed, run: travelTo(id), locationId: id, mins: m, minutes: m, sub: roadHere ? (road ? 'Travel to' : 'Go to') : null });
     });
     goTo.sort(function (a, b) { return a.mins - b.mins || (a.label < b.label ? -1 : 1); });
     travel.sort(function (a, b) { var ap = a.locationId === 'park' || LOCATIONS[a.locationId].alleyway, bp = b.locationId === 'park' || LOCATIONS[b.locationId].alleyway; return ap - bp || a.mins - b.mins; });
     var out = goTo.concat(travel);
-    if (BUS_STOPS.indexOf(here) >= 0) out.push({ label: 'Bus stop (0:02)', minutes: 2, sub: 'Travel to', run: function () {
+    if (BUS_STOPS.indexOf(here) >= 0) out.push({ label: 'Bus stop', minutes: 2, sub: 'Travel to', run: function () {
       w.busOpen = here;
       var msg = busStopUsable() ? 'You wait at the bus shelter. The timetable says a bus comes every ten minutes or so.' + (OUTSKIRTS_STOPS.indexOf(here) >= 0 ? ' Only the Number 12 stops out here.' : '') : 'The timetable is taped over: no more buses tonight' + (W().weather === 'snow' ? ' because of the snow' : '') + '.';
       return { text: '<p>' + msg + '</p>', minutes: 2 };
     } });
-    if (roadHere) out.push({ label: 'Loiter (0:15)', minutes: 15, sub: 'Travel to', run: loiter });
+    if (roadHere) out.push({ label: 'Loiter', minutes: 15, sub: 'Travel to', run: loiter });
     return out;
   }
   function knockDoor() {
@@ -862,7 +862,7 @@
         });
       }
 
-      if (w.location === 'residential') opts.actions.push({ label: 'Knock on one of the houses (0:02)', minutes: 2, run: knockDoor });
+      if (w.location === 'residential') opts.actions.push({ label: 'Knock on one of the houses', minutes: 2, run: knockDoor });
       opts.actions.push({ label: 'Look around', minutes: 2, run: function () {
         var ev = tryEvent('idle');
         return { text: locationBlurb() + (ev ? '<p>' + ev.text + '</p>' : ''), minutes: 2 + ((ev && ev.minutes) || 0) };
@@ -919,17 +919,6 @@
     }
   };
 
-  // Every option shows how long it takes, as (h:mm), unless its label already does.
-  var TIME_RE = /\(\d+:\d\d\)/;
-  function stampTimes(opts) {
-    ['dialogue', 'actions', 'travel', 'other'].forEach(function (k) {
-      (opts[k] || []).forEach(function (o) { if (o && typeof o.minutes === 'number' && !TIME_RE.test(o.label)) o.label += ' ' + fmtT(o.minutes); });
-    });
-    return opts;
-  }
-  G.world_fmtT = fmtT;
-  var _getOptions = mod.getOptions;
-  mod.getOptions = function (state) { return stampTimes(_getOptions.call(mod, state)); };
 
   function mapHtml() {
     var here = W().location, byDistrict = {};
@@ -969,6 +958,7 @@
     WEATHER: WEATHER,
     WEEKDAYS: WEEKDAYS,
     here: function () { return loc(); },
+    fmtTime: function (m) { return fmtT(Math.max(0, Math.round(m || 0))); },   // 75 -> '(1:15)'
     onCampus: function (id) { var l = LOCATIONS[resolve(id || W().location)]; return !!l && (l.district === 'Campus' || l.district === 'Campus Edge'); },   // grounds, main building, dorm, library, dining, gym, farm            // location object: {id, name, district, indoor, tags, ...}
     hereId: function () { return W().location; },
     is: function (id) { return W().location === resolve(id); },

@@ -19,7 +19,7 @@
     try {
       var bar = document.getElementById('errbar');
       if (!bar) { bar = document.createElement('div'); bar.id = 'errbar'; bar.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:5000;background:#5a1d1d;color:#fff;font:12px system-ui;padding:6px 10px;white-space:pre-wrap'; document.body.appendChild(bar); }
-      bar.textContent = 'Something broke: ' + e.message + ' (' + String(e.filename || '').split('/').pop().split('?')[0] + ':' + e.lineno + ':' + (e.colno || 0) + ') [build 20261018i]. Please tell the developers.';
+      bar.textContent = 'Something broke: ' + e.message + ' (' + String(e.filename || '').split('/').pop().split('?')[0] + ':' + e.lineno + ':' + (e.colno || 0) + ') [build 20261018j]. Please tell the developers.';
     } catch (x) {}
   });
   var memStore = {};
@@ -211,7 +211,9 @@
       var lastSub = null;
       current[k].forEach(function (o, i) {
         if (o.sub && o.sub !== lastSub) { html += '</ul><h4 class="optsub">' + esc(o.sub) + ':</h4><ul>'; lastSub = o.sub; }
-        var lbl = o.label, tm = (typeof o.time === 'number') ? o.time : (typeof o.mins === 'number' ? o.mins : guessTime(o));
+        var lbl = o.label, tv = [o.time, o.mins, o.minutes].filter(function (v) { return v !== undefined && v !== null; })[0], tm = null;
+        if (typeof tv === 'function') { try { tv = tv(G.state); } catch (e) { tv = null; } }
+        tm = typeof tv === 'number' ? tv : guessTime(o);
         if (tm !== null && !/\(\d+:\d\d\)/.test(String(lbl))) lbl += ' <span class="tm">' + G.fmtTime(tm) + '</span>';
         html += '<li><a href="#" class="opt' + (o.disabled ? ' disabled' : '') + '" data-g="' + k + '" data-i="' + i + '"' +
           (o.hint ? ' title="' + esc(o.hint) + '"' : '') + '>' + (hints && !o.disabled && visibleN < 9 ? '<span class="num">' + (visibleN + 1) + '</span>' : '') + lbl + '</a></li>';

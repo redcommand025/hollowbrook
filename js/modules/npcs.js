@@ -3384,6 +3384,24 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       reply: reply
     };
   };
+  // Usual duration for an option, read from the literal minutes its run() returns (most common value; ties go to the longer one).
+  var minsCache = new Map();
+  var guessMins = function guessMins(fn) {
+    if (typeof fn !== 'function') return null;
+    if (minsCache.has(fn)) return minsCache.get(fn);
+    var c = {};
+    String(fn).replace(/minutes\s*:\s*(\d+)/g, function (m, v) {
+      c[v] = (c[v] || 0) + 1;
+      return m;
+    });
+    var best = null;
+    Object.keys(c).forEach(function (v) {
+      if (+v > 0 && (best === null || c[v] > c[best] || c[v] === c[best] && +v > +best)) best = v;
+    });
+    var r = best === null ? null : +best;
+    minsCache.set(fn, r);
+    return r;
+  };
   var Go = function Go(loc, from, to, text, label, scene, minutes, fx) {
     return Object.assign({
       kind: 'go',
@@ -4125,6 +4143,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         }
         out.push({
           label: st.label,
+          time: st.minutes,
           run: function run(s) {
             if (st.cost && money(s) < st.cost) return {
               text: 'You check your wallet. Not enough.',
@@ -4506,6 +4525,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     return giftOptionsBase(state, id).map(function (o) {
       return o.label === 'Never mind' ? o : {
         label: o.label,
+        time: 5,
         run: function run(s) {
           var res = o.run(s);
           if (isBirthday(id) && rel(s, id).bdayGiftDay !== time().day) {
@@ -4636,6 +4656,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         }
       });else if (tp.sub) opts.push({
         label: tp.label,
+        time: 1,
         run: function run(s) {
           ns(s).talking = {
             id: id,
@@ -4648,6 +4669,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         }
       });else opts.push({
         label: tp.label,
+        time: guessMins(tp.run),
         run: function run(s) {
           return tp.run(s, id);
         }
@@ -4812,7 +4834,8 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         other: []
       };
       var wrap = function wrap(o) {
-        return {
+        var tm = typeof o.time === 'number' ? o.time : guessMins(o.run);
+        var w = {
           label: o.label,
           run: function run(s) {
             var r = o.run(s);
@@ -4820,6 +4843,8 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
             return r;
           }
         };
+        if (tm) w.time = tm;
+        return w;
       };
       if (ns(state).talking) {
         var t = talkingOptions(state);
@@ -4831,6 +4856,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       present(state).forEach(function (id) {
         var r = rel(state, id);
         res.dialogue.push(wrap({
+          time: r.met ? 1 : 5,
           label: r.met ? "Talk to " + BY_ID[id].name : "Approach " + (r.known ? BY_ID[id].name : 'the ' + BY_ID[id].role.toLowerCase()),
           run: function run(s) {
             var rr = rel(s, id);
@@ -4866,6 +4892,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       // Who's around (flavor), shown under Other
       var here = present(state);
       if (here.length) res.other.push({
+        time: 1,
         label: "Look around (" + here.length + " familiar face" + (here.length > 1 ? 's' : '') + ")",
         run: function run(s) {
           var pairs = pairScenes(s, here);

@@ -315,7 +315,7 @@
         if (sore) extra += ' <span class="flavor">Your sore muscles hold you back today.</span>';
         if (gymPlan() !== before) note('Training level: ' + gymPlan() + '. Your routine is getting easier.', 'up');
         return { text: '<p>' + g.text + extra + '</p>', minutes: g.min };
-      }, { disabled: !!dis, hint: dis || 'Training level: ' + gymPlan() + ' (' + r.workouts + ' workouts)' }));
+      }, { time: g.min, disabled: !!dis, hint: dis || 'Training level: ' + gymPlan() + ' (' + r.workouts + ' workouts)' }));
     });
   }
 
@@ -525,7 +525,7 @@
       Object.keys(s.flags.warned).forEach(function (k) { delete s.flags.warned[k]; });
       if (G.emit) G.emit('collapse', { cause: why, where: cx.where, witness: w ? w.id : null });
       return { text: '<p class="scene collapse">' + lines.join(' ') + '</p>', minutes: minutes };
-    });
+    }, { time: why === 'fatigue' ? 420 : 180 });
     o.always = true;
     return o;
   }
@@ -545,7 +545,7 @@
         if (!home) attitude('publicRestroom', 2);
         if (relief) chg('needs.stress', -30);
         return { text: '<p>You find a free stall and take care of things.' + (relief ? ' The relief is enormous.' : '') + '</p>', minutes: mins };
-      }));
+      }, { time: function () { return 3 + (n.bowels >= 300 ? 7 : 0); } }));
     }
     if (s.flags.dirty && canRestroom) {
       out.actions.push(opt('Clean yourself up', function () {
@@ -568,7 +568,7 @@
         else maybePoison(['market', 'bar', 'alley', 'docks'].indexOf(here().id) !== -1 ? 0.05 : 0.025);
         if (!home) attitude('spending', 1);
         return { text: home ? '<p>You cook something simple. Not fancy, but filling.</p>' : '<p>You grab something quick and eat it on the go.</p>', minutes: home ? 30 : 10 };
-      }));
+      }, { time: home ? 30 : 10 }));
     }
     var hid = here().id;
     if (hid === 'cafeteria' && n.hunger < 850) {
@@ -599,7 +599,7 @@
           s.flags.sleeping = true; s.flags.sleptFull = hrs >= 7;
           chg('needs.stress', -80);
           return { text: '<p>You crawl into bed and sleep for about ' + hrs + ' hours.</p>', minutes: hrs * 60 };
-        }));
+        }, { time: function () { return clamp(Math.ceil(n.fatigue / 120), 2, 9) * 60; } }));
       }
       out.actions.push(opt('Nap for an hour', function () {
         s.flags.sleeping = true;
@@ -661,7 +661,7 @@
         if (money() < 2) return { text: '<p>You count your change. Not enough for tea.</p>', minutes: 1 };
         addMoney(-2); il.cold = Math.max(0, il.cold - 240); chg('needs.thirst', 200); chg('needs.stress', -40);
         return { text: '<p>The tea is too hot at first, then exactly right. The steam clears your head a little. <span class="flavor">(Thirst up, stress down, your cold eases a bit.)</span></p>', minutes: 20 };
-      }));
+      }, { time: 20 }));
       if (here().id === 'market') out.actions.push(opt('Buy cold medicine ($6)', function () {
         if (money() < 6) return { text: '<p>The cold medicine costs $6, and you don\'t have it.</p>', minutes: 2 };
         addMoney(-6); il.cold = Math.floor(il.cold / 2);

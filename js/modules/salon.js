@@ -118,7 +118,7 @@
       Object.keys(LOOKS).forEach(function (id) {
         var L = LOOKS[id]; if (L.salon) return;
         out.other.push(opt('Do ' + L.label, function () { h.mode = null; applyLook(id, 12); if (G_().stats && G_().stats.train) G_().stats.train('beauty', 2);
-          return { text: '<p>' + esc(L.desc) + '</p>', minutes: id === 'natural' ? 10 : 20 }; }));
+          return { text: '<p>' + esc(L.desc) + '</p>', minutes: id === 'natural' ? 10 : 20 }; }, { time: id === 'natural' ? 10 : 20 }));
       });
       out.other.push(opt('Put the makeup bag away', function () { h.mode = null; return { text: '<p>Maybe later.</p>', minutes: 0 }; }));
       return true;
@@ -151,7 +151,7 @@
           G_().change('stats.needs.stress', -10); train(id === 'curly' ? 8 : 6); emit('cut');
           return { text: '<p>' + esc(stylistLine()) + '</p><p>' + (id === 'curly' ? 'An hour of rollers and a sharp chemical smell later, you have bouncy curls.' : 'Snip by snip, a ' + esc(s.label) + ' takes shape.') +
             (lostDye ? ' The last of the dyed ends land on the floor.' : '') + '</p><p>' + esc(hairNote()) + '</p>', minutes: id === 'curly' ? 90 : 45 };
-        }, { disabled: !enough || money() < price, hint: enough ? 'Ends up ' + lengthWord(Math.min(h.length, s.ideal)) + '.' : 'Your hair is too short for this. Grow it out or get extensions.' }));
+        }, { time: id === 'curly' ? 90 : 45, disabled: !enough || money() < price, hint: enough ? 'Ends up ' + lengthWord(Math.min(h.length, s.ideal)) + '.' : 'Your hair is too short for this. Grow it out or get extensions.' }));
       });
       out.actions.push(back()); return;
     }
@@ -177,7 +177,7 @@
       G_().change('money', -12); var lost = cutTo(Math.min(h.length, cur.ideal)); h.scruffyTold = false;
       G_().change('stats.needs.stress', -8); train(3); emit('cut');
       return { text: '<p>' + esc(stylistLine()) + '</p><p>A neat tidy-up that keeps your ' + esc(cur.label) + ' looking sharp.' + (lost ? ' The dyed ends are gone.' : '') + '</p>', minutes: 30 };
-    }, { disabled: !grown || money() < 12, hint: grown ? 'Tidies your current cut.' : 'Your cut still looks fresh.' }));
+    }, { time: 30, disabled: !grown || money() < 12, hint: grown ? 'Tidies your current cut.' : 'Your cut still looks fresh.' }));
     out.actions.push(opt('Get a new haircut', function () { h.mode = 'cut'; return { text: '<p>The stylist hands you a dog-eared binder of styles. "Shorter is easy," she says. "Longer takes patience, or extensions."</p><p>' + esc(hairNote()) + '</p>', minutes: 2 }; }));
     out.actions.push(opt('Look at hair colours', function () { h.mode = 'dye'; return { text: '<p>A fan of swatches, from honest browns to a blue the stylist calls "mermaid".</p>', minutes: 2 }; }));
     out.actions.push(opt('Get clip-in extensions ($70)', function () {
@@ -185,23 +185,23 @@
       G_().change('money', -70); h.length = Math.min(90, h.length + 20); train(4); emit('cut');
       if (STYLES[p.hairStyle].next && h.length >= STYLES[p.hairStyle].at) p.hairStyle = h.length >= 33 ? 'long' : 'shoulder';
       return { text: '<p>Two hours, a lot of careful blending, and suddenly there is a lot more of you. ' + esc(hairNote()) + '</p>', minutes: 120 };
-    }, { disabled: money() < 70 || h.length >= 60, hint: 'Adds about 20 cm of length.' }));
+    }, { time: 120, disabled: money() < 70 || h.length >= 60, hint: 'Adds about 20 cm of length.' }));
     out.actions.push(opt('Get a professional makeover ($20)', function () {
       if (money() < 20) return { text: '<p>Maybe for a special occasion.</p>', minutes: 1 };
       G_().change('money', -20); applyLook('glam', 14); train(5); G_().change('stats.needs.stress', -10);
       return { text: '<p>The stylist tilts your chin to the light and gets to work with a dozen brushes. ' + esc(LOOKS.glam.desc) + '</p>', minutes: 45 };
-    }, { disabled: money() < 20 }));
+    }, { time: 45, disabled: money() < 20 }));
     if (!h.makeupKit) out.actions.push(opt('Buy a makeup kit ($25)', function () {
       if (money() < 25) return { text: '<p>Not today.</p>', minutes: 1 };
       G_().change('money', -25); h.makeupKit = true;
       return { text: '<p>A zip bag of the basics: concealer, mascara, liner, a few lipsticks and a palette. You can do your own makeup at any mirror now.</p>', minutes: 3 };
-    }, { disabled: money() < 25, hint: 'Do your own makeup at home or at any mirror.' }));
+    }, { time: 3, disabled: money() < 25, hint: 'Do your own makeup at home or at any mirror.' }));
     out.actions.push(opt('Wash and blow-dry ($15)', function () {
       if (money() < 15) return { text: '<p>You can wash it at home for free.</p>', minutes: 1 };
       G_().change('money', -15); G_().change('stats.needs.stress', -25); train(3);
       var s = G_().state.stats; if (s && s.flags) s.flags.dirty = false;
       return { text: '<p>Warm water, a scalp massage that nearly puts you to sleep, and a blow-dry with real volume. You walk out feeling expensive.</p>', minutes: 40 };
-    }, { disabled: money() < 15 }));
+    }, { time: 40, disabled: money() < 15 }));
   }
 
   function styleOptions(out) {

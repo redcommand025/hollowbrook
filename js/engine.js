@@ -5,9 +5,26 @@
 (function () {
   'use strict';
   var SAVE_KEY = 'hollowbrook_save_v1';
+  /* Safe storage: some browsers (private mode, in-app/webview, strict privacy) throw on localStorage. Fall back to memory. */
+  // Show script errors on screen so players can report them.
+  window.addEventListener('error', function (e) {
+    try {
+      var bar = document.getElementById('errbar');
+      if (!bar) { bar = document.createElement('div'); bar.id = 'errbar'; bar.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:5000;background:#5a1d1d;color:#fff;font:12px system-ui;padding:6px 10px;white-space:pre-wrap'; document.body.appendChild(bar); }
+      bar.textContent = 'Something broke: ' + e.message + ' (' + String(e.filename || '').split('/').pop() + ':' + e.lineno + '). Please tell the developers.';
+    } catch (x) {}
+  });
+  var memStore = {};
+  var store = {
+    get: function (k) { try { return window.localStorage.getItem(k); } catch (e) { return memStore.hasOwnProperty(k) ? memStore[k] : null; } },
+    set: function (k, v) { try { window.localStorage.setItem(k, v); } catch (e) { memStore[k] = String(v); } },
+    remove: function (k) { try { window.localStorage.removeItem(k); } catch (e) { delete memStore[k]; } }
+  };
+
   var mods = [], handlers = {}, tabs = [], pendingNotes = [], started = false;
 
   var G = window.G = {
+    store: store,
     version: '0.1',
     state: {},
     time: { day: 1, hour: 7, minute: 30, weekday: 'Monday', clock: '07:30' },
@@ -209,7 +226,7 @@
 
   /* ---------- save / load: autosave + 3 slots ---------- */
   var SLOT_KEY = function (n) { return SAVE_KEY + '_slot' + n; };
-  function readSave(key) { try { var r = localStorage.getItem(key); return r ? JSON.parse(r) : null; } catch (e) { return null; } }
+  function readSave(key) { try { var r = store.get(key); return r ? JSON.parse(r) : null; } catch (e) { return null; } }
   function saveSummary(st) {
     if (!st) return '<span class="flavor">Empty</span>';
     var p = (st.creation && st.creation.player) || {}, w = st.world || {};
@@ -217,10 +234,10 @@
     return esc(p.name || 'Unnamed') + ' · Day ' + (w.day || 1) + ' · $' + (Number(st.money) || 0).toFixed(0) + (when ? ' <span class="flavor">(' + when + ')</span>' : '');
   }
   G.save = function (quiet) {
-    try { G.state._savedAt = Date.now(); localStorage.setItem(SAVE_KEY, JSON.stringify(G.state)); if (!quiet) G.notify('Game saved.', 'info'); } catch (e) { console.error(e); }
+    try { G.state._savedAt = Date.now(); store.set(SAVE_KEY, JSON.stringify(G.state)); if (!quiet) G.notify('Game saved.', 'info'); } catch (e) { console.error(e); }
   };
   G.saveSlot = function (n) {
-    G.state._savedAt = Date.now(); localStorage.setItem(SLOT_KEY(n), JSON.stringify(G.state)); G.notify('Saved to slot ' + n + '.', 'info'); openSaves();
+    G.state._savedAt = Date.now(); store.set(SLOT_KEY(n), JSON.stringify(G.state)); G.notify('Saved to slot ' + n + '.', 'info'); openSaves();
   };
   function resume(st, msg) {
     G.state = st; initModules(); started = true;
@@ -233,7 +250,7 @@
   G.load = function () { var st = readSave(SAVE_KEY); if (!st) { G.notify('No save found.', 'info'); return false; } resume(st); return true; };
   G.newGame = function () {
     if (started && !confirm('Start a new game? Your autosave will be replaced (save slots are kept).')) return;
-    localStorage.removeItem(SAVE_KEY); location.reload();
+    store.remove(SAVE_KEY); location.reload();
   };
 
   /* ---------- overlays: title, saves, how to play ---------- */
@@ -312,12 +329,12 @@
         el('overlay').classList.remove('titlemode');
         if (act === 'close') { started ? closeOverlay() : openTitle(); }
         else if (act === 'continue') G.load();
-        else if (act === 'begin') { localStorage.removeItem(SAVE_KEY); closeOverlay(); if (!G.module('creation')) G.start(); }
+        else if (act === 'begin') { store.remove(SAVE_KEY); closeOverlay(); if (!G.module('creation')) G.start(); }
         else if (act === 'saves') openSaves();
         else if (act === 'help') openHelp();
         else if (act === 'load') G.loadSlot(n);
         else if (act === 'save') G.saveSlot(n);
-        else if (act === 'del') { if (confirm('Delete slot ' + n + '?')) { localStorage.removeItem(SLOT_KEY(n)); openSaves(); } }
+        else if (act === 'del') { if (confirm('Delete slot ' + n + '?')) { store.remove(SLOT_KEY(n)); openSaves(); } }
         else if (act === 'new') G.newGame();
         return;
       }

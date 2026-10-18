@@ -7,9 +7,9 @@
 
   /* ---------- settings ---------- */
   var settings = { textSize: 16, daySummary: true, numberHints: true };
-  try { Object.assign(settings, JSON.parse(localStorage.getItem(SET_KEY) || '{}')); } catch (e) {}
+  try { Object.assign(settings, JSON.parse(G.store.get(SET_KEY) || '{}')); } catch (e) {}
   function applySettings() { document.documentElement.style.setProperty('--text-size', settings.textSize + 'px'); document.body && (document.body.style.fontSize = settings.textSize + 'px'); }
-  function saveSettings() { localStorage.setItem(SET_KEY, JSON.stringify(settings)); applySettings(); }
+  function saveSettings() { G.store.set(SET_KEY, JSON.stringify(settings)); applySettings(); }
   G.settings = settings;
 
   function openSettings() {

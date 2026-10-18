@@ -19,7 +19,7 @@
     try {
       var bar = document.getElementById('errbar');
       if (!bar) { bar = document.createElement('div'); bar.id = 'errbar'; bar.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:5000;background:#5a1d1d;color:#fff;font:12px system-ui;padding:6px 10px;white-space:pre-wrap'; document.body.appendChild(bar); }
-      bar.textContent = 'Something broke: ' + e.message + ' (' + String(e.filename || '').split('/').pop().split('?')[0] + ':' + e.lineno + ':' + (e.colno || 0) + ') [build 20261018h]. Please tell the developers.';
+      bar.textContent = 'Something broke: ' + e.message + ' (' + String(e.filename || '').split('/').pop().split('?')[0] + ':' + e.lineno + ':' + (e.colno || 0) + ') [build 20261018i]. Please tell the developers.';
     } catch (x) {}
   });
   var memStore = {};
@@ -158,6 +158,21 @@
   function el(id) { return document.getElementById(id); }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   G.esc = esc;
+  /* Action duration label, format (h:mm). Options declare `time: minutes` and the engine appends it. */
+  G.fmtTime = function (m) { m = Math.max(0, Math.round(m)); return '(' + Math.floor(m / 60) + ':' + (m % 60 < 10 ? '0' : '') + (m % 60) + ')'; };
+
+  /* Fallback when an option doesn't declare `time`: if its run() source returns exactly one literal minutes value, use it. */
+  var timeCache = typeof WeakMap === 'function' ? new WeakMap() : null;
+  function guessTime(o) {
+    if (o.time === false || typeof o.run !== 'function') return null;
+    if (timeCache && timeCache.has(o.run)) return timeCache.get(o.run);
+    var src = String(o.run), re = /minutes\s*:\s*([^,}\s]+)/g, m, vals = {}, n = 0, ok = true;
+    while ((m = re.exec(src))) { if (!/^\d+$/.test(m[1])) { ok = false; break; } if (!vals[m[1]]) { vals[m[1]] = 1; n++; } }
+    var t = ok && n === 1 ? +Object.keys(vals)[0] : null;
+    if (t === 0) t = null;
+    if (timeCache) timeCache.set(o.run, t);
+    return t;
+  }
 
   function collectOptions() {
     var all = { dialogue: [], actions: [], travel: [], other: [] };
@@ -196,8 +211,10 @@
       var lastSub = null;
       current[k].forEach(function (o, i) {
         if (o.sub && o.sub !== lastSub) { html += '</ul><h4 class="optsub">' + esc(o.sub) + ':</h4><ul>'; lastSub = o.sub; }
+        var lbl = o.label, tm = (typeof o.time === 'number') ? o.time : (typeof o.mins === 'number' ? o.mins : guessTime(o));
+        if (tm !== null && !/\(\d+:\d\d\)/.test(String(lbl))) lbl += ' <span class="tm">' + G.fmtTime(tm) + '</span>';
         html += '<li><a href="#" class="opt' + (o.disabled ? ' disabled' : '') + '" data-g="' + k + '" data-i="' + i + '"' +
-          (o.hint ? ' title="' + esc(o.hint) + '"' : '') + '>' + (hints && !o.disabled && visibleN < 9 ? '<span class="num">' + (visibleN + 1) + '</span>' : '') + o.label + '</a></li>';
+          (o.hint ? ' title="' + esc(o.hint) + '"' : '') + '>' + (hints && !o.disabled && visibleN < 9 ? '<span class="num">' + (visibleN + 1) + '</span>' : '') + lbl + '</a></li>';
         if (!o.disabled) visibleN++;
       });
       html += '</ul></section>';

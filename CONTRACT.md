@@ -57,3 +57,7 @@ Event `hairChanged {what: cut|dye|grow|style, style, color}`. Location `hair_sal
 
 ## Banners
 `G.addBanner(fn)`: fn() returns an HTML string or null, re-evaluated every render, and shown in a persistent strip above the story text (not replaced by turn text).
+
+
+## Action times
+Every option should declare `time: <minutes>` matching the minutes its run() returns. The engine appends it to the label as (h:mm), e.g. `Nap for an hour (1:00)`, `Look around (0:05)`. Labels that already contain (h:mm) are left alone. For variable actions, declare the typical or minimum time. Instant UI options (menus, checks costing 0 minutes) can omit it.

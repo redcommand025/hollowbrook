@@ -354,14 +354,14 @@
     var m = MENUS[id], out = [];
     m.items.forEach(function (it) {
       if (it.hours && (G.time.hour < it.hours[0] || G.time.hour >= it.hours[1])) return;
-      out.push({ label: it.name + ' ($' + it.price + ')', run: function () {
+      out.push({ label: it.name + ' ($' + it.price + ')', minutes: 15, run: function () {
         W().menuOpen = null;
         if (num(G.state, 'money') < it.price) return { text: '<p>You count your change twice. Not enough for the ' + it.name.toLowerCase() + '.</p>', minutes: 1 };
         G.change('money', -it.price); applyFx(it.fx);
         return { text: '<p>You order the ' + it.name.toLowerCase() + '. ' + it.text + '</p>', minutes: 15 };
       } });
     });
-    out.push({ label: 'Never mind', run: function () { W().menuOpen = null; return { text: '<p>You put the menu back.</p>', minutes: 0 }; } });
+    out.push({ label: 'Never mind', minutes: 0, run: function () { W().menuOpen = null; return { text: '<p>You put the menu back.</p>', minutes: 0 }; } });
     return out;
   }
   function applyFx(fx) { Object.keys(fx || {}).forEach(function (k) { G.change(k, fx[k]); }); }
@@ -479,10 +479,12 @@
   var BUS_STOPS = ['college_road', 'main_street', 'town_square', 'high_street', 'residential', 'river_lane'];
   var OUTSKIRTS_STOPS = ['river_lane'];   // the 12 serves the industrial edge, 7:00 to 19:00 only
   var BUS_FARE = 2, BIKE_PRICE = 55;
+  var BUS_RIDE = 6;
+  function busWait() { return G.time.isWeekend ? 9 : 5; }
   function busRunning() { return G.time.hour >= 6 && G.time.hour < 23; }
   function busTo(dest) {
     return function () {
-      var w = W(), wait = 2 + Math.floor(Math.random() * (G.time.isWeekend ? 14 : 8)), ride = 4 + Math.floor(Math.random() * 4);
+      var w = W(), wait = busWait(), ride = BUS_RIDE;
       if (num(G.state, 'money') < BUS_FARE) return { text: '<p>You pat your pockets at the bus stop. Not even $' + BUS_FARE + ' for the fare.</p>', minutes: 1 };
       G.change('money', -BUS_FARE);
       var from = w.location; w.busOpen = null;
@@ -490,7 +492,7 @@
       var a = onArrive(); if (G.emit) G.emit('arrive', { location: dest });
       var crowd = G.time.hour >= 8 && G.time.hour < 9 || G.time.hour >= 17 && G.time.hour < 18 ? ' It is rush hour, and you stand the whole way, wedged against a rucksack.' : ' You get a window seat and watch Hollowbrook slide past.';
       var line = OUTSKIRTS_STOPS.indexOf(dest) >= 0 || OUTSKIRTS_STOPS.indexOf(from) >= 0 ? '12' : '7';
-      return { text: '<p>The number ' + line + ' bus arrives after ' + wait + ' minutes.' + crowd + ' (' + (wait + ride) + ' min, $' + BUS_FARE + ')</p>' + a.html, minutes: wait + ride + a.minutes };
+      return { text: '<p>The number ' + line + ' bus arrives after ' + wait + ' minutes.' + crowd + ' ' + fmtT(wait + ride) + ', $' + BUS_FARE + '.</p>' + a.html, minutes: wait + ride + a.minutes };
     };
   }
   function outskirtsRunning() { return G.time.hour >= 7 && G.time.hour < 19 && W().weather !== 'storm' && W().weather !== 'snow'; }
@@ -506,9 +508,9 @@
       if (id === here) return;
       var twelve = hereOut || OUTSKIRTS_STOPS.indexOf(id) >= 0;
       if (twelve && !outskirtsRunning()) return;
-      out.push({ label: (twelve ? 'Number 12 bus to ' : 'Bus to ') + LOCATIONS[id].name + ' ($' + BUS_FARE + ')', run: busTo(id), locationId: id });
+      out.push({ label: (twelve ? 'Number 12 bus to ' : 'Bus to ') + LOCATIONS[id].name + ' ($' + BUS_FARE + ')', minutes: busWait() + BUS_RIDE, run: busTo(id), locationId: id });
     });
-    out.push({ label: 'Leave the bus stop', run: function () { W().busOpen = null; return { text: '<p>You step away from the bus shelter.</p>' + locationBlurb(), minutes: 0 }; } });
+    out.push({ label: 'Leave the bus stop', minutes: 0, run: function () { W().busOpen = null; return { text: '<p>You step away from the bus shelter.</p>' + locationBlurb(), minutes: 0 }; } });
     return out;
   }
 
@@ -724,7 +726,7 @@
       }
       w.location = dest;
       w.visited[dest] = true;
-      var text = '<p>' + (biking ? 'You cycle to ' : 'You head to ') + dl.name + '. (' + mins + ' min)</p>';
+      var text = '<p>' + (biking ? 'You cycle to ' : 'You head to ') + dl.name + '. ' + fmtT(mins) + '</p>';
       var wc = weatherClosure(dest);
       if (wc) text += '<p><i>' + wc + '</i></p>';
       else if (!isOpen(dest, G.time.hour)) text += '<p><i>It is closed right now. Opening hours are ' + dl.open[0] + ':00 to ' + (dl.open[1] % 24) + ':00.</i></p>';
@@ -741,20 +743,21 @@
       var l = LOCATIONS[id]; if (!l) return;
       var closed = weatherClosure(id) ? ' (closed: weather)' : !isOpen(id) ? ' (closed)' : '';
       var m = ADJ[here][id];
+      if (w.weather === 'storm' || w.weather === 'snow') m = Math.ceil(m * 1.4);
       if (w.bike && !w.bikeFlat && m >= 4 && w.weather !== 'storm' && w.weather !== 'snow' && (!LOCATIONS[here].indoor || !l.indoor)) m = Math.max(2, Math.ceil(m * 0.5));
       var special = LINK_LABEL[here + '>' + id], road = isRoad(id) || id === 'park';
       var label = special || (road ? 'Travel to ' : 'Go to ') + l.name;
-      (roadHere && road ? travel : goTo).push({ label: label + ' ' + fmtT(m) + closed, run: travelTo(id), locationId: id, mins: m, sub: roadHere ? (road ? 'Travel to' : 'Go to') : null });
+      (roadHere && road ? travel : goTo).push({ label: label + ' ' + fmtT(m) + closed, run: travelTo(id), locationId: id, mins: m, minutes: m, sub: roadHere ? (road ? 'Travel to' : 'Go to') : null });
     });
     goTo.sort(function (a, b) { return a.mins - b.mins || (a.label < b.label ? -1 : 1); });
     travel.sort(function (a, b) { var ap = a.locationId === 'park' || LOCATIONS[a.locationId].alleyway, bp = b.locationId === 'park' || LOCATIONS[b.locationId].alleyway; return ap - bp || a.mins - b.mins; });
     var out = goTo.concat(travel);
-    if (BUS_STOPS.indexOf(here) >= 0) out.push({ label: 'Bus stop (0:02)', sub: 'Travel to', run: function () {
+    if (BUS_STOPS.indexOf(here) >= 0) out.push({ label: 'Bus stop (0:02)', minutes: 2, sub: 'Travel to', run: function () {
       w.busOpen = here;
       var msg = busStopUsable() ? 'You wait at the bus shelter. The timetable says a bus comes every ten minutes or so.' + (OUTSKIRTS_STOPS.indexOf(here) >= 0 ? ' Only the Number 12 stops out here.' : '') : 'The timetable is taped over: no more buses tonight' + (W().weather === 'snow' ? ' because of the snow' : '') + '.';
       return { text: '<p>' + msg + '</p>', minutes: 2 };
     } });
-    if (roadHere) out.push({ label: 'Loiter (0:15)', sub: 'Travel to', run: loiter });
+    if (roadHere) out.push({ label: 'Loiter (0:15)', minutes: 15, sub: 'Travel to', run: loiter });
     return out;
   }
   function knockDoor() {
@@ -842,7 +845,7 @@
       if (w.menuOpen && (w.menuOpen !== w.location || !isOpen(w.location))) w.menuOpen = null;
       if (w.menuOpen) { opts.actions = menuOptions(w.menuOpen); return opts; }
       if (MENUS[w.location] && isOpen(w.location)) {
-        opts.actions.push({ label: 'Look at the menu', run: function () {
+        opts.actions.push({ label: 'Look at the menu', minutes: 1, run: function () {
           w.menuOpen = w.location;
           var m = MENUS[w.location], lines = m.items.filter(function (it) { return !it.hours || (G.time.hour >= it.hours[0] && G.time.hour < it.hours[1]); })
             .map(function (it) { return it.name + ', $' + it.price; });
@@ -852,37 +855,37 @@
       var fest = festivalLive();
       if (fest && fest.where === w.location) {
         fest.acts.forEach(function (a) {
-          opts.actions.push({ label: a.label, run: function () {
+          opts.actions.push({ label: a.label, minutes: a.minutes || 10, run: function () {
             if (a.cost) { if (num(G.state, 'money') < a.cost) return { text: '<p>You don\'t have enough cash for that.</p>', minutes: 1 }; G.change('money', -a.cost); }
             applyFx(a.fx); return { text: '<p>' + a.text + '</p>', minutes: a.minutes || 10 };
           } });
         });
       }
 
-      if (w.location === 'residential') opts.actions.push({ label: 'Knock on one of the houses (0:02)', run: knockDoor });
-      opts.actions.push({ label: 'Look around', run: function () {
+      if (w.location === 'residential') opts.actions.push({ label: 'Knock on one of the houses (0:02)', minutes: 2, run: knockDoor });
+      opts.actions.push({ label: 'Look around', minutes: 2, run: function () {
         var ev = tryEvent('idle');
         return { text: locationBlurb() + (ev ? '<p>' + ev.text + '</p>' : ''), minutes: 2 + ((ev && ev.minutes) || 0) };
       } });
 
-      opts.actions.push({ label: 'Wait 30 minutes', run: function () {
+      opts.actions.push({ label: 'Wait', minutes: 30, run: function () {
         var ev = tryEvent('idle');
         return { text: '<p>You let half an hour drift by.</p>' + (ev ? '<p>' + ev.text + '</p>' : ''), minutes: 30 };
       } });
-      opts.actions.push({ label: 'Wait 1 hour', run: function () {
+      opts.actions.push({ label: 'Wait', minutes: 60, run: function () {
         var ev = tryEvent('idle');
         return { text: '<p>An hour passes.</p>' + (ev ? '<p>' + ev.text + '</p>' : ''), minutes: 60 };
       } });
 
       if (!l.indoor && ['rain', 'storm', 'drizzle'].indexOf(w.weather) >= 0) {
-        opts.actions.push({ label: 'Shelter under an awning until it eases', run: function () {
-          var m = 20 + Math.floor(Math.random() * 40); G.change('stats.needs.stress', 10);
+        opts.actions.push({ label: 'Shelter under an awning until it eases', minutes: 40, run: function () {
+          var m = 40; G.change('stats.needs.stress', 10);
           return { text: '<p>You tuck yourself under the nearest overhang and watch the rain bounce off the pavement.</p>', minutes: m };
         } });
       }
 
       if (w.location === 'market' && isOpen('market') && !w.umbrella) {
-        opts.actions.push({ label: 'Buy an umbrella ($12)', run: function () {
+        opts.actions.push({ label: 'Buy an umbrella ($12)', minutes: 3, run: function () {
           if (num(G.state, 'money') < 12) return { text: '<p>You turn the umbrella over, check the price tag, and check your wallet. Not today.</p>', minutes: 1 };
           G.change('money', -12); w.umbrella = true;
           return { text: '<p>You buy a sturdy black umbrella. It clicks open satisfyingly.</p>', minutes: 3 };
@@ -890,31 +893,43 @@
       }
 
       if (w.location === MARKET_DAY.where && marketLive()) MARKET_DAY.acts.forEach(function (a) {
-        opts.actions.push({ label: a.label, run: function () {
+        opts.actions.push({ label: a.label, minutes: a.minutes || 10, run: function () {
           if (a.cost) { if (num(G.state, 'money') < a.cost) return { text: '<p>You don\'t have enough cash for that.</p>', minutes: 1 }; G.change('money', -a.cost); }
           applyFx(a.fx); return { text: '<p>' + a.text + '</p>', minutes: a.minutes || 10 };
         } });
       });
       if (w.location === 'shopping_centre' && isOpen('shopping_centre')) {
-        if (!w.bike) opts.actions.push({ label: 'Buy a second-hand bicycle from the cycle kiosk ($' + BIKE_PRICE + ')', run: function () {
+        if (!w.bike) opts.actions.push({ label: 'Buy a second-hand bicycle from the cycle kiosk ($' + BIKE_PRICE + ')', minutes: 10, run: function () {
           if (num(G.state, 'money') < BIKE_PRICE) return { text: '<p>The kiosk owner shows you a sturdy green bike with a basket. You check your wallet and sadly hand it back.</p>', minutes: 3 };
           G.change('money', -BIKE_PRICE); w.bike = true; w.bikeFlat = false;
           return { text: '<p>You wheel out a sturdy green bike with a wicker basket and a bell that dings a little sadly. Longer trips around town will take half the time now, unless the weather is foul.</p>', minutes: 10 };
         } });
-        else if (w.bikeFlat) opts.actions.push({ label: 'Get your puncture fixed ($6)', run: function () {
+        else if (w.bikeFlat) opts.actions.push({ label: 'Get your puncture fixed ($6)', minutes: 15, run: function () {
           if (num(G.state, 'money') < 6) return { text: '<p>Not enough cash for the repair.</p>', minutes: 1 };
           G.change('money', -6); w.bikeFlat = false; return { text: '<p>The kiosk owner patches the tube in ten minutes flat, whistling.</p>', minutes: 15 };
         } });
       }
-      opts.other.push({ label: 'Check the forecast', run: function () { return { text: '<p>You check the weather app. ' + forecastLine() + '</p>', minutes: 1 }; } });
-      opts.other.push({ label: 'Check the time and weather', run: function () {
+      opts.other.push({ label: 'Check the forecast', minutes: 1, run: function () { return { text: '<p>You check the weather app. ' + forecastLine() + '</p>', minutes: 1 }; } });
+      opts.other.push({ label: 'Check the time and weather', minutes: 0, run: function () {
         return { text: '<p>It is ' + G.time.clock + ' on ' + G.time.weekday + ', day ' + G.time.dayOfSeason + ' of ' + G.time.season +
           ' (' + partOfDay(G.time.hour) + ').</p><p>' + weatherLine() + '</p>', minutes: 0 };
       } });
-      opts.other.push({ label: 'Open the town map', run: function () { return { text: mapHtml(), minutes: 0 }; } });
+      opts.other.push({ label: 'Open the town map', minutes: 0, run: function () { return { text: mapHtml(), minutes: 0 }; } });
       return opts;
     }
   };
+
+  // Every option shows how long it takes, as (h:mm), unless its label already does.
+  var TIME_RE = /\(\d+:\d\d\)/;
+  function stampTimes(opts) {
+    ['dialogue', 'actions', 'travel', 'other'].forEach(function (k) {
+      (opts[k] || []).forEach(function (o) { if (o && typeof o.minutes === 'number' && !TIME_RE.test(o.label)) o.label += ' ' + fmtT(o.minutes); });
+    });
+    return opts;
+  }
+  G.world_fmtT = fmtT;
+  var _getOptions = mod.getOptions;
+  mod.getOptions = function (state) { return stampTimes(_getOptions.call(mod, state)); };
 
   function mapHtml() {
     var here = W().location, byDistrict = {};

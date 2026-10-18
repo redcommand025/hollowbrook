@@ -864,6 +864,36 @@
   }
 
   // ---------- the module ----------
+  /* Expected duration for each option, shown by the engine as (h:mm). Dynamic ones compute from the clock. */
+  function untilHour(h) { var t = time(); return Math.max(1, h * 60 - (t.hour * 60 + t.minute)); }
+  var MINS = [
+    [/^Attend |^Focus hard in /, function () { var c = currentClass(); return c ? untilHour(c.start + 2) : 0; }],
+    [/^Nap at the back/, 110], [/^Ask .* a question$/, 5], [/^Stay behind to talk/, 15],
+    [/^Sit your /, 180], [/^Skip the exam/, 1], [/extra credit$/, 75], [/ homework \(due/, 60],
+    [/^Study /, 90], [/^Browse the club fair/, 5], [/^Join (?!in)/, 5], [/^Leave /, 2],
+    [/^Join in with /, function (o) { for (var k in CLUBS) if (o.label.indexOf(CLUBS[k].name) >= 0) return untilHour(CLUBS[k].to); return 0; }],
+    [/^Take part in /, function (o) { for (var k in CLUB_EVENTS) if (o.label.indexOf(CLUB_EVENTS[k].name) >= 0 && CLUB_EVENTS[k].to) return untilHour(CLUB_EVENTS[k].to); return 0; }],
+    [/^Ask about work/, 20], [/^Work a 3-hour/, 180], [/^Quit your job/, 5],
+    [/^Pocket something/, 15], [/^Try the corridor lockers/, 20], [/^Sell what you've lifted/, 15], [/^Find Gideon/, 20],
+    [/^Lift |^Rifle through lost property/, 15], [/^Lie low/, 60],
+    [/^Cooperate with Officer Dunn/, 20], [/^Talk your way out/, 25], [/^Go quietly/, 600],
+    [/^Work off community service/, function () { return Math.min(3, S().serviceHours || 0) * 60; }],
+    [/polytunnel/, 180], [/market stall/, 240], [/^Appeal your expulsion/, 60], [/^Ask to see the dean/, 40], [/pet permit/, 25],
+    [/^Check your transcript/, 5], [/^Check the timetable board/, 5], [/^Read the suspension notice/, 2], [/^Notice the manager/, 1],
+    [/^Sell your produce/, 20], [/^Plant /, 30], [/^Water the plots/, 30], [/^Pull weeds/, 45], [/^Harvest/, 40],
+    [/^Spend time with the animals/, 30], [/^Check the hen coop/, 15], [/^Look over your plots/, 3],
+    [/help herd the goats/, 30], [/explore the farm/, 20], [/^Share some of your vegetables/, 5]
+  ];
+  function addMins(opts) {
+    ['dialogue', 'actions', 'travel', 'other'].forEach(function (g) {
+      (opts[g] || []).forEach(function (o) {
+        if (!o || typeof o.mins === 'number' || typeof o.label !== 'string') return;
+        for (var i = 0; i < MINS.length; i++) if (MINS[i][0].test(o.label)) { var v = MINS[i][1]; v = typeof v === 'function' ? v(o) : v; if (v > 0) o.mins = Math.round(v); return; }
+      });
+    });
+    return opts;
+  }
+
   var mod = {
     id: 'school',
     init: function (state) {

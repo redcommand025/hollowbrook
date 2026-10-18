@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hollowbrook</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <aside id="panel"></aside>
+  <main id="main">
+    <div id="story"></div>
+    <div id="notices"></div>
+    <div id="options"></div>
+  </main>
+</div>
+<div id="charmenu" hidden>
+  <div class="sheet">
+    <button id="charclose" aria-label="Close">×</button>
+    <nav id="chartabs"></nav>
+    <div id="charbody"></div>
+  </div>
+</div>
+<!-- engine first, then modules (order among modules does not matter) -->
+<script src="js/engine.js"></script>
+<script src="js/modules/world.js"></script>
+<script src="js/modules/stats.js"></script>
+<script src="js/modules/school.js"></script>
+<script src="js/modules/npcs.js"></script>
+<script src="js/modules/creation.js"></script>
+<script src="js/modules/wardrobe.js"></script>
+<script src="js/modules/dorm.js"></script>
+<script src="js/modules/pets.js"></script>
+<script src="js/modules/extras.js"></script>
+<script src="js/modules/salon.js"></script>
+</body>
+</html>

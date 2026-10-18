@@ -1,0 +1,929 @@
+/* world.js — set map, travel, clock/calendar, weather, random events.  Owner: Ron
+ * Owns G.state.world and keeps G.time in sync.
+ * Public helpers for other modules live on G.world (see bottom of file).
+ */
+(function () {
+  'use strict';
+  var G = window.G;
+
+  /* ---------------- Calendar ---------------- */
+  var WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  var SEASONS = ['Autumn', 'Winter', 'Spring', 'Summer'];   // game opens in early autumn term
+  var DAYS_PER_SEASON = 28;
+
+  /* ---------------- Map ----------------
+   * district groups locations; links are walking minutes between neighbours.
+   * open: [fromHour, toHour) or null for always open. indoor: shelters from weather.
+   */
+  var LOCATIONS = {
+    dorm_room:     { name: 'Your Dorm Room', district: 'Campus', indoor: true, open: null, restroom: true,
+                     desc: 'A narrow single room in Ashford Hall: a creaky bed, a desk under the window, and a radiator that knocks at night.' },
+    dorm_hall:     { name: 'Ashford Hall Corridor', district: 'Campus', indoor: true, open: null, restroom: true,
+                     desc: 'Notice boards, a humming vending machine, and the shared bathroom at the end of the hall.' },
+    quad:          { name: 'Main Quad', district: 'Campus', indoor: false, open: null,
+                     desc: 'An oak-shaded lawn ringed by red-brick buildings. Students cut across it at every hour.' },
+    lecture_hall:  { name: 'Calloway Lecture Building', district: 'Campus', indoor: true, open: [7, 21], restroom: true,
+                     desc: 'Tiered seating, flickering projectors, and the smell of old radiators.' },
+    library:       { name: 'Whitlock Library', district: 'Campus', indoor: true, open: [8, 23], restroom: true,
+                     desc: 'Three quiet floors of stacks. The top floor carrels are always taken during exams.' },
+    cafeteria:     { name: 'Dining Commons', district: 'Campus', indoor: true, open: [7, 20], restroom: true,
+                     desc: 'Long tables, a salad bar, and coffee that tastes faintly of the urn.' },
+    gym:           { name: 'Fieldhouse & Gym', district: 'Campus', indoor: true, open: [6, 22], restroom: true,
+                     desc: 'Squeaking sneakers, a weight room, and an indoor track on the mezzanine.' },
+    campus_farm:   { name: 'College Teaching Farm', district: 'Campus Edge', indoor: false, open: [6, 19],
+                     desc: 'Raised beds, a polytunnel, two goats, and a few hens kept by the agriculture department.' },
+    main_street:   { name: 'Main Street', district: 'Town', indoor: false, open: null,
+                     desc: 'The heart of Hollowbrook: bunting between lampposts, a bakery, a pharmacy, and a bus shelter.' },
+    cafe:          { name: 'The Copper Kettle Café', district: 'Town', indoor: true, open: [7, 19], restroom: true,
+                     desc: 'Mismatched armchairs, a chalkboard menu, and a cat who sleeps on the windowsill.' },
+    market:        { name: 'Hollowbrook Grocer', district: 'Town', indoor: true, open: [8, 21], restroom: true,
+                     desc: 'A family-run grocery with fresh bread in the mornings and discount stickers after six.' },
+    florist:       { name: 'Fern & Foxglove Florist', district: 'Town', indoor: true, open: [9, 18],
+                     desc: 'Buckets of cut flowers spill onto the pavement. It always smells like rain inside.' },
+    park:          { name: 'Millpond Park', district: 'Town', indoor: false, open: null,
+                     desc: 'A duck pond, a bandstand, and benches carved with decades of initials.' },
+    residential:   { name: 'Elm Row', district: 'Residential', indoor: false, open: null,
+                     desc: 'Terraced houses with tidy gardens, wind chimes, and a neighbourhood watch sign.' },
+    alley:         { name: 'Back Alley', district: 'Town', indoor: false, open: null,
+                     desc: 'Bins, fire escapes, and a shortcut most people avoid after dark.' },
+    bar:           { name: 'The Lantern Pub', district: 'Town', indoor: true, open: [12, 24], restroom: true,
+                     desc: 'Low beams, a darts board, and open-mic night every Thursday.' },
+    old_mill:      { name: 'The Old Mill', district: 'Outskirts', indoor: false, open: null,
+                     desc: 'A derelict water mill by the river where outcasts and dreamers tend to drift.' },
+    deans_office:   { name: "Dean's Office", district: 'Campus', indoor: true, open: [8, 17], restroom: true,
+                     desc: 'Wood panelling, a ticking clock, and a secretary who has seen every excuse twice.' },
+    town_square:   { name: 'Town Square', district: 'Town', indoor: false, open: null,
+                     desc: 'A cobbled square with a war memorial, a drinking fountain, and pigeons that fear no one.' },
+    town_hall:     { name: 'Hollowbrook Town Hall', district: 'Town', indoor: true, open: [8, 18], restroom: true,
+                     desc: 'A stone civic building with creaking floors, council notices, and a portrait of every past mayor.' },
+    church:        { name: "St. Aldric's Church", district: 'Town', indoor: true, open: [7, 20],
+                     desc: 'A small flint church with a cool, quiet nave and a noticeboard full of bake sales.' },
+    docks:         { name: 'River Docks', district: 'Outskirts', indoor: false, open: null,
+                     desc: 'Old wooden jetties, moored narrowboats, and the slap of the river against the pilings.' },
+    shopping_centre: { name: 'Brookside Shopping Centre', district: 'Shopping Centre', indoor: true, open: [9, 20], restroom: true,
+                     desc: 'A two-storey glass-roofed arcade with a fountain in the atrium, piped music, and benches full of tired shoppers.' },
+    clothing_store: { name: 'Threadbare & Co.', district: 'Shopping Centre', indoor: true, open: [9, 19], tags: ['public', 'mirror'],
+                     desc: 'A narrow clothing shop with creaky floorboards, racks sorted by colour, and a velvet-curtained fitting room. The owner hums along to the radio.' },
+    furniture_store: { name: 'Hearth & Home Furnishings', district: 'Shopping Centre', indoor: true, open: [9, 19],
+                     desc: 'Showroom bedrooms in miniature, a wall of lamps, and a rug section that smells of new wool. Small items to take away; bigger pieces delivered to campus.' },
+    pet_store:     { name: 'Paws & Whiskers Pet Shop', district: 'Shopping Centre', indoor: true, open: [9, 18],
+                     desc: 'Chirping budgies, a tank of lazy goldfish, and a noticeboard of animals from the local rescue looking for homes.' },
+    hair_salon:    { name: 'Snip & Curl Salon', district: 'Shopping Centre', indoor: true, open: [9, 18], tags: ['mirror', 'public'],
+                     desc: 'Three chairs, a wall of mirrors, a shelf of dye swatches in every shade, and a radio tuned to golden oldies. It smells of shampoo and hot air.' },
+    vet_clinic:    { name: 'Brookside Veterinary Clinic', district: 'Shopping Centre', indoor: true, open: [8, 18], restroom: true,
+                     desc: 'A bright waiting room with a weighing scale, a rack of leaflets on fleas, and a receptionist who knows every animal by name.' },
+    woods:         { name: 'Hollow Woods', district: 'Outskirts', indoor: false, open: null,
+                     desc: 'Birch and bracken, a muddy footpath, and stories about lights between the trees.' }
+  };
+
+  var LINKS = [
+    ['dorm_room', 'dorm_hall', 1], ['dorm_hall', 'quad', 3],
+    ['quad', 'lecture_hall', 3], ['quad', 'library', 4], ['quad', 'cafeteria', 3], ['quad', 'gym', 5],
+    ['quad', 'campus_farm', 10], ['quad', 'main_street', 12],
+    ['main_street', 'cafe', 2], ['main_street', 'market', 2], ['main_street', 'florist', 3],
+    ['main_street', 'park', 6], ['main_street', 'alley', 2], ['main_street', 'bar', 4],
+    ['main_street', 'residential', 8], ['park', 'residential', 5], ['alley', 'bar', 2],
+    ['quad', 'deans_office', 2], ['main_street', 'town_square', 2], ['town_square', 'town_hall', 1],
+    ['town_square', 'church', 3], ['town_square', 'park', 5], ['old_mill', 'docks', 6], ['alley', 'docks', 12],
+    ['main_street', 'shopping_centre', 5], ['shopping_centre', 'clothing_store', 1],
+    ['shopping_centre', 'furniture_store', 1], ['shopping_centre', 'pet_store', 2], ['pet_store', 'vet_clinic', 1], ['shopping_centre', 'hair_salon', 1], ['main_street', 'vet_clinic', 6],
+    ['park', 'old_mill', 15], ['old_mill', 'woods', 10], ['campus_farm', 'woods', 12]
+  ];
+  // Tags read by stats.js (hereHas) and anyone else: outdoors, restroom, water, food, home, gym, quiet, mirror, public.
+  var EXTRA_TAGS = {
+    dorm_room: ['home', 'quiet', 'mirror', 'water'], dorm_hall: ['water', 'mirror', 'food'],
+    library: ['quiet', 'water'], cafeteria: ['food', 'water', 'public'], cafe: ['food', 'water', 'public'],
+    market: ['food', 'water', 'public'], bar: ['food', 'water', 'public'], gym: ['gym', 'water', 'mirror'],
+    lecture_hall: ['public', 'water'], quad: ['public'], main_street: ['public'], town_square: ['public', 'water'],
+    park: ['public', 'water'], shopping_centre: ['public', 'water', 'food'], church: ['quiet'], woods: ['quiet'], town_hall: ['public']
+  };
+  Object.keys(LOCATIONS).forEach(function (id) { tagLoc(id); });
+  function tagLoc(id) {
+    var l = LOCATIONS[id], t = (l.tags || []).slice();
+    if (!l.indoor) t.push('outdoors'); else t.push('indoors');
+    if (l.restroom) t.push('restroom');
+    (EXTRA_TAGS[id] || []).forEach(function (x) { if (t.indexOf(x) < 0) t.push(x); });
+    l.id = id; l.tags = t;
+  }
+  // Aliases so other modules' shorthand ids resolve to real map ids (G.world.is / G.world.resolve).
+  var ALIASES = {
+    home: 'dorm_room', dorms: 'dorm_hall', campus: 'quad', classroom: 'lecture_hall', farm: 'campus_farm',
+    office: 'deans_office', street: 'main_street',
+    college_classroom: 'lecture_hall', college_library: 'library', college_quad: 'quad', college_office: 'deans_office',
+    meadow_farm: 'campus_farm', town_market: 'market'
+  };
+  function resolve(id) { return LOCATIONS[id] ? id : (ALIASES[id] || id); }
+  var ADJ = {};
+  LINKS.forEach(function (l) {
+    (ADJ[l[0]] = ADJ[l[0]] || {})[l[1]] = l[2];
+    (ADJ[l[1]] = ADJ[l[1]] || {})[l[0]] = l[2];
+  });
+
+  /* ---------------- Weather ---------------- */
+  var WEATHER = {
+    clear:    { label: 'Clear',        text: 'The sky is clear and bright.',                     fatigue: 0,  wet: 0,  stress: -1 },
+    cloudy:   { label: 'Overcast',     text: 'A flat grey sky hangs over town.',                 fatigue: 0,  wet: 0,  stress: 0 },
+    drizzle:  { label: 'Drizzle',      text: 'A fine drizzle mists everything.',                 fatigue: 1,  wet: 4,  stress: 1 },
+    rain:     { label: 'Rain',         text: 'Rain drums on rooftops and fills the gutters.',    fatigue: 2,  wet: 12, stress: 2 },
+    storm:    { label: 'Thunderstorm', text: 'Thunder rolls and sheets of rain sweep the streets.', fatigue: 4, wet: 25, stress: 5 },
+    fog:      { label: 'Fog',          text: 'Thick fog swallows the far end of every street.',  fatigue: 1,  wet: 2,  stress: 1 },
+    snow:     { label: 'Snow',         text: 'Snow falls softly, muffling every sound.',          fatigue: 3,  wet: 6,  stress: 0 },
+    hot:      { label: 'Heatwave',     text: 'Heat shimmers off the pavement.',                  fatigue: 3,  wet: 0,  stress: 2, thirst: 4 },
+    windy:    { label: 'Blustery',     text: 'Wind tugs at coats and sends leaves skittering.',  fatigue: 1,  wet: 0,  stress: 1 }
+  };
+  // Season weights: [clear, cloudy, drizzle, rain, storm, fog, snow, hot, windy]
+  var KEYS = ['clear', 'cloudy', 'drizzle', 'rain', 'storm', 'fog', 'snow', 'hot', 'windy'];
+  var SEASON_WEIGHTS = {
+    Autumn: [20, 25, 15, 15, 4, 10, 0, 0, 11],
+    Winter: [15, 25, 8, 10, 2, 12, 25, 0, 3],
+    Spring: [25, 20, 18, 15, 6, 6, 0, 2, 8],
+    Summer: [40, 12, 5, 8, 8, 2, 0, 20, 5]
+  };
+
+  function pickWeighted(weights) {
+    var total = weights.reduce(function (a, b) { return a + b; }, 0), r = Math.random() * total;
+    for (var i = 0; i < weights.length; i++) { r -= weights[i]; if (r < 0) return i; }
+    return 0;
+  }
+
+  /* ---------------- Random events ----------------
+   * Each: id, where (location ids, district names, or '*'), when(state) optional, chance (0-1 per check),
+   * run(state) -> {text, minutes}. Fired on arrival, and occasionally on idle actions.
+   * Content stays grounded and short; stat effects go through G.change so the player sees them.
+   */
+  var EVENTS = [
+    { id: 'found_coins', where: ['*outdoor'], chance: 0.04,
+      run: function () { var n = 1 + Math.floor(Math.random() * 5); G.change('money', n);
+        return { text: 'Something glints by the kerb. You pick up <b>$' + n + '</b> in loose change.' }; } },
+    { id: 'sudden_shower', where: ['*outdoor'], chance: 0.05, when: function (s) { return ['cloudy', 'drizzle'].indexOf(s.world.weather) >= 0; },
+      run: function (s) { s.world.weather = 'rain'; wetClothes(15);
+        return { text: 'The clouds give up without warning. A sudden shower soaks you before you can find cover.' }; } },
+    { id: 'street_musician', where: ['main_street', 'park'], chance: 0.12, when: function () { return G.time.hour >= 10 && G.time.hour < 20; },
+      run: function () { G.change('stats.needs.stress', -20);
+        return { text: 'A busker with a battered guitar plays something slow and familiar. You stop to listen for a song, and your shoulders loosen a little.', minutes: 4 }; } },
+    { id: 'flyer', where: ['quad', 'dorm_hall', 'cafeteria'], chance: 0.1,
+      run: function () { var f = pick(['a pub quiz at The Lantern on Thursday', 'a volunteer day at the teaching farm', 'an open audition for the drama society', 'a lost cat named Biscuit, last seen near Elm Row', 'a study group for midterms in Whitlock Library']);
+        return { text: 'A brightly coloured flyer is pinned up here, advertising ' + f + '.' }; } },
+    { id: 'spilled_coffee', where: ['cafe', 'cafeteria', 'lecture_hall'], chance: 0.05,
+      run: function () { G.change('stats.clothing.upperWetness', 20); G.change('stats.needs.stress', 15);
+        return { text: 'Someone squeezing past jogs your elbow and coffee splashes down your front. They apologise in a rush and are gone.' }; } },
+    { id: 'free_sample', where: ['market', 'main_street'], chance: 0.08, when: function () { return G.time.hour >= 9 && G.time.hour < 17; },
+      run: function () { G.change('stats.needs.hunger', 40);
+        return { text: 'A cheerful stallholder presses a warm sample of bread into your hand. It is very good.' }; } },
+    { id: 'night_noise', where: ['alley', 'old_mill', 'woods'], chance: 0.12, when: function () { return G.time.hour >= 21 || G.time.hour < 5; },
+      run: function () { G.change('stats.needs.stress', 30);
+        return { text: 'A clatter somewhere behind you makes your heart jump. Just a fox knocking over a bin, probably. Probably.' }; } },
+    { id: 'lights_in_woods', where: ['woods'], chance: 0.15, when: function () { return G.time.hour >= 19 || G.time.hour < 5; },
+      run: function () { aware(2);
+        return { text: 'Between the birches, a faint blue light drifts and winks out. When you blink, there is only dark.' }; } },
+    { id: 'goats_loose', where: ['campus_farm'], chance: 0.1,
+      run: function () { G.change('stats.needs.fatigue', 30);
+        return { text: 'The goats have got out again. It takes ten undignified minutes and a handful of oats to herd them back.', minutes: 10 }; } },
+    { id: 'jogger_wave', where: ['park', 'residential'], chance: 0.08, when: function () { return G.time.hour >= 6 && G.time.hour < 9; },
+      run: function () { G.change('stats.needs.stress', -5);
+        return { text: 'An early jogger gives you a breathless wave as they pass. Hollowbrook is that kind of town.' }; } },
+    { id: 'pickpocket_attempt', where: ['main_street', 'bar', 'alley'], chance: 0.03,
+      run: function (s) { var aw = num(s, 'stats.core.awareness.value');
+        if (Math.random() * 1000 < aw + 200) { aware(3);
+          return { text: 'You feel a light tug at your pocket and turn just in time. A hooded figure mutters something and melts into the crowd.' }; }
+        var loss = Math.min(num(s, 'money'), 5 + Math.floor(Math.random() * 15)); G.change('money', -loss); G.change('stats.needs.stress', 40);
+        return { text: 'Later, you reach for your wallet and find it lighter than it should be. Someone in the crowd was quicker than you.' }; } },
+    { id: 'rainbow', where: ['*outdoor'], chance: 0.15, when: function (s) { return s.world.prevWeather === 'rain' && s.world.weather !== 'rain'; },
+      run: function () { G.change('stats.needs.stress', -15);
+        return { text: 'As the rain eases, a pale rainbow arches over the rooftops. A few people stop and point.' }; } }
+  ];
+
+
+  /* ---------------- Night descriptions (used from dusk to dawn) ---------------- */
+  var NIGHT = {
+    dorm_room: 'Your desk lamp throws a small yellow circle. Through the wall, a neighbour\'s music thumps faintly.',
+    dorm_hall: 'The corridor lights are on their dim setting. Someone has left a pizza box outside their door.',
+    quad: 'Path lamps make pools of light under the oaks. A few students hurry across, hoods up.',
+    lecture_hall: 'Empty rows and the hum of a vending machine. A cleaner pushes a mop down the aisle.',
+    library: 'The late crowd hunches over laptops. The top floor is so quiet you can hear the radiators tick.',
+    cafeteria: 'Chairs are upturned on half the tables, and the last tray trolley rattles back to the kitchen.',
+    gym: 'Fluorescent lights buzz over a near-empty weight room. One runner circles the mezzanine track.',
+    campus_farm: 'The polytunnel glows faintly under the moon. The goats shuffle in their shed.',
+    main_street: 'Shop shutters are down. The bakery\'s window is dark, but the pub at the end glows warm.',
+    cafe: 'Chairs stacked, chalkboard wiped clean. The cat watches you through the glass.',
+    market: 'Strip lights over half-empty shelves and a basket of yellow-stickered bread by the till.',
+    florist: 'Buckets brought in for the night. Through the window, petals glow pale in the dark.',
+    park: 'The pond is black and still. The bandstand is a dark shape, and something rustles in the reeds.',
+    residential: 'Curtains drawn, televisions flickering blue behind them, and a cat on every second wall.',
+    alley: 'One flickering bulb over a fire door. Your footsteps echo louder than they should.',
+    bar: 'Crowded and loud: darts thudding, a table singing badly, and the smell of chips.',
+    old_mill: 'The wheel creaks in the current. Someone has lit a small fire inside the broken walls.',
+    woods: 'Pitch dark between the trunks. Every snapped twig sounds like a footstep.',
+    shopping_centre: 'Shutters down on every unit. A security guard does slow laps past the switched-off fountain.',
+    clothing_store: 'Mannequins stand in the dark window like a silent audience.',
+    furniture_store: 'Showroom lamps left on in the window make tiny, cosy rooms no one lives in.',
+    pet_store: 'A night light glows over the fish tanks. Somewhere inside, a hamster wheel squeaks.',
+    hair_salon: 'The chairs are empty and the dryers hooded like sleeping birds. A price list glows in the window.',
+    vet_clinic: 'Closed. A sign on the door gives an emergency number, and a cat in a recovery kennel watches from the window.',
+    deans_office: 'The corridor is locked and dark. A single desk lamp has been left on behind frosted glass.',
+    town_square: 'The memorial is lit from below. A couple sits on the fountain\'s edge, talking quietly.',
+    town_hall: 'The clock face glows over the square, a little slow as always.',
+    church: 'Candles gutter by the door. The stained glass is dark from inside.',
+    docks: 'Narrowboat windows glow warm along the jetty, and woodsmoke drifts over the water.'
+  };
+
+  /* ---------------- Seasonal festivals ----------------
+   * One per season on a fixed day. On the day: a notice at dawn, changed descriptions,
+   * extra actions at the host location. A flyer appears in the 3 days before.
+   */
+  var FESTIVALS = [
+    { id: 'lantern_fair', season: 'Autumn', day: 14, where: 'town_square', from: 16, to: 23, name: 'Harvest Lantern Fair',
+      desc: 'Paper lanterns are strung across the square, stalls sell toffee apples and mulled cider, and a brass band plays by the memorial.',
+      acts: [
+        { label: 'Buy a toffee apple ($3)', cost: 3, text: 'Sticky, crunchy, and impossible to eat with dignity.', fx: { 'stats.needs.hunger': 120, 'stats.needs.stress': -30 }, minutes: 10 },
+        { label: 'Release a paper lantern', text: 'You light a paper lantern with the crowd by the memorial and let it go. Hundreds of small lights drift up over the rooftops.', fx: { 'stats.needs.stress': -80 }, minutes: 30 },
+        { label: 'Try the apple-bobbing barrel', text: 'You come up gasping, soaked to the collar, with an apple clamped in your teeth. The crowd cheers.', fx: { 'stats.clothing.upperWetness': 35, 'stats.needs.stress': -40 }, minutes: 10 } ] },
+    { id: 'frost_market', season: 'Winter', day: 21, where: 'main_street', from: 10, to: 21, name: 'Frost Market',
+      desc: 'Wooden chalets line Main Street, selling knitwear, roasted chestnuts, and hot chocolate. Fairy lights wind up every lamppost.',
+      acts: [
+        { label: 'Buy roasted chestnuts ($4)', cost: 4, text: 'A paper cone of hot chestnuts warms your hands better than any glove.', fx: { 'stats.needs.hunger': 150, 'stats.needs.stress': -25 }, minutes: 10 },
+        { label: 'Buy a hot chocolate ($3)', cost: 3, text: 'Thick, sweet, and topped with far too much cream.', fx: { 'stats.needs.thirst': 200, 'stats.needs.stress': -30, 'stats.needs.bladder': 80 }, minutes: 10 },
+        { label: 'Join the carol singers', text: 'You squeeze in among the carollers by the bus shelter. Nobody minds that you only know half the words.', fx: { 'stats.needs.stress': -70, 'stats.needs.fatigue': 30 }, minutes: 30 } ] },
+    { id: 'may_fair', season: 'Spring', day: 10, where: 'park', from: 9, to: 19, name: 'Blossom Fair',
+      desc: 'Millpond Park is full of bunting, a maypole stands by the bandstand, and the cherry trees are in full, ridiculous bloom.',
+      acts: [
+        { label: 'Dance around the maypole', text: 'You grab a ribbon and get hopelessly tangled with three strangers. It is the most you have laughed in weeks.', fx: { 'stats.needs.stress': -80, 'stats.needs.fatigue': 60 }, minutes: 20 },
+        { label: 'Buy a strawberry lemonade ($3)', cost: 3, text: 'Tart, cold, and pink as the blossom overhead.', fx: { 'stats.needs.thirst': 250, 'stats.needs.bladder': 90 }, minutes: 5 },
+        { label: 'Enter the cake-judging tent', text: 'You sample far more sponge than is wise and give everyone full marks.', fx: { 'stats.needs.hunger': 200, 'stats.needs.stress': -20 }, minutes: 25 } ] },
+    { id: 'regatta', season: 'Summer', day: 18, where: 'docks', from: 10, to: 20, name: 'Riverside Regatta',
+      desc: 'Bunting hangs from every narrowboat, rowing crews splash past the jetties, and an ice-cream van has parked right by the water.',
+      acts: [
+        { label: 'Cheer on the college rowing crew', text: 'You shout yourself hoarse as Hollowbrook\'s boat edges ahead by half a length.', fx: { 'stats.needs.stress': -50, 'stats.needs.thirst': -60 }, minutes: 30 },
+        { label: 'Buy an ice cream ($3)', cost: 3, text: 'It melts down your wrist faster than you can eat it.', fx: { 'stats.needs.hunger': 80, 'stats.needs.thirst': 60, 'stats.needs.stress': -20 }, minutes: 10 },
+        { label: 'Join the duck race', text: 'You buy a numbered rubber duck and watch it bob downstream. It finishes a respectable eleventh.', fx: { 'stats.needs.stress': -40 }, minutes: 20 } ] }
+    ,{ id: 'bonfire_night', season: 'Autumn', day: 26, where: 'park', from: 18, to: 23, name: 'Bonfire Night',
+      desc: 'A huge bonfire crackles by the millpond, sparklers fizz in gloved hands, and fireworks burst over the bandstand.',
+      acts: [
+        { label: 'Write your name with a sparkler', text: 'You trace looping letters of light in the dark. They hang there for a heartbeat, then vanish.', fx: { 'stats.needs.stress': -40 }, minutes: 5 },
+        { label: 'Buy a cup of parkin and tea ($3)', cost: 3, text: 'Sticky ginger cake and stewed tea, eaten standing close to the fire.', fx: { 'stats.needs.hunger': 140, 'stats.needs.thirst': 150, 'stats.needs.bladder': 70 }, minutes: 10 },
+        { label: 'Watch the fireworks', text: 'Rockets thump into the sky and open in great slow chrysanthemums of gold and green. The whole crowd goes "ooh" together.', fx: { 'stats.needs.stress': -70 }, minutes: 25 } ] },
+    { id: 'new_year', season: 'Winter', day: 28, where: 'town_square', from: 20, to: 24, name: 'New Year\'s Eve Countdown',
+      desc: 'The square is packed, a band plays on a trailer stage, and every eye keeps drifting to the town hall clock.',
+      acts: [
+        { label: 'Count down with the crowd', text: 'Ten, nine, eight... at midnight the town hall clock is three seconds slow, as always, and nobody cares. Strangers hug. Someone starts singing.', fx: { 'stats.needs.stress': -90, 'stats.status.socialiteFame': 4 }, minutes: 30 },
+        { label: 'Buy a mulled apple juice ($3)', cost: 3, text: 'Warm and spiced. You wrap both hands around the cup.', fx: { 'stats.needs.thirst': 200, 'stats.needs.bladder': 90 }, minutes: 5 },
+        { label: 'Write a resolution on the wishing wall', text: 'You pin a folded card to the board among hundreds of others. Whatever you wrote, it feels like a promise.', fx: { 'stats.needs.stress': -30 }, minutes: 10 } ] },
+    { id: 'egg_hunt', season: 'Spring', day: 22, where: 'quad', from: 10, to: 16, name: 'Spring Egg Hunt',
+      desc: 'The student union has hidden painted wooden eggs all over the quad, and grown adults are crawling through flowerbeds with total seriousness.',
+      acts: [
+        { label: 'Join the egg hunt', text: 'You find four eggs, one inside a drainpipe, and trade them in at the union stall for a chocolate bunny.', fx: { 'stats.needs.stress': -50, 'stats.needs.hunger': 80, 'stats.needs.fatigue': 40 }, minutes: 30 },
+        { label: 'Paint an egg at the craft table', text: 'Yours is lopsided and very purple. A volunteer calls it "bold".', fx: { 'stats.needs.stress': -30 }, minutes: 20 } ] },
+    { id: 'open_air_cinema', season: 'Summer', day: 7, where: 'quad', from: 20, to: 24, name: 'Open-Air Cinema Night',
+      desc: 'A huge inflatable screen stands at the end of the quad, deckchairs in rows on the grass, and the smell of popcorn everywhere.',
+      acts: [
+        { label: 'Watch the film from a deckchair', text: 'It is an old romantic comedy everyone half knows. People quote along with the best lines and cheer the ending.', fx: { 'stats.needs.stress': -60, 'stats.needs.fatigue': 30 }, minutes: 110 },
+        { label: 'Buy popcorn and a lemonade ($4)', cost: 4, text: 'Sweet and salty, mixed, the correct way.', fx: { 'stats.needs.hunger': 100, 'stats.needs.thirst': 180, 'stats.needs.bladder': 90 }, minutes: 5 } ] }
+  ];
+  function festivalToday() {
+    var s = season(), d = ((W().day - 1) % DAYS_PER_SEASON) + 1;
+    return FESTIVALS.filter(function (f) { return f.season === s && f.day === d; })[0] || null;
+  }
+  function festivalSoon() {
+    var s = season(), d = ((W().day - 1) % DAYS_PER_SEASON) + 1;
+    return FESTIVALS.filter(function (f) { return f.season === s && f.day > d && f.day - d <= 3; })[0] || null;
+  }
+  function festivalLive() {
+    var f = festivalToday(); if (!f) return null;
+    return (G.time.hour >= f.from && G.time.hour < f.to) ? f : null;
+  }
+
+  /* ---------------- Menus (café, dining commons, pub) ----------------
+   * fx are G.change deltas. Hunger/thirst are "fullness": higher is better. Drinks fill the bladder, meals the bowels.
+   */
+  var MENUS = {
+    cafe: { title: 'The Copper Kettle chalkboard', items: [
+      { id: 'tea', name: 'Pot of tea', price: 3, fx: { 'stats.needs.thirst': 220, 'stats.needs.stress': -25, 'stats.needs.bladder': 90 }, text: 'A proper pot, with a knitted cosy. You pour slowly and let the world wait.' },
+      { id: 'latte', name: 'Latte', price: 4, fx: { 'stats.needs.thirst': 160, 'stats.needs.fatigue': -90, 'stats.needs.bladder': 80 }, text: 'Strong enough to straighten your spine.' },
+      { id: 'scone', name: 'Cheese scone', price: 3, fx: { 'stats.needs.hunger': 180, 'stats.needs.bowels': 30 }, text: 'Still warm, with a crust of crisp cheese on top.' },
+      { id: 'soup', name: 'Soup of the day with bread', price: 6, fx: { 'stats.needs.hunger': 380, 'stats.needs.thirst': 60, 'stats.needs.bowels': 50, 'stats.needs.stress': -15 }, text: 'Today it is leek and potato. It tastes like being looked after.' },
+      { id: 'cake', name: 'Slice of lemon drizzle', price: 3, fx: { 'stats.needs.hunger': 140, 'stats.needs.stress': -30 }, text: 'Sharp, sweet, and gone in four bites.' } ] },
+    cafeteria: { title: 'Dining Commons counter', items: [
+      { id: 'breakfast', name: 'Cooked breakfast', price: 5, hours: [7, 11], fx: { 'stats.needs.hunger': 450, 'stats.needs.bowels': 70 }, text: 'Eggs, beans, toast, and a hash brown that has seen better days. It does the job.' },
+      { id: 'pasta', name: 'Pasta bake', price: 5, hours: [11, 20], fx: { 'stats.needs.hunger': 420, 'stats.needs.bowels': 60 }, text: 'Cheesy, beige, and very filling.' },
+      { id: 'salad', name: 'Salad bar bowl', price: 4, fx: { 'stats.needs.hunger': 250, 'stats.needs.thirst': 40, 'stats.needs.bowels': 40 }, text: 'You build a respectable bowl and feel briefly virtuous.' },
+      { id: 'juice', name: 'Carton of orange juice', price: 2, fx: { 'stats.needs.thirst': 200, 'stats.needs.bladder': 80 }, text: 'Cold from the fridge, with a straw you lose immediately.' },
+      { id: 'urn_coffee', name: 'Urn coffee', price: 1, fx: { 'stats.needs.thirst': 100, 'stats.needs.fatigue': -50, 'stats.needs.bladder': 60 }, text: 'It tastes faintly of the urn, as promised.' } ] },
+    bar: { title: 'The Lantern bar menu', items: [
+      { id: 'cola', name: 'Pint of cola', price: 3, fx: { 'stats.needs.thirst': 260, 'stats.needs.bladder': 120 }, text: 'Too much ice, as always.' },
+      { id: 'cider', name: 'Half of cider', price: 4, fx: { 'stats.needs.thirst': 150, 'stats.needs.stress': -50, 'stats.needs.bladder': 130 }, text: 'Crisp and appley. The edges of the day soften a little.' },
+      { id: 'ale', name: 'Pint of local ale', price: 5, fx: { 'stats.needs.thirst': 180, 'stats.needs.stress': -70, 'stats.needs.fatigue': 30, 'stats.needs.bladder': 180 }, text: 'Brewed two villages over, the barman tells you proudly.' },
+      { id: 'chips', name: 'Basket of chips', price: 4, fx: { 'stats.needs.hunger': 250, 'stats.needs.thirst': -40, 'stats.needs.bowels': 40 }, text: 'Salty, hot, and served in a tiny frying basket.' },
+      { id: 'pie', name: 'Steak and ale pie', price: 9, hours: [12, 21], fx: { 'stats.needs.hunger': 520, 'stats.needs.bowels': 80, 'stats.needs.stress': -20 }, text: 'Rich gravy and pastry so flaky it gets everywhere.' } ] }
+  };
+  function menuOptions(id) {
+    var m = MENUS[id], out = [];
+    m.items.forEach(function (it) {
+      if (it.hours && (G.time.hour < it.hours[0] || G.time.hour >= it.hours[1])) return;
+      out.push({ label: it.name + ' ($' + it.price + ')', run: function () {
+        W().menuOpen = null;
+        if (num(G.state, 'money') < it.price) return { text: '<p>You count your change twice. Not enough for the ' + it.name.toLowerCase() + '.</p>', minutes: 1 };
+        G.change('money', -it.price); applyFx(it.fx);
+        return { text: '<p>You order the ' + it.name.toLowerCase() + '. ' + it.text + '</p>', minutes: 15 };
+      } });
+    });
+    out.push({ label: 'Never mind', run: function () { W().menuOpen = null; return { text: '<p>You put the menu back.</p>', minutes: 0 }; } });
+    return out;
+  }
+  function applyFx(fx) { Object.keys(fx || {}).forEach(function (k) { G.change(k, fx[k]); }); }
+
+  /* ---------------- More random events (phase two) ---------------- */
+  [
+    { id: 'lost_dog', where: ['park', 'residential'], chance: 0.06,
+      run: function () { G.change('stats.status.kindnessFame', 10); G.change('stats.needs.stress', -10);
+        return { text: 'A scruffy terrier with a trailing lead trots up to you. The tag says Elm Row. You walk it home, and a relieved owner thanks you three times.', minutes: 15 }; } },
+    { id: 'bus_splash', where: ['main_street'], chance: 0.1, when: function (s) { return ['rain', 'storm'].indexOf(s.world.weather) >= 0; },
+      run: function () { G.change('stats.clothing.lowerWetness', 30); G.change('stats.needs.stress', 25);
+        return { text: 'The number 7 bus hits the puddle by the kerb at full speed. Your legs take the worst of it.' }; } },
+    { id: 'fire_alarm', where: ['dorm_hall', 'dorm_room'], chance: 0.03, when: function () { return G.time.hour >= 22 || G.time.hour < 3; },
+      run: function () { G.change('stats.needs.fatigue', 60); G.change('stats.needs.stress', 40);
+        return { text: 'The fire alarm shrieks. Twenty minutes later you are back inside, cold, in your socks, and someone\'s burnt toast has been blamed.', minutes: 20 }; } },
+    { id: 'library_quiet', where: ['library'], chance: 0.08,
+      run: function () { G.change('stats.needs.stress', -25);
+        return { text: 'You find a carrel by the window on the top floor, sunlight falling across the desk. For a while nothing needs you.', minutes: 5 }; } },
+    { id: 'pigeon', where: ['town_square', 'quad'], chance: 0.05,
+      run: function () { G.change('stats.needs.stress', 15); G.change('stats.clothing.upperWetness', 5);
+        return { text: 'A pigeon on the memorial takes aim and does not miss. A passer-by kindly hands you a tissue.' }; } },
+    { id: 'wrong_order', where: ['cafe', 'cafeteria'], chance: 0.05,
+      run: function () { G.change('stats.needs.thirst', 100);
+        return { text: 'The barista calls a name close enough to yours, and by the time anyone notices, you have half-drunk a stranger\'s free hot chocolate.' }; } },
+    { id: 'quiz_night', where: ['bar'], chance: 0.35, when: function () { return G.time.weekdayIndex === 3 && G.time.hour >= 19 && G.time.hour < 22; },
+      run: function () { var win = Math.random() < 0.3; if (win) G.change('money', 10); G.change('stats.needs.stress', -20); G.change('stats.status.socialiteFame', 5);
+        return { text: 'A team of regulars waves you over for the pub quiz. You know exactly one answer, the capital of Peru, and are briefly a hero.' + (win ? ' Your team wins the $10 bar tab, which they split with you.' : ''), minutes: 45 }; } },
+    { id: 'bake_sale', where: ['church', 'town_square'], chance: 0.15, when: function () { return G.time.isWeekend && G.time.hour >= 10 && G.time.hour < 15; },
+      run: function () { G.change('money', -2); G.change('stats.needs.hunger', 120); G.change('stats.status.kindnessFame', 3);
+        return { text: 'A church bake sale is in full swing. You are talked into a $2 slice of Victoria sponge, which is honestly excellent.', minutes: 10 }; } },
+    { id: 'gym_spotter', where: ['gym'], chance: 0.08,
+      run: function () { G.change('stats.needs.stress', -10);
+        return { text: 'A friendly regular offers to spot you and shares a few tips on form. You leave feeling a little less lost in here.', minutes: 5 }; } },
+    { id: 'hen_escape', where: ['campus_farm'], chance: 0.06, when: function () { return G.time.hour >= 6 && G.time.hour < 19; },
+      run: function () { G.change('stats.needs.fatigue', 20);
+        return { text: 'A hen has found the gap in the fence again. You coax her back with a handful of grain and some very undignified clucking.', minutes: 8 }; } },
+    { id: 'narrowboat', where: ['docks'], chance: 0.12, when: function () { return G.time.hour >= 8 && G.time.hour < 20; },
+      run: function () { G.change('stats.needs.stress', -20);
+        return { text: 'An old couple on a painted narrowboat offers you a cup of tea from their hatch while they wait for the lock. They have been travelling the canals for eleven years.', minutes: 15 }; } },
+    { id: 'graffiti', where: ['alley', 'old_mill'], chance: 0.1,
+      run: function () { aware(2);
+        return { text: 'Fresh graffiti on the brickwork: a fox in a crown and the words <i>THE MILL REMEMBERS</i>. It wasn\'t there yesterday.' }; } },
+    { id: 'mushrooms', where: ['woods'], chance: 0.1, when: function () { return season() === 'Autumn'; },
+      run: function () { aware(2); G.change('stats.needs.stress', -10);
+        return { text: 'A ring of pale mushrooms circles an old stump. You step around it, just in case.' }; } },
+    { id: 'snowball', where: ['quad', 'park'], chance: 0.25, when: function (s) { return s.world.weather === 'snow'; },
+      run: function () { G.change('stats.clothing.upperWetness', 15); G.change('stats.needs.stress', -40); G.change('stats.needs.fatigue', 40);
+        return { text: 'A snowball catches you on the shoulder, and within a minute half the quad has joined in. You give as good as you get.', minutes: 15 }; } },
+    { id: 'heat_queue', where: ['main_street', 'park', 'docks'], chance: 0.2, when: function (s) { return s.world.weather === 'hot'; },
+      run: function () { G.change('stats.needs.thirst', -80); G.change('stats.needs.fatigue', 30);
+        return { text: 'The heat is relentless. The queue for the ice-cream van stretches past the bus shelter, and the tarmac feels soft underfoot.' }; } },
+    { id: 'wind_hat', where: ['*outdoor'], chance: 0.15, when: function (s) { return s.world.weather === 'windy'; },
+      run: function () { G.change('stats.needs.fatigue', 15);
+        return { text: 'A gust snatches someone\'s scarf and you chase it halfway down the street before pinning it under your shoe. The owner applauds.', minutes: 5 }; } },
+    { id: 'fog_lost', where: ['park', 'woods', 'old_mill'], chance: 0.2, when: function (s) { return s.world.weather === 'fog'; },
+      run: function () { G.change('stats.needs.stress', 30);
+        return { text: 'The fog closes in so thickly that you take a wrong turn and spend ten uneasy minutes finding the path again.', minutes: 10 }; } },
+    { id: 'thunder_power', where: ['library', 'lecture_hall', 'dorm_room', 'dorm_hall'], chance: 0.25, when: function (s) { return s.world.weather === 'storm'; },
+      run: function () { G.change('stats.needs.stress', 20);
+        return { text: 'A crack of thunder and the lights die. For a long minute, everyone sits in the dark listening to the rain, then the power stutters back.', minutes: 3 }; } },
+    { id: 'florist_bloom', where: ['florist'], chance: 0.1, when: function () { return G.time.hour >= 9 && G.time.hour < 18; },
+      run: function () { G.change('stats.needs.stress', -15);
+        return { text: 'The florist hands you a single stem that was too short to sell. It smells of honey and rain.' }; } },
+    { id: 'salon_gossip', where: ['hair_salon'], chance: 0.2,
+      run: function () { G.change('stats.needs.stress', -10);
+        return { text: 'Under the dryers, two regulars are trading the week\'s gossip at full volume: who is dating whom, and who parked badly outside the church.', minutes: 5 }; } },
+    { id: 'salon_walkin', where: ['hair_salon'], chance: 0.12, when: function () { return G.time.isWeekend; },
+      run: function () { G.change('stats.needs.stress', 10);
+        return { text: 'Weekend rush: every chair is full and the waiting bench is three deep. A stylist calls over that there might be a gap in forty minutes, maybe.', minutes: 2 }; } },
+    { id: 'stargazing', where: ['campus_farm', 'park', 'woods'], chance: 0.15, when: function (s) { return s.world.weather === 'clear' && isDark(G.time.hour) && (G.time.hour >= 21 || G.time.hour < 2); },
+      run: function () { G.change('stats.needs.stress', -40);
+        return { text: 'Away from the streetlamps, the sky is crowded with stars. You find the Plough, then lose it, then simply look.', minutes: 10 }; } }
+  ].forEach(function (e) { EVENTS.push(e); });
+
+
+  /* ---------------- Pet events (use G.pets from pets.js, Jimmy) ---------------- */
+  function addPetEvents() {
+    if (!G.pets || G._worldPetEvents) return;
+    G._worldPetEvents = true;
+    var P = G.pets;
+    function out(sp) { return P.following().filter(function (p) { return !sp || p.species === sp; }); }
+    function home(sp) { return P.list().filter(function (p) { return p.status === 'home' && !p.following && (!sp || p.species === sp); }); }
+    function S(p) { return (P.pronouns(p) || { S: 'They' }).S; }
+    function guard(e) { var r = e.run; e.run = function (st) { try { return r(st); } catch (x) { return null; } }; return e; }
+    [
+      { id: 'pet_puddle', where: ['*outdoor'], chance: 0.2, when: function (s) { return out('dog').length && ['rain', 'drizzle', 'storm'].indexOf(s.world.weather) >= 0; },
+        run: function () { var p = pick(out('dog')); G.change('stats.clothing.lowerWetness', 20); P.addHappiness(p.id, 60);
+          return { text: p.name + ' spots the deepest puddle on the street and jumps in with all four paws. You get most of it.' }; } },
+      { id: 'pet_squirrel', where: ['park', 'quad', 'campus_farm', 'woods'], chance: 0.15, when: function () { return out('dog').length || out('ferret').length; },
+        run: function () { var p = pick(out('dog').concat(out('ferret'))); G.change('stats.needs.fatigue', 20); P.addHappiness(p.id, 40);
+          return { text: 'A squirrel makes the mistake of crossing in front of ' + p.name + '. You get towed twenty yards before it shoots up an oak, chattering rudely.', minutes: 3 }; } },
+      { id: 'pet_playdate', where: ['park', 'residential', 'town_square'], chance: 0.1, when: function () { return out('dog').length; },
+        run: function () { var p = pick(out('dog')); P.addHappiness(p.id, 80); P.addBond(p.id, 10); G.change('stats.needs.stress', -20); G.change('stats.status.socialiteFame', 2);
+          return { text: 'Another dog walker stops, and ' + p.name + ' and a cheerful spaniel do three laps of each other in a tangle of leads. You end up chatting for ten minutes.', minutes: 10 }; } },
+      { id: 'pet_parrot_cafe', where: ['cafe', 'market', 'main_street', 'town_square'], chance: 0.12, when: function () { return out('parrot').length; },
+        run: function () { var p = pick(out('parrot')); P.addHappiness(p.id, 40); G.change('stats.needs.stress', -10);
+          return { text: p.name + ' leans off your shoulder and announces "' + pick(['Hello, gorgeous!', 'Tea, please!', 'Bless you!', 'Mind the gap!']) + '" to a startled stranger. A small crowd gathers to hear it again.' }; } },
+      { id: 'pet_window_birds', where: ['dorm_room'], chance: 0.12, when: function () { return home('cat').length && !isDark(G.time.hour); },
+        run: function () { var p = pick(home('cat')); P.addHappiness(p.id, 30); G.change('stats.needs.stress', -10);
+          return { text: p.name + ' is pressed against the window, tail lashing, chattering at the sparrows on the gutter. It is very serious business.' }; } },
+      { id: 'pet_hamster_escape', where: ['dorm_room'], chance: 0.06, when: function () { return home('hamster').length; },
+        run: function () { var p = pick(home('hamster')); G.change('stats.needs.stress', 30);
+          return { text: 'The cage door is open and ' + p.name + ' is gone. Fifteen frantic minutes later you find ' + (P.pronouns(p) || { o: 'them' }).o + ' asleep in your sock drawer.', minutes: 15 }; } },
+      { id: 'pet_rabbit_binky', where: ['dorm_room'], chance: 0.1, when: function () { return home('rabbit').length; },
+        run: function () { var p = pick(home('rabbit')); P.addBond(p.id, 8); G.change('stats.needs.stress', -25);
+          return { text: p.name + ' does a sudden twisting leap in the air, kicks out both back feet, and lands as if nothing happened. Rabbit joy, apparently.' }; } },
+      { id: 'pet_festival_contest', where: ['*'], chance: 0.4, when: function () { var f = festivalLive(); return f && f.where === W().location && out().length; },
+        run: function () { var p = pick(out()), win = Math.random() < 0.35; P.addHappiness(p.id, 60); if (win) G.change('money', 15); G.change('stats.status.socialiteFame', win ? 6 : 2);
+          return { text: 'There is a "best-dressed pet" contest by the bandstand, and you enter ' + p.name + ' in a hastily tied ribbon. ' + (win ? S(p) + ' wins first prize and a $15 voucher!' : S(p) + ' gets a very kind honourable mention.'), minutes: 20 }; } }
+    ].forEach(function (e) { EVENTS.push(guard(e)); });
+  }
+
+
+  /* ---------------- Phase three: forecast, buses, bikes, weekly market, crowds, moon, seasons ---------------- */
+  var BUS_STOPS = ['quad', 'main_street', 'town_square', 'shopping_centre', 'residential', 'docks', 'old_mill', 'woods'];
+  var OUTSKIRTS_STOPS = ['docks', 'old_mill', 'woods'];   // the 12 runs 7:00 to 19:00 only
+  var BUS_FARE = 2, BIKE_PRICE = 55;
+  function busRunning() { return G.time.hour >= 6 && G.time.hour < 23; }
+  function busTo(dest) {
+    return function () {
+      var w = W(), wait = 2 + Math.floor(Math.random() * (G.time.isWeekend ? 14 : 8)), ride = 4 + Math.floor(Math.random() * 4);
+      if (num(G.state, 'money') < BUS_FARE) return { text: '<p>You pat your pockets at the bus stop. Not even $' + BUS_FARE + ' for the fare.</p>', minutes: 1 };
+      G.change('money', -BUS_FARE);
+      var from = w.location;
+      w.location = dest; w.visited[dest] = true;
+      var a = onArrive(); if (G.emit) G.emit('arrive', { location: dest });
+      var crowd = G.time.hour >= 8 && G.time.hour < 9 || G.time.hour >= 17 && G.time.hour < 18 ? ' It is rush hour, and you stand the whole way, wedged against a rucksack.' : ' You get a window seat and watch Hollowbrook slide past.';
+      var line = (OUTSKIRTS_STOPS.indexOf(dest) >= 0 && dest !== 'docks') || (OUTSKIRTS_STOPS.indexOf(from) >= 0 && from !== 'docks') ? '12' : '7';
+      return { text: '<p>The number ' + line + ' bus arrives after ' + wait + ' minutes.' + crowd + ' (' + (wait + ride) + ' min, $' + BUS_FARE + ')</p>' + a.html, minutes: wait + ride + a.minutes };
+    };
+  }
+  function outskirtsRunning() { return G.time.hour >= 7 && G.time.hour < 19 && W().weather !== 'storm' && W().weather !== 'snow'; }
+  function busOptions() {
+    var here = W().location; if (BUS_STOPS.indexOf(here) < 0 || !busRunning()) return [];
+    if (W().weather === 'snow' && G.time.hour >= 20) return [];
+    var hereOut = OUTSKIRTS_STOPS.indexOf(here) >= 0;
+    if (hereOut && here !== 'docks' && !outskirtsRunning()) return [];
+    return BUS_STOPS.filter(function (id) {
+      if (id === here || (ADJ[here] && ADJ[here][id] && ADJ[here][id] <= 3)) return false;
+      var out = OUTSKIRTS_STOPS.indexOf(id) >= 0 && id !== 'docks';
+      return !(out || (hereOut && here !== 'docks')) || outskirtsRunning();
+    }).map(function (id) { var out = OUTSKIRTS_STOPS.indexOf(id) >= 0 && id !== 'docks';
+      return { label: (out ? 'Number 12 bus to ' : 'Bus to ') + LOCATIONS[id].name + ' ($' + BUS_FARE + ')', run: busTo(id), locationId: id }; });
+  }
+
+  var MARKET_DAY = { where: 'town_square', weekdayIndex: 5, from: 8, to: 13, name: 'Saturday farmers\' market',
+    desc: 'Striped awnings fill the square: local honey, muddy carrots, cheese wheels, and a man who sells only mushrooms.',
+    acts: [
+      { label: 'Buy a jar of local honey ($6)', cost: 6, text: 'Dark, floral heather honey from the hills. The beekeeper tells you to eat a spoonful for hay fever.', fx: { 'stats.needs.hunger': 60, 'stats.needs.stress': -20 }, minutes: 5 },
+      { label: 'Buy a bag of crisp apples ($3)', cost: 3, text: 'You eat one on the spot. It snaps like it means it.', fx: { 'stats.needs.hunger': 150, 'stats.needs.thirst': 40 }, minutes: 5 },
+      { label: 'Browse the stalls', text: 'You wander the stalls, try three cheeses, and pick up a leaflet for a pottery class. A pleasant hour.', fx: { 'stats.needs.stress': -40, 'stats.needs.hunger': 40 }, minutes: 40 } ] };
+  function marketLive() { return G.time.weekdayIndex === MARKET_DAY.weekdayIndex && G.time.hour >= MARKET_DAY.from && G.time.hour < MARKET_DAY.to; }
+
+  function crowdLine(id) {
+    var h = G.time.hour, wk = G.time.isWeekend, l = LOCATIONS[id];
+    if (l.open && !isOpen(id)) return '';
+    var busy = { cafeteria: h >= 12 && h < 14 || h >= 18 && h < 19, cafe: wk ? h >= 10 && h < 14 : h >= 8 && h < 9, bar: h >= 19 && (G.time.weekdayIndex >= 3),
+      library: !wk && h >= 13 && h < 18, quad: !wk && h >= 8 && h < 17, main_street: h >= 11 && h < 16, shopping_centre: wk && h >= 11 && h < 17,
+      gym: h >= 17 && h < 20, park: wk && h >= 10 && h < 17, lecture_hall: !wk && h >= 9 && h < 15 }[id];
+    var dead = h >= 1 && h < 6 || (wk && (id === 'lecture_hall' || id === 'quad')) || (!wk && id === 'park' && h >= 9 && h < 16);
+    return busy ? 'It is busy here right now.' : dead ? 'It is almost deserted.' : '';
+  }
+
+  var MOON = ['a new moon, barely there', 'a thin waxing crescent', 'a half moon', 'a fat waxing gibbous moon', 'a full moon, bright enough to cast shadows', 'a waning gibbous moon', 'a half moon, waning', 'a thin waning crescent'];
+  function moonLine() { return 'Overhead hangs ' + MOON[Math.floor(((W().day - 1) % 28) / 3.5)] + '.'; }
+  function moonFull() { return Math.floor(((W().day - 1) % 28) / 3.5) === 4; }
+
+  var SEASON_TOUCH = {
+    Autumn: ['Fallen leaves gather in drifts against the kerbs.', 'Woodsmoke hangs faintly in the air.', 'Conkers lie split open on the path.'],
+    Winter: ['Your breath clouds in the cold.', 'Frost silvers the edges of everything.', 'Someone has strung fairy lights in a bare tree.'],
+    Spring: ['Daffodils crowd the verges.', 'Blossom drifts down like confetti.', 'Birdsong is everywhere, loud and insistent.'],
+    Summer: ['Bees drone lazily in the flowerbeds.', 'The long evening light turns everything gold.', 'Someone nearby is mowing a lawn.']
+  };
+  function seasonTouch() { var a = SEASON_TOUCH[season()]; return a[(W().day + (G.time.hour >> 2)) % a.length]; }
+
+  function forecastLine() {
+    var f = W().forecast; if (!f) return 'The forecast is a mystery.';
+    return 'Tomorrow\'s forecast: ' + WEATHER[f].label.toLowerCase() + '. ' + ({ clear: 'A good day to be outside.', cloudy: 'Nothing exciting.', drizzle: 'Maybe take a jacket.', rain: 'Bring an umbrella.', storm: 'Stay in if you can.', fog: 'Visibility will be poor in the morning.', snow: 'Wrap up warm.', hot: 'Drink plenty of water.', windy: 'Hold on to your hat.' }[f] || '');
+  }
+  function rollForecast() {
+    var weights = SEASON_WEIGHTS[season()].slice(), k = KEYS[pickWeighted(weights)];
+    if (k === 'hot' && season() !== 'Summer' && season() !== 'Spring') k = 'clear';
+    W().forecast = k;
+  }
+
+  [
+    { id: 'church_bells', where: ['town_square', 'main_street', 'church', 'park', 'residential'], chance: 0.5, when: function () { return G.time.weekdayIndex === 6 && G.time.hour >= 9 && G.time.hour < 11; },
+      run: function () { G.change('stats.needs.stress', -15); return { text: 'The bells of St. Aldric\'s ring out across town, rolling and tumbling over the rooftops. Sunday has arrived.' }; } },
+    { id: 'full_moon', where: ['*outdoor'], chance: 0.3, when: function () { return moonFull() && isDark(G.time.hour); },
+      run: function () { aware(2); return { text: 'The full moon is so bright that the streetlamps seem pointless. A dog somewhere starts howling, and another answers.' }; } },
+    { id: 'bus_late', where: BUS_STOPS, chance: 0.08, when: function () { return busRunning(); },
+      run: function () { G.change('stats.needs.stress', 15); return { text: 'The timetable at the stop says the 7 is due. The display says the 7 is due. The 7 is not due. A pensioner beside you sighs the sigh of decades.' }; } },
+    { id: 'bike_puncture', where: ['*outdoor'], chance: 0.03, when: function (s) { return s.world.bike && !s.world.bikeFlat; },
+      run: function (s) { s.world.bikeFlat = true; G.change('stats.needs.stress', 25);
+        return { text: 'A sharp hiss from your back tyre. Flat. You\'ll be walking until you get it fixed at the shopping centre.' }; } }
+  ].forEach(function (e) { EVENTS.push(e); });
+
+
+  /* ---------------- Phase three: 20 more random events ---------------- */
+  [
+    { id: 'lecture_overrun', where: ['lecture_hall'], chance: 0.1, when: function () { return !G.time.isWeekend && G.time.hour >= 9 && G.time.hour < 17; },
+      run: function () { G.change('stats.needs.fatigue', 20); return { text: 'Through an open door, a professor is overrunning badly, and a hundred students are packing up loudly in protest.' }; } },
+    { id: 'vending_double', where: ['dorm_hall', 'lecture_hall', 'gym'], chance: 0.05,
+      run: function () { G.change('stats.needs.hunger', 80); return { text: 'The vending machine clunks and drops two chocolate bars instead of one. You look around guiltily and keep both.' }; } },
+    { id: 'lost_student', where: ['quad', 'main_street'], chance: 0.06, when: function () { return G.time.dayOfSeason <= 7; },
+      run: function () { G.change('stats.status.kindnessFame', 4); return { text: 'A nervous first-year with a crumpled map asks where Calloway is. You walk them halfway there and point.', minutes: 5 }; } },
+    { id: 'library_fine', where: ['library'], chance: 0.04,
+      run: function () { G.change('money', -2); return { text: 'The librarian reminds you, kindly but firmly, about an overdue book. You pay the $2 fine.' }; } },
+    { id: 'dorm_party', where: ['dorm_hall', 'dorm_room'], chance: 0.15, when: function () { return (G.time.weekdayIndex === 4 || G.time.weekdayIndex === 5) && G.time.hour >= 21; },
+      run: function () { G.change('stats.needs.stress', 15); G.change('stats.needs.fatigue', 20); return { text: 'Someone down the hall is having a party. The bass comes up through the floor, and a stranger knocks to ask if you have any ice.' }; } },
+    { id: 'laundry_lost', where: ['dorm_hall'], chance: 0.05,
+      run: function () { G.change('stats.needs.stress', 20); return { text: 'The laundry room has eaten another sock. There is a growing pile of lonely socks on the shelf, and none of them are yours.' }; } },
+    { id: 'farm_lamb', where: ['campus_farm'], chance: 0.25, when: function () { return season() === 'Spring'; },
+      run: function () { G.change('stats.needs.stress', -40); return { text: 'The farm has new arrivals: two wobbly lambs, bleating and bouncing straight up in the air for no reason at all.', minutes: 10 }; } },
+    { id: 'harvest_help', where: ['campus_farm'], chance: 0.15, when: function () { return season() === 'Autumn'; },
+      run: function () { G.change('stats.needs.fatigue', 50); G.change('money', 5); return { text: 'The farm manager waves you over to help carry pumpkins into the barn and presses $5 into your hand afterwards.', minutes: 30 }; } },
+    { id: 'charity_collector', where: ['main_street', 'shopping_centre'], chance: 0.08,
+      run: function () { G.change('money', -1); G.change('stats.status.kindnessFame', 3); return { text: 'A volunteer with a rattling tin smiles hopefully. You drop in a dollar and get a paper flower for your lapel.' }; } },
+    { id: 'roadworks', where: ['main_street', 'residential'], chance: 0.06,
+      run: function () { G.change('stats.needs.stress', 10); return { text: 'Roadworks have closed half the pavement, and a man with a stop-go sign is having a very long day.' }; } },
+    { id: 'garden_sale', where: ['residential'], chance: 0.12, when: function () { return G.time.isWeekend && G.time.hour >= 9 && G.time.hour < 15; },
+      run: function () { G.change('stats.needs.stress', -10); return { text: 'A garden sale on Elm Row: tables of old records, chipped teacups, and a box of paperbacks marked "free to a good home".', minutes: 10 }; } },
+    { id: 'pub_singer', where: ['bar'], chance: 0.15, when: function () { return G.time.hour >= 20; },
+      run: function () { G.change('stats.needs.stress', -25); return { text: 'An old man in the corner starts singing a folk song nobody under sixty knows. By the last verse the whole pub has joined the chorus.', minutes: 5 }; } },
+    { id: 'heron', where: ['park', 'docks'], chance: 0.1, when: function () { return !isDark(G.time.hour); },
+      run: function () { aware(2); G.change('stats.needs.stress', -10); return { text: 'A grey heron stands motionless in the shallows, then strikes so fast you nearly miss it.' }; } },
+    { id: 'mill_campfire', where: ['old_mill'], chance: 0.2, when: function () { return isDark(G.time.hour) && W().weather !== 'storm'; },
+      run: function () { G.change('stats.needs.stress', -20); return { text: 'A few drifters sit around a small fire in the mill\'s shell. Someone shuffles along to make room and passes you a tin mug of tea without a word.', minutes: 15 }; } },
+    { id: 'deer', where: ['woods'], chance: 0.12, when: function () { return G.time.hour >= 5 && G.time.hour < 9 || G.time.hour >= 17 && G.time.hour < 20; },
+      run: function () { aware(3); G.change('stats.needs.stress', -25); return { text: 'A roe deer freezes on the path ahead, ears swivelling. For a long moment you both stay perfectly still. Then it is gone.' }; } },
+    { id: 'shop_sale', where: ['shopping_centre', 'clothing_store', 'furniture_store'], chance: 0.1,
+      run: function () { return { text: 'Red SALE signs have gone up overnight, and a shop assistant is valiantly pretending the "70% off" is not on one single scarf.' }; } },
+    { id: 'phone_dies', where: ['*'], chance: 0.02,
+      run: function () { G.change('stats.needs.stress', 15); return { text: 'Your phone buzzes once and dies. You forgot to charge it again.' }; } },
+    { id: 'icy_path', where: ['*outdoor'], chance: 0.12, when: function () { return season() === 'Winter' && W().temp <= 1; },
+      run: function () { G.change('stats.needs.stress', 15); G.change('stats.clothing.lowerWetness', 10); return { text: 'Your foot skates out on a patch of black ice. You land on your backside in the slush, with as much dignity as possible.' }; } },
+    { id: 'hay_fever', where: ['*outdoor'], chance: 0.08, when: function () { return (season() === 'Spring' || season() === 'Summer') && W().weather === 'clear'; },
+      run: function () { G.change('stats.needs.stress', 10); return { text: 'The pollen count must be sky-high. You sneeze five times in a row, and a passer-by says "bless you" on every one.' }; } },
+    { id: 'kind_note', where: ['dorm_room'], chance: 0.04,
+      run: function () { G.change('stats.needs.stress', -30); return { text: 'Someone has slipped a note under your door: "Hope your week gets better. — a neighbour". No name.' }; } }
+  ].forEach(function (e) { EVENTS.push(e); });
+
+  /* ---------------- Helpers ---------------- */
+  function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
+  function num(s, path) { var o = s; path.split('.').forEach(function (k) { o = o == null ? undefined : o[k]; }); return typeof o === 'number' ? o : 0; }
+  function aware(n) { if (G.stats && G.stats.train) G.stats.train('awareness', n); else G.change('stats.core.awareness.value', n); }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function wetClothes(n) { if (!n) return; G.change('stats.clothing.upperWetness', n); G.change('stats.clothing.lowerWetness', Math.round(n * 0.7)); }
+
+  function W() { return G.state.world; }
+  function loc(id) { return LOCATIONS[id || W().location]; }
+  // Bad weather shuts some places regardless of their hours.
+  var WEATHER_CLOSED = {
+    storm: { campus_farm: 'The farm is shut for the storm; the animals are in their sheds.', florist: 'The florist has pulled everything inside and locked up until the storm passes.',
+             docks: 'The jetties are roped off with a sign: closed in high winds.', old_mill: 'Rain pours through the broken roof; there is nowhere dry to be.' },
+    snow:  { campus_farm: 'The farm gate is padlocked: snow day.', florist: 'A handwritten sign: "Closed, snowed in. Back tomorrow!"', gym: 'The fieldhouse heating has failed; it is closed for the day.' },
+    hot:   { library: null },
+    fog:   {}
+  };
+  function weatherClosure(id) { var wx = W && G.state && G.state.world && G.state.world.weather, m = wx && WEATHER_CLOSED[wx]; return (m && m[id]) || null; }
+  function isOpen(id, hour) {
+    if (hour == null && weatherClosure(id)) return false;
+    var o = LOCATIONS[id].open; if (!o) return true;
+    var h = hour == null ? G.time.hour : hour; return h >= o[0] && h < o[1];
+  }
+  function partOfDay(h) {
+    return h < 5 ? 'night' : h < 9 ? 'early morning' : h < 12 ? 'morning' : h < 14 ? 'midday' : h < 18 ? 'afternoon' : h < 21 ? 'evening' : 'night';
+  }
+  function isDark(h) { var s = season(); var dusk = s === 'Winter' ? 17 : s === 'Summer' ? 21 : 19; var dawn = s === 'Winter' ? 8 : s === 'Summer' ? 5 : 7; return h >= dusk || h < dawn; }
+  function season() { return SEASONS[Math.floor((W().day - 1) / DAYS_PER_SEASON) % 4]; }
+
+  function syncTime() {
+    var w = W(), total = w.minutes;
+    var day = Math.floor(total / 1440) + 1, rem = total % 1440;
+    w.day = day;
+    G.time.day = day;
+    G.time.hour = Math.floor(rem / 60);
+    G.time.minute = rem % 60;
+    G.time.weekday = WEEKDAYS[(day - 1) % 7];
+    G.time.weekdayIndex = (day - 1) % 7;          // 0 = Monday
+    G.time.isWeekend = G.time.weekdayIndex >= 5;
+    G.time.season = season();
+    G.time.dayOfSeason = ((day - 1) % DAYS_PER_SEASON) + 1;
+    G.time.total = total;
+    G.time.clock = pad(G.time.hour) + ':' + pad(G.time.minute);
+  }
+
+  function rollWeather(force) {
+    var w = W();
+    w.prevWeather = w.weather;
+    var weights = SEASON_WEIGHTS[season()].slice();
+    if (!force && w.weather) { var i = KEYS.indexOf(w.weather); if (i >= 0) weights[i] += 30; } // weather tends to persist
+    w.weather = KEYS[pickWeighted(weights)];
+    if (w.weather === 'hot' && season() !== 'Summer' && season() !== 'Spring') w.weather = 'clear';
+    w.temp = baseTemp();
+  }
+  function baseTemp() {
+    var s = { Autumn: 12, Winter: 2, Spring: 13, Summer: 23 }[season()];
+    var mod = { clear: 2, cloudy: 0, drizzle: -1, rain: -2, storm: -3, fog: -1, snow: -4, hot: 9, windy: -2 }[W().weather] || 0;
+    return s + mod + Math.round(Math.random() * 4 - 2);
+  }
+
+  function weatherLine() {
+    var wx = WEATHER[W().weather];
+    return wx.text + ' (' + wx.label + ', ' + W().temp + '°C)';
+  }
+
+  function locationBlurb() {
+    var l = loc(), h = G.time.hour, night = isDark(h) && NIGHT[l.id];
+    var out = '<p><b>' + l.name + '</b> · ' + l.district + '</p><p>' + (night ? NIGHT[l.id] : l.desc) + '</p>';
+    var f = festivalLive(); if (f && f.where === l.id) out += '<p><b>' + f.name + ':</b> ' + f.desc + '</p>';
+    else if (f) out += '<p><i>You can hear the ' + f.name + ' going on over at ' + LOCATIONS[f.where].name + '.</i></p>';
+    if (l.id === MARKET_DAY.where && marketLive()) out += '<p><b>' + MARKET_DAY.name + ':</b> ' + MARKET_DAY.desc + '</p>';
+    var cr = crowdLine(l.id); if (cr) out += '<p><i>' + cr + '</i></p>';
+    if (!l.indoor) out += '<p>' + weatherLine() + ' ' + (isDark(h) ? (['clear', 'windy', 'hot'].indexOf(W().weather) >= 0 ? moonLine() : 'It is dark out; the streetlamps buzz.') : seasonTouch()) + '</p>';
+    else out += '<p>Outside the window: ' + WEATHER[W().weather].label.toLowerCase() + '.</p>';
+    return out;
+  }
+
+  function tryEvent(trigger) {
+    var w = W(), here = w.location, l = loc();
+    var pool = EVENTS.filter(function (e) {
+      var ok = e.where.some(function (x) { return x === '*' || x === here || x === l.district || (x === '*outdoor' && !l.indoor); });
+      if (!ok) return false;
+      if (e.when && !e.when(G.state)) return false;
+      var last = w.eventsSeen[e.id]; if (last != null && w.minutes - last < 1440) return false; // once per day max
+      return true;
+    });
+    var mult = trigger === 'arrive' ? 1 : 0.35;
+    for (var i = 0; i < pool.length; i++) {
+      if (Math.random() < pool[i].chance * mult) { var r = pool[i].run(G.state); if (r && r.text) { w.eventsSeen[pool[i].id] = w.minutes; return r; } }
+    }
+    return null;
+  }
+
+  /* ---------------- Travel ---------------- */
+  function travelTo(dest) {
+    return function (state) {
+      var w = W(), from = w.location, mins = ADJ[from][dest];
+      var wx = WEATHER[w.weather], dl = LOCATIONS[dest];
+      var biking = w.bike && !w.bikeFlat && mins >= 4 && w.weather !== 'storm' && w.weather !== 'snow' && (!LOCATIONS[from].indoor || !dl.indoor);
+      if (w.weather === 'storm' || w.weather === 'snow') mins = Math.ceil(mins * 1.4);
+      if (biking) mins = Math.max(2, Math.ceil(mins * 0.5));
+      var fat = Math.round(mins * (1.5 + wx.fatigue * 0.5) * (biking ? 0.8 : 1));
+      if (fat) G.change('stats.needs.fatigue', fat);
+      // Exposure only if either end is outdoors
+      if (!LOCATIONS[from].indoor || !dl.indoor) {
+        var wet = Math.round(wx.wet * Math.min(1, mins / 6));
+        if (w.umbrella) wet = Math.round(wet * 0.3);
+        wetClothes(wet);
+        if (wx.stress) G.change('stats.needs.stress', wx.stress * Math.ceil(mins / 5));
+        if (wx.thirst) G.change('stats.needs.thirst', -wx.thirst * Math.ceil(mins / 5));
+      }
+      w.location = dest;
+      w.visited[dest] = true;
+      var text = '<p>' + (biking ? 'You cycle to ' : 'You head to ') + dl.name + '. (' + mins + ' min)</p>';
+      var wc = weatherClosure(dest);
+      if (wc) text += '<p><i>' + wc + '</i></p>';
+      else if (!isOpen(dest, G.time.hour)) text += '<p><i>It is closed right now. Opening hours are ' + dl.open[0] + ':00 to ' + (dl.open[1] % 24) + ':00.</i></p>';
+      var after = { text: text, minutes: mins, after: true };
+      return after;
+    };
+  }
+
+  function travelOptions() {
+    var here = W().location, out = [];
+    Object.keys(ADJ[here]).sort(function (a, b) { return ADJ[here][a] - ADJ[here][b]; }).forEach(function (id) {
+      var l = LOCATIONS[id], closed = weatherClosure(id) ? ' (closed: weather)' : !isOpen(id) ? ' (closed)' : '';
+      var m = ADJ[here][id], w = W();
+      if (w.bike && !w.bikeFlat && m >= 4 && w.weather !== 'storm' && w.weather !== 'snow' && (!LOCATIONS[here].indoor || !l.indoor)) m = Math.max(2, Math.ceil(m * 0.5));
+      out.push({ label: l.name + ' · ' + m + ' min' + closed, run: travelTo(id), locationId: id });
+    });
+    return out;
+  }
+
+  function seasonOffset(state) {
+    var c = state.creation && state.creation.world, want = c && c.startSeason ? String(c.startSeason).toLowerCase() : 'autumn';
+    var i = SEASONS.map(function (x) { return x.toLowerCase(); }).indexOf(want);
+    return (i < 0 ? 0 : i) * DAYS_PER_SEASON;   // 28 days = 4 weeks, so the start stays a Monday
+  }
+
+  /* ---------------- Module ---------------- */
+  var mod = {
+    id: 'world',
+
+    init: function (state) {
+      if (!state.world) {
+        state.world = {
+          minutes: 7 * 60 + 30 + seasonOffset(state) * 1440,     // 07:30 Monday; autumn term unless creation picked another season
+          day: 1,
+          location: 'dorm_room',
+          weather: 'clear', prevWeather: null, temp: 14,
+          umbrella: false,
+          visited: { dorm_room: true },
+          eventsSeen: {},
+          lastWeatherHour: 7
+        };
+      }
+      syncTime();
+      if (!state.world.temp) rollWeather(true);
+      if (!state.world.forecast) rollForecast();
+    },
+
+    // Engine calls this with the minutes an option consumed.
+    onTick: function (minutes, state) {
+      var w = state.world, beforeDay = w.day;
+      w.minutes += Math.max(0, minutes | 0);
+      syncTime();
+      // Weather shifts every ~3 hours, rolled fresh at 6:00 each day.
+      var hoursSince = Math.floor(w.minutes / 60) - Math.floor((w.minutes - minutes) / 60);
+      if (w.day !== beforeDay) {
+        var fc = w.forecast; rollWeather(true);
+        if (fc && Math.random() < 0.8) { w.weather = fc; w.temp = baseTemp(); }
+        rollForecast();
+        if (G.emit) G.emit('newDay', { day: w.day, weekday: G.time.weekday, season: G.time.season });
+        var ft = festivalToday(), fs = festivalSoon();
+        if (ft && G.notify) { G.notify('Today: ' + ft.name + ' at ' + LOCATIONS[ft.where].name + ', ' + ft.from + ':00 to ' + ft.to + ':00', 'info'); if (G.emit) G.emit('festival', ft); }
+        else if (fs && G.notify) G.notify('Posters around town: the ' + fs.name + ' is coming soon.', 'info');
+      } else if (hoursSince > 0 && Math.random() < Math.min(0.9, hoursSince / 3)) {
+        var old = w.weather; rollWeather(false);
+        if (old !== w.weather && !loc().indoor && G.notify) G.notify('Weather: ' + WEATHER[old].label + ' → ' + WEATHER[w.weather].label, 'info');
+      }
+      // Ongoing exposure while standing outdoors
+      if (!loc().indoor && minutes > 0) {
+        var wx = WEATHER[w.weather], chunks = Math.floor(minutes / 15);
+        if (chunks && wx.wet && !w.umbrella) wetClothes(Math.round(wx.wet * 0.5 * chunks));
+        if (chunks && wx.thirst) G.change('stats.needs.thirst', -wx.thirst * chunks);
+      }
+    },
+
+    getOptions: function (state) {
+      var w = state.world, l = loc(), opts = { dialogue: [], actions: [], travel: travelOptions().concat(busOptions()), other: [] };
+      if (w.menuOpen && (w.menuOpen !== w.location || !isOpen(w.location))) w.menuOpen = null;
+      if (w.menuOpen) { opts.actions = menuOptions(w.menuOpen); return opts; }
+      if (MENUS[w.location] && isOpen(w.location)) {
+        opts.actions.push({ label: 'Look at the menu', run: function () {
+          w.menuOpen = w.location;
+          var m = MENUS[w.location], lines = m.items.filter(function (it) { return !it.hours || (G.time.hour >= it.hours[0] && G.time.hour < it.hours[1]); })
+            .map(function (it) { return it.name + ', $' + it.price; });
+          return { text: '<p><b>' + m.title + '</b></p><p>' + lines.join('<br>') + '</p>', minutes: 1 };
+        } });
+      }
+      var fest = festivalLive();
+      if (fest && fest.where === w.location) {
+        fest.acts.forEach(function (a) {
+          opts.actions.push({ label: a.label, run: function () {
+            if (a.cost) { if (num(G.state, 'money') < a.cost) return { text: '<p>You don\'t have enough cash for that.</p>', minutes: 1 }; G.change('money', -a.cost); }
+            applyFx(a.fx); return { text: '<p>' + a.text + '</p>', minutes: a.minutes || 10 };
+          } });
+        });
+      }
+
+      opts.actions.push({ label: 'Look around', run: function () {
+        var ev = tryEvent('idle');
+        return { text: locationBlurb() + (ev ? '<p>' + ev.text + '</p>' : ''), minutes: 2 + ((ev && ev.minutes) || 0) };
+      } });
+
+      opts.actions.push({ label: 'Wait 30 minutes', run: function () {
+        var ev = tryEvent('idle');
+        return { text: '<p>You let half an hour drift by.</p>' + (ev ? '<p>' + ev.text + '</p>' : ''), minutes: 30 };
+      } });
+      opts.actions.push({ label: 'Wait 1 hour', run: function () {
+        var ev = tryEvent('idle');
+        return { text: '<p>An hour passes.</p>' + (ev ? '<p>' + ev.text + '</p>' : ''), minutes: 60 };
+      } });
+
+      if (!l.indoor && ['rain', 'storm', 'drizzle'].indexOf(w.weather) >= 0) {
+        opts.actions.push({ label: 'Shelter under an awning until it eases', run: function () {
+          var m = 20 + Math.floor(Math.random() * 40); G.change('stats.needs.stress', 10);
+          return { text: '<p>You tuck yourself under the nearest overhang and watch the rain bounce off the pavement.</p>', minutes: m };
+        } });
+      }
+
+      if (w.location === 'market' && isOpen('market') && !w.umbrella) {
+        opts.actions.push({ label: 'Buy an umbrella ($12)', run: function () {
+          if (num(G.state, 'money') < 12) return { text: '<p>You turn the umbrella over, check the price tag, and check your wallet. Not today.</p>', minutes: 1 };
+          G.change('money', -12); w.umbrella = true;
+          return { text: '<p>You buy a sturdy black umbrella. It clicks open satisfyingly.</p>', minutes: 3 };
+        } });
+      }
+
+      if (w.location === MARKET_DAY.where && marketLive()) MARKET_DAY.acts.forEach(function (a) {
+        opts.actions.push({ label: a.label, run: function () {
+          if (a.cost) { if (num(G.state, 'money') < a.cost) return { text: '<p>You don\'t have enough cash for that.</p>', minutes: 1 }; G.change('money', -a.cost); }
+          applyFx(a.fx); return { text: '<p>' + a.text + '</p>', minutes: a.minutes || 10 };
+        } });
+      });
+      if (w.location === 'shopping_centre' && isOpen('shopping_centre')) {
+        if (!w.bike) opts.actions.push({ label: 'Buy a second-hand bicycle from the cycle kiosk ($' + BIKE_PRICE + ')', run: function () {
+          if (num(G.state, 'money') < BIKE_PRICE) return { text: '<p>The kiosk owner shows you a sturdy green bike with a basket. You check your wallet and sadly hand it back.</p>', minutes: 3 };
+          G.change('money', -BIKE_PRICE); w.bike = true; w.bikeFlat = false;
+          return { text: '<p>You wheel out a sturdy green bike with a wicker basket and a bell that dings a little sadly. Longer trips around town will take half the time now, unless the weather is foul.</p>', minutes: 10 };
+        } });
+        else if (w.bikeFlat) opts.actions.push({ label: 'Get your puncture fixed ($6)', run: function () {
+          if (num(G.state, 'money') < 6) return { text: '<p>Not enough cash for the repair.</p>', minutes: 1 };
+          G.change('money', -6); w.bikeFlat = false; return { text: '<p>The kiosk owner patches the tube in ten minutes flat, whistling.</p>', minutes: 15 };
+        } });
+      }
+      opts.other.push({ label: 'Check the forecast', run: function () { return { text: '<p>You check the weather app. ' + forecastLine() + '</p>', minutes: 1 }; } });
+      opts.other.push({ label: 'Check the time and weather', run: function () {
+        return { text: '<p>It is ' + G.time.clock + ' on ' + G.time.weekday + ', day ' + G.time.dayOfSeason + ' of ' + G.time.season +
+          ' (' + partOfDay(G.time.hour) + ').</p><p>' + weatherLine() + '</p>', minutes: 0 };
+      } });
+      opts.other.push({ label: 'Open the town map', run: function () { return { text: mapHtml(), minutes: 0 }; } });
+      return opts;
+    }
+  };
+
+  function mapHtml() {
+    var here = W().location, byDistrict = {};
+    Object.keys(LOCATIONS).forEach(function (id) { var d = LOCATIONS[id].district; (byDistrict[d] = byDistrict[d] || []).push(id); });
+    var html = '<p><b>Map of Hollowbrook</b></p>';
+    Object.keys(byDistrict).forEach(function (d) {
+      html += '<p><u>' + d + '</u><br>' + byDistrict[d].map(function (id) {
+        var l = LOCATIONS[id], name = W().visited[id] ? l.name : l.name + ' <i>(unvisited)</i>';
+        var hrs = l.open ? ' · ' + l.open[0] + ':00 to ' + (l.open[1] % 24) + ':00' : '';
+        return (id === here ? '<b>➤ ' + name + '</b>' : name) + hrs;
+      }).join('<br>') + '</p>';
+    });
+    return html;
+  }
+
+  // Arrival hook: describe the new place and roll an arrival event.
+  // Engine should emit 'arrive' after a travel option; we also handle it via the `after` flag if engine passes results through.
+  function onArrive() {
+    var ev = tryEvent('arrive');
+    var html = locationBlurb() + (ev ? '<p>' + ev.text + '</p>' : '');
+    return { html: html, minutes: (ev && ev.minutes) || 0 };
+  }
+  // Wrap travel run so the arrival blurb is part of the same story text regardless of engine behaviour.
+  var _travelTo = travelTo;
+  travelTo = function (dest) {
+    var base = _travelTo(dest);
+    return function (state) {
+      var r = base(state), a = onArrive();
+      if (G.emit) G.emit('arrive', { location: dest });
+      return { text: r.text + a.html, minutes: r.minutes + a.minutes };
+    };
+  };
+
+  /* ---------------- Public helpers for other modules ---------------- */
+  G.world = {
+    LOCATIONS: LOCATIONS,
+    WEATHER: WEATHER,
+    WEEKDAYS: WEEKDAYS,
+    here: function () { return loc(); },            // location object: {id, name, district, indoor, tags, ...}
+    hereId: function () { return W().location; },
+    is: function (id) { return W().location === resolve(id); },
+    resolve: resolve,
+    ALIASES: ALIASES,
+    location: loc,
+    isOpen: isOpen,
+    isDark: function () { return isDark(G.time.hour); },
+    isIndoors: function () { return !!loc().indoor; },
+    hasRestroom: function () { return !!loc().restroom; },
+    weather: function () { return W().weather; },
+    temp: function () { return W().temp; },
+    season: season,
+    partOfDay: function () { return partOfDay(G.time.hour); },
+    distance: function (a, b) { a = resolve(a); b = resolve(b); return (ADJ[a] && ADJ[a][b]) || null; },
+    neighbours: function (id) { return Object.keys(ADJ[id || W().location]); },
+    // Move the player without walking (e.g. passing out, being escorted). Returns nothing.
+    teleport: function (id) { id = resolve(id); if (LOCATIONS[id]) { W().location = id; W().visited[id] = true; if (G.emit) G.emit('arrive', { location: id }); } },
+    // Let other modules add events: same shape as EVENTS entries.
+    addEvent: function (e) { EVENTS.push(e); },
+    // Let other modules add locations: addLocation('greenhouse', {...}, [['campus_farm', 3]])
+    addLocation: function (id, data, links) {
+      if (!LOCATIONS[id]) { LOCATIONS[id] = data; tagLoc(id); }   // already on the map: keep ours, just add links
+      (links || []).forEach(function (l) { (ADJ[id] = ADJ[id] || {})[l[0]] = l[1]; (ADJ[l[0]] = ADJ[l[0]] || {})[id] = l[1]; });
+    },
+    describeHere: locationBlurb,
+    festivalToday: festivalToday,     // {id, name, where, from, to, ...} or null
+    festivalLive: festivalLive,       // same, but only during its hours
+    FESTIVALS: FESTIVALS,
+    MENUS: MENUS,
+    BUS_STOPS: BUS_STOPS,
+    forecast: function () { return W().forecast || null; },
+    hasBike: function () { return !!W().bike && !W().bikeFlat; },
+    marketLive: marketLive,
+    moonFull: moonFull,
+    weatherClosure: function (id) { return weatherClosure(resolve(id || W().location)); },
+    crowd: function (id) { return crowdLine(resolve(id || W().location)); },
+    EVENTS: EVENTS                    // read-only use, for tests and debugging
+  };
+
+  // Creation runs after modules init, so re-apply the chosen start season when the game actually starts.
+  if (G.on) G.on('start', function (state) {
+    var w = state.world; if (!w || w.started) return;
+    w.started = true;
+    w.minutes = 7 * 60 + 30 + seasonOffset(state) * 1440;
+    syncTime(); rollWeather(true); rollForecast();
+  });
+
+  if (G.on) G.on('start', addPetEvents);
+  setTimeout(addPetEvents, 0); setTimeout(addPetEvents, 200);   // pets.js loads after us
+
+  if (!G.time) G.time = {};
+  if (G.register) G.register(mod);
+  else console.warn('world.js: G.register not found; is engine.js loaded first?');
+})();

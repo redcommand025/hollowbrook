@@ -132,7 +132,8 @@
     pullLive();
     var prev = wornItem(d.slot), note = '';
     if (prev) {
-      if (prev.wet >= 10 || prev.days >= 1 || (d.slot === 'bottom' && G_().state.flags && G_().state.flags.dirty)) prev.clean = false;
+      var sf = G_().state.stats && G_().state.stats.flags;
+      if (prev.wet >= 10 || prev.days >= 1 || prev.soiled || (d.slot === 'bottom' && sf && sf.dirty)) prev.clean = false;
       if (prev.integ < 5) { w.items.splice(w.items.indexOf(prev), 1); note = ' The old ' + def(prev).name + ' is past saving, so it goes in the bin.'; }
     }
     w.worn[d.slot] = uid; it.days = 0;
@@ -151,6 +152,7 @@
     SLOTS.forEach(function (s) { var it = wornItem(s); if (it) { total += ACC.indexOf(s) >= 0 ? def(it).style / 2 : def(it).style; n++; } });
     var c = C(), score = Math.round(total + (W().worn.outer != null ? 1 : 0) + Math.min(4, activeSets().length * 2) + (window.Salon && Salon.makeupStyle ? Salon.makeupStyle() : 0));
     if (window.G && G.salon && G.salon.scruffy && G.salon.scruffy()) score -= 1;
+    if (soiled()) score -= 4;
     if (c.upperWetness + c.lowerWetness >= 40) score -= 3;
     if (c.upperIntegrity < 40 || c.lowerIntegrity < 40) score -= 3;
     return clamp(score, 0, 10);
@@ -160,6 +162,18 @@
     SLOTS.forEach(function (s) { var it = wornItem(s); if (it) { var v = def(it).vibe; if (v === 'f') f++; if (v === 'm') m++; } });
     return f > m ? 'feminine' : m > f ? 'masculine' : 'neutral';
   }
+  /* Soiled: set on the worn bottoms by a bowel accident. Stays until the item goes through the laundry. */
+  function soiled() { var b = W() && wornItem('bottom'); return !!(b && b.soiled); }
+  function soiledHours() { var b = W() && wornItem('bottom'); if (!b || !b.soiled || b.soiledAt == null) return 0; return Math.max(0, (absMin() - b.soiledAt) / 60); }
+  function absMin() { var t = G_().time || {}; return ((t.day || 1) - 1) * 1440 + (t.hour || 0) * 60 + (t.minute || 0); }
+  function markSoiled() {
+    var b = W() && wornItem('bottom'); if (!b) return false;
+    if (!b.soiled) b.soiledAt = absMin();
+    b.soiled = true; b.clean = false;
+    var sf = G_().state.stats && G_().state.stats.flags; if (sf) sf.dirty = true;
+    return true;
+  }
+
   function describeOutfit() {
     var parts = [];
     ['top', 'bottom', 'outer', 'shoes', 'head', 'face', 'neck', 'ears'].forEach(function (s) { var it = wornItem(s); if (it) parts.push(def(it).name); });
@@ -170,6 +184,7 @@
     var c = C();
     if (c.upperWetness + c.lowerWetness >= 40) txt += ' Your clothes are noticeably damp.';
     if (c.upperIntegrity < 40 || c.lowerIntegrity < 40) txt += ' A few seams are visibly giving up.';
+    if (soiled()) txt += ' Your ' + def(wornItem('bottom')).name + ' are soiled and need changing and a proper wash.';
     activeSets().forEach(function (st2) { txt += ' Full ' + st2.name + ' look.'; });
     return txt;
   }
@@ -295,7 +310,7 @@
     if (home && dirty.length) out.actions.push(opt('Do laundry: ' + dirty.length + ' item' + (dirty.length > 1 ? 's' : '') + ' ($3)', function () {
       if (money() < 3) return { text: '<p>The machines want quarters you don\'t have.</p>', minutes: 1 };
       G_().change('money', -3);
-      dirty.forEach(function (it) { it.clean = true; it.wet = 0; it.days = 0; });
+      dirty.forEach(function (it) { it.clean = true; it.wet = 0; it.days = 0; it.soiled = false; it.soiledAt = null; });
       if (G_().stats && G_().stats.trainSkill) G_().stats.trainSkill('housekeeping', 6);
       syncSpare();
       return { text: '<p>You haul the laundry bag down to the basement machines and wait out the spin cycle with a textbook. Everything comes out warm and smelling of cheap detergent.</p>', minutes: 90 };
@@ -321,6 +336,13 @@
     onTick: function (minutes, state) {
       var w = ensure(state); if (!w.starter) return;
       pullLive();
+      // soiled bottoms: stress builds while worn; a restroom clean-up or shower (Jimmy clears stats.flags.dirty) rinses them out
+      var sb = wornItem('bottom');
+      if (sb && sb.soiled) {
+        var sf = state.stats && state.stats.flags;
+        if (sf && !sf.dirty) { sb.soiled = false; sb.soiledAt = null; if (G_().notify) G_().notify('You rinse out your ' + def(sb).name + '. They still need a proper wash.', 'info', 'soiled'); }
+        else if (G_().change) G_().change('stats.needs.stress', minutes / 60 * 6, { silent: true });
+      }
       w.items.forEach(function (it) { if (SLOTS.every(function (s) { return w.worn[s] !== it.uid; })) it.wet = Math.max(0, it.wet - minutes * 0.2); });
       syncSpare();
     },
@@ -358,6 +380,11 @@
     g.register(mod);
     if (g.on) {
       g.on('start', function (state) { ensure(state); giveStarter(state); });
+      g.on('accident', function (e) {
+        var k = e && (e.kind || e.type); if (k !== 'bowels' && k !== 'poo' && k !== 'soiled') return;
+        if (markSoiled() && g.notify) g.notify('Your ' + def(wornItem('bottom')).name + ' are soiled. Change and wash them before people notice the smell.', 'down', 'soiled');
+        if (g.emit) g.emit('soiled', { id: wornItem('bottom') && wornItem('bottom').id });
+      });
       // pet-themed clothes: pets out with you perk up a little each hour you wear them
       g.on('tick', function (m) {
         try {
@@ -428,7 +455,7 @@
           var list = w.items.filter(function (it) { return def(it).slot === slot; }).map(function (it) {
             var d = def(it), on = w.worn[slot] === it.uid;
             var cond = it.integ >= 80 ? 'like new' : it.integ >= 50 ? 'worn' : it.integ >= 20 ? 'fraying' : 'falling apart';
-            return '<li>' + (on ? '<b>' + esc(d.name) + '</b> (wearing)' : esc(d.name)) + ', ' + cond + (it.clean ? '' : ', needs washing') + (it.wet >= 20 ? ', damp' : '') + '</li>';
+            return '<li>' + (on ? '<b>' + esc(d.name) + '</b> (wearing)' : esc(d.name)) + ', ' + cond + (it.soiled ? ', soiled' : it.clean ? '' : ', needs washing') + (it.wet >= 20 ? ', damp' : '') + '</li>';
           }).join('');
           return '<div class="char-row"><b>' + SLOT_LABEL[slot].charAt(0).toUpperCase() + SLOT_LABEL[slot].slice(1) + '</b><ul style="margin:4px 0 0 18px;padding:0">' + (list || '<li><i>none</i></li>') + '</ul></div>';
         }).join('');
@@ -451,6 +478,7 @@
     owns: function (id) { return !!(W() && W().items.some(function (it) { return it.id === id; })); },
     SETS: SETS, activeSets: function () { return activeSets().map(function (s) { return s.id; }); },
     accessory: function (slot) { var it = W() && wornItem(slot); return it ? it.id : null; },
+    soiled: soiled, isSoiled: soiled, soiledHours: soiledHours, markSoiled: markSoiled,
     give: function (id, andWear) { if (!CATALOG[id]) return; var it = newItem(id); if (andWear) wear(it.uid); syncSpare(); }
   };
   if (window.G) window.G.wardrobe = window.Wardrobe;   // alias so either name works

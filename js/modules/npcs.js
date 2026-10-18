@@ -4779,10 +4779,233 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     } catch (e) {}
     return live ? "<p>" + nm(id) + " is minding a market stall of " + MARKET_STALLS[id] + ".</p>" : '';
   }
+  // ---------- Smell, accidents and being seen (named NPC side) ----------
+  // Reads the player's state defensively so it works with whatever stats.js / wardrobe.js expose:
+  //   strong: soiled lower clothing (stats.clothing.lowerSoiled, a worn item with .soiled, or an unwashed bowel accident)
+  //   mild:   wet/dirty clothes (stats.flags.dirty) or low hygiene (stats.needs.hygiene < 250, if tracked)
+  var SMELL_TXT = {
+    tease: [function (id) {
+      return nm(id) + " wrinkles " + pronouns(id).pos + " nose, then grins. \"Is that you? Wow. Okay.\" It is going to come up again.";
+    }, function (id) {
+      return nm(id) + " makes a show of fanning the air when you get close.";
+    }],
+    avoid: [function (id) {
+      return nm(id) + " takes a small step back mid-sentence and keeps the conversation short.";
+    }, function (id) {
+      return nm(id) + " suddenly remembers somewhere else to be.";
+    }],
+    tip: [function (id) {
+      return nm(id) + " leans in, voice low. \"Hey, not to be weird, but you might want to change before anyone else notices.\"";
+    }, function (id) {
+      return nm(id) + " quietly presses a pack of wipes into your hand. \"No questions. Go sort it out.\"";
+    }],
+    kind: [function (id) {
+      return nm(id) + " notices, and you can tell. " + pronouns(id).Sub + " just touch" + (pronouns(id).be === 'are' ? '' : 'es') + " your arm. \"Go home and change. I'll still be here.\"";
+    }],
+    fey: [function (id) {
+      return nm(id) + " tilts " + pronouns(id).pos + " head, nostrils flaring like an animal's. \"You smell of a bad day.\" Then, more gently: \"Water will fix it.\"";
+    }]
+  };
+  function _smellLevel() {
+    var G_ = window.G,
+      st = G_ && G_.state && G_.state.stats;
+    if (!st) return 0;
+    var c = st.clothing || {},
+      f = st.flags || {},
+      nd = st.needs || {},
+      N = ns(G_.state);
+    var soiled = !!c.lowerSoiled || !!c.soiled;
+    try {
+      var Wd = G_.wardrobe || window.Wardrobe;
+      if (!soiled && Wd && typeof Wd.soiled === 'function') soiled = !!Wd.soiled();
+    } catch (e) {}
+    try {
+      var W = window.Wardrobe;
+      if (!soiled && W && W.worn) ['bottom', 'under', 'underwear'].forEach(function (sl) {
+        var it = W.worn(sl);
+        if (it && (it.soiled || it.tags && it.tags.indexOf && it.tags.indexOf('soiled') >= 0)) soiled = true;
+      });
+    } catch (e) {}
+    if (!soiled && N.smell && N.smell.kind === 'bowels' && f.dirty) soiled = true;
+    if (!f.dirty && !c.lowerSoiled && !c.soiled && N.smell) N.smell = null; // cleaned up
+    if (soiled) return 2;
+    if (f.dirty || typeof nd.hygiene === 'number' && nd.hygiene < 250) return 1;
+    return 0;
+  }
+  // Smell gets stronger the longer soiled clothes stay on (Lucy's soiledHours), up to double after ~4h.
+  function smellScale() {
+    try {
+      var Wd = window.G.wardrobe || window.Wardrobe;
+      var h = Wd && typeof Wd.soiledHours === 'function' ? Wd.soiledHours() : 0;
+      return 1 + Math.min(1, (h || 0) / 4);
+    } catch (e) {
+      return 1;
+    }
+  }
+  // Ron's G.world.crowd(): 0-1 busyness of the current place. Ignored if it is not a number yet.
+  function crowdScale(dflt) {
+    try {
+      var v = window.G.world.crowd();
+      return typeof v === 'number' ? Math.max(0.1, v) : dflt;
+    } catch (e) {
+      return dflt;
+    }
+  }
+  function onCampusHere() {
+    try {
+      return !!(window.G.world.onCampus && window.G.world.onCampus());
+    } catch (e) {
+      return false;
+    }
+  }
+  function spotted(by, kind, extra) {
+    var student = by && BY_ID[by] ? BY_ID[by].group === 'Students' : onCampusHere();
+    try {
+      window.G.emit && window.G.emit('spotted', Object.assign({
+        by: by || 'stranger',
+        kind: kind,
+        student: student,
+        src: 'npcs',
+        where: loc(window.G.state)
+      }, extra || {}));
+    } catch (e) {}
+  }
+  // One NPC notices the smell: personality decides the reaction. Returns html.
+  function smellReact(state, id, lvl) {
+    var r = rel(state, id),
+      sk = _stage(state, id).key,
+      t = time(),
+      N = ns(state);
+    N.smelled = N.smelled || {};
+    N.smelled[id] = t.day;
+    var kind;
+    if (BY_ID[id].group === 'Non-Human') kind = 'fey';else if (r.romance >= 3 || sk === 'close') kind = 'kind';else if (sk === 'friend' || sk === 'friendly' || ['rosa', 'hazel', 'raman', 'ollie', 'jules'].includes(id)) kind = 'tip';else if (sk === 'hostile' || sk === 'cold' || ['theo', 'dee', 'wren'].includes(id)) kind = 'tease';else kind = 'avoid';
+    var rep = {
+      tease: -3,
+      avoid: -2,
+      tip: 0,
+      kind: 0,
+      fey: 0
+    }[kind] * lvl;
+    if (rep) _changeRep(state, id, rep, true);
+    if (kind === 'kind' || kind === 'tip') {
+      N.smellFix = N.smellFix || {};
+      N.smellFix[id] = {
+        day: t.day,
+        hour: t.hour
+      };
+    }
+    if (kind === 'tease' && id === 'dee') {
+      N.flags.dee_gossip_smell = t.day;
+    }
+    spotted(id, 'smell', {
+      reaction: kind,
+      strength: lvl
+    });
+    return "<p class=\"scene smell\">" + pick(SMELL_TXT[kind])(id) + "</p>";
+  }
+  // Close friends/partners lose a little affection if you leave it unfixed for 2+ hours after they told you.
+  function smellAftercare(state) {
+    var N = ns(state),
+      fx = N.smellFix;
+    if (!fx) return;
+    var t = time(),
+      lvl = _smellLevel();
+    Object.keys(fx).forEach(function (id) {
+      var hrs = (t.day - fx[id].day) * 24 + (t.hour - fx[id].hour);
+      if (lvl === 0) {
+        delete fx[id];
+        return;
+      }
+      if (hrs >= 2) {
+        delete fx[id];
+        changeAff(state, id, -3);
+        if (rel(state, id).romance >= 3) window.G.notify(BY_ID[id].name + " wishes you had taken the hint.", 'down');
+      }
+    });
+  }
+  // Passive check each tick for people you are standing near.
+  function smellTick(state, minutes) {
+    var lvl = _smellLevel();
+    if (!lvl) return;
+    var N = ns(state),
+      t = time(),
+      here = present(state);
+    N.smelled = N.smelled || {};
+    var out = '';
+    here.forEach(function (id) {
+      if (N.smelled[id] === t.day) return;
+      var p = (lvl === 2 ? 0.35 : 0.12) * smellScale() * Math.min(1, (minutes || 10) / 30);
+      if (Math.random() < p) out += smellReact(state, id, lvl);
+    });
+    // Generic people: busy public places in daytime
+    if (!out && here.length === 0) {
+      var l = window.G.world && window.G.world.location && window.G.world.location(loc(state));
+      var busy = t.hour >= 8 && t.hour < 21 && l && !/woods|old_mill|alley|dorm_room/.test(loc(state));
+      if (busy && (N.strangerSmell || -1) !== t.day * 24 + t.hour && Math.random() < (lvl === 2 ? 0.15 : 0.05) * smellScale() * crowdScale(0.6) * Math.min(1, (minutes || 10) / 30)) {
+        N.strangerSmell = t.day * 24 + t.hour;
+        out += "<p class=\"scene smell\">" + pick(onCampusHere() ? ['Two students at the next table go quiet, then start whispering.', 'Someone in the hallway coughs pointedly as you pass.'] : ['A passer-by gives you a wide berth.', 'A kid asks their parent, loudly, what that smell is.']) + "</p>";
+        spotted(null, 'smell', {
+          strength: lvl
+        });
+      }
+    }
+    if (out && window.G.appendStory) window.G.appendStory(out);
+  }
+  // Remember who saw an accident or someone going outdoors, for next time you talk.
+  function hookSightings() {
+    var G_ = window.G;
+    if (!G_ || !G_.on || G_.__npcSightHook) return;
+    G_.__npcSightHook = true;
+    G_.on('accident', function (d) {
+      var _Object$assign;
+      var s = G_.state;
+      if (!s || !s.npcs) return;
+      ns(s).smell = {
+        kind: d && d.kind,
+        day: time().day
+      };
+      if (d && d.witness && BY_ID[d.witness]) ns(s).sawYou = Object.assign(ns(s).sawYou || {}, (_Object$assign = {}, _Object$assign[d.witness] = {
+        kind: 'accident',
+        day: time().day
+      }, _Object$assign));
+    });
+    G_.on('spotted', function (d) {
+      var _Object$assign2;
+      var s = G_.state;
+      if (!s || !s.npcs || !d || d.src === 'npcs' || !BY_ID[d.by]) return;
+      ns(s).sawYou = Object.assign(ns(s).sawYou || {}, (_Object$assign2 = {}, _Object$assign2[d.by] = {
+        kind: d.kind,
+        day: time().day
+      }, _Object$assign2));
+      var sk = _stage(s, d.by).key;
+      if (sk === 'hostile' || sk === 'cold' || sk === 'neutral') _changeRep(s, d.by, -2, true);
+    });
+  }
+  function sightGreet(state, id) {
+    var N = ns(state),
+      sw = N.sawYou && N.sawYou[id],
+      t = time();
+    var out = '';
+    if (sw && t.day - sw.day <= 3 && !sw.said) {
+      sw.said = true;
+      var sk = _stage(state, id).key,
+        P = pronouns(id);
+      var acc = sw.kind === 'accident';
+      if (sk === 'hostile' || sk === 'cold') out += "<p>" + nm(id) + ": \"" + (acc ? 'Dry today?' : 'Found a proper bathroom yet?') + "\" " + P.Sub + " look" + (P.be === 'are' ? '' : 's') + " pleased with " + (P.sub === 'they' ? 'themself' : P.sub === 'she' ? 'herself' : 'himself') + ".</p>";else if (sk === 'neutral') out += "<p>" + nm(id) + " is a little awkward with you, like " + P.sub + " " + P.be + " trying not to mention something.</p>";else out += "<p>" + nm(id) + ": \"" + (acc ? 'Hey. About the other day. It happens to everyone, okay? I mean it.' : 'You okay? Rough day the other day.') + "\"</p>";
+    }
+    if (_smellLevel() && N.smelled && N.smelled[id] !== t.day) out += smellReact(state, id, _smellLevel());
+    if (N.flags.dee_gossip_smell !== undefined && id !== 'dee' && t.day - N.flags.dee_gossip_smell <= 2 && Math.random() < 0.3 && rel(state, 'dee').met) {
+      N.flags.dee_gossip_smell = -99;
+      out += "<p>" + nm(id) + ": \"Dee was telling everyone some story about you. I didn't believe half of it.\"</p>";
+    }
+    return out;
+  }
   // ---------- Module ----------
   var mod = {
     id: 'npcs',
     init: function init(state) {
+      hookSightings();
       if (state.npcs) {
         ensureRels(state);
         return;
@@ -4812,6 +5035,9 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     },
     onTick: function onTick(minutes, state) {
       ensureRels(state);
+      hookSightings();
+      if (!ns(state).talking) smellTick(state, minutes);
+      smellAftercare(state);
       // Gentle reputation drift toward 0 once per day for people you ignore.
       var t = time();
       if (ns(state).lastDay !== t.day) {
@@ -4868,7 +5094,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               node: 'root'
             };
             var st = _stage(s, id).key;
-            var pr = petReaction(s, id) + birthdayGreet(s, id) + conditionLine(s, id) + socialGreet(s, id) + marketGreet(s, id);
+            var pr = petReaction(s, id) + birthdayGreet(s, id) + conditionLine(s, id) + socialGreet(s, id) + marketGreet(s, id) + sightGreet(s, id);
             if (first) return {
               text: pr + ("You introduce yourself. " + BY_ID[id].blurb + " \"" + BY_ID[id].name + ",\" " + pronouns(id).sub + " say" + (pronouns(id).be === 'are' ? '' : 's') + ". \"Nice to meet you.\""),
               minutes: 5
@@ -4907,7 +5133,30 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       return res;
     }
   };
+
+  // Jimmy: NPCS.witness(state, 'accident'|'smell'|'relieved', id?) -> html reaction from a present named NPC ('' if nobody).
+  function witnessApi(state, kind, id) {
+    state = state || window.G.state;
+    if (!state || !state.npcs) return '';
+    var here = present(state);
+    id = id && here.includes(id) ? id : here[Math.floor(Math.random() * here.length)];
+    if (!id) return '';
+    if (kind === 'smell') return smellReact(state, id, _smellLevel() || 1);
+    var N = ns(state);
+    N.sawYou = N.sawYou || {};
+    N.sawYou[id] = {
+      kind: kind === 'relieved' ? 'relief' : 'accident',
+      day: time().day
+    };
+    var sk = _stage(state, id).key;
+    if (sk === 'hostile' || sk === 'cold' || sk === 'neutral') _changeRep(state, id, -2, true);
+    return '';
+  }
   window.NPCS = {
+    witness: witnessApi,
+    smellLevel: function smellLevel() {
+      return _smellLevel();
+    },
     changeRep: function changeRep(state, id, d, quiet) {
       if (state && state.npcs && state.npcs.rel[id]) _changeRep(state, id, d, quiet);
     },

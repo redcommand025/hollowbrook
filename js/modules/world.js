@@ -952,6 +952,28 @@
     };
   };
 
+
+  // How busy a place is right now, 0 (empty) to 1 (packed). Used to scale the chance of being seen or smelled.
+  var CROWD_BASE = { dorm_room: 0, dorm_hall: 0.35, quad: 0.6, main_building: 0.55, lecture_hall: 0.75, deans_office: 0.2, library: 0.45, cafeteria: 0.7,
+    gym: 0.45, campus_farm: 0.15, college_road: 0.45, main_street: 0.65, town_square: 0.6, high_street: 0.55, residential: 0.3, river_lane: 0.2,
+    alley: 0.08, cafe: 0.55, market: 0.55, florist: 0.25, park: 0.4, bar: 0.6, town_hall: 0.3, church: 0.2, docks: 0.25, old_mill: 0.05, woods: 0.03,
+    shopping_centre: 0.6, dog_pound: 0.2 };
+  function crowd(id) {
+    id = resolve(id || W().location);
+    var l = LOCATIONS[id]; if (!l) return 0;
+    if (id === 'dorm_room') return 0;
+    if (l.open && !isOpen(id)) return 0.02;
+    var c = CROWD_BASE[id]; if (c === undefined) c = l.indoor ? 0.4 : 0.3;
+    var h = G.time.hour, wkend = G.time.weekdayIndex >= 5, campus = l.district === 'Campus' || l.district === 'Campus Edge';
+    if (h < 6) c *= 0.1; else if (h < 8) c *= 0.5; else if (h >= 23) c *= 0.3; else if (h >= 20) c *= (id === 'bar' ? 1.3 : 0.6);
+    if (campus && id !== 'dorm_hall') c *= wkend ? 0.5 : 1.15;
+    if (!campus && wkend && h >= 10 && h < 18) c *= 1.2;
+    var wx = W().weather;
+    if (!l.indoor && (wx === 'rain' || wx === 'storm' || wx === 'snow')) c *= wx === 'rain' ? 0.6 : 0.35;
+    var f = festivalLive && festivalLive(); if (f && (f.where === id || (f.where && f.where.indexOf && f.where.indexOf(id) >= 0))) c = Math.max(c, 0.9);
+    return Math.max(0, Math.min(1, Math.round(c * 100) / 100));
+  }
+
   /* ---------------- Public helpers for other modules ---------------- */
   G.world = {
     LOCATIONS: LOCATIONS,
@@ -969,6 +991,7 @@
     isDark: function () { return isDark(G.time.hour); },
     isIndoors: function () { return !!loc().indoor; },
     hasRestroom: function () { return !!loc().restroom; },
+    crowd: crowd,   // 0..1 how busy a place is right now (default: here); scales witness/smell odds
     weather: function () { return W().weather; },
     temp: function () { return W().temp; },
     season: season,
@@ -995,7 +1018,7 @@
     marketLive: marketLive,
     moonFull: moonFull,
     weatherClosure: function (id) { return weatherClosure(resolve(id || W().location)); },
-    crowd: function (id) { return crowdLine(resolve(id || W().location)); },
+    crowdText: function (id) { return crowdLine(resolve(id || W().location)); },
     EVENTS: EVENTS                    // read-only use, for tests and debugging
   };
 

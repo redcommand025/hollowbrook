@@ -379,7 +379,7 @@
       else if (w.stage === 'neutral') { lines.push(w.name + ' noticed. ' + P.Sub + ' give' + (P.sub === 'they' ? '' : 's') + ' you an awkward nod and find something else to look at.'); stress += 20; }
       else { lines.push(w.first + ' is suddenly beside you. "Hey. It\'s okay. Here," ' + P.sub + ' say' + (P.sub === 'they' ? '' : 's') + ', handing you ' + pick(['a jacket to tie around your waist', 'a pack of tissues', 'a spare hoodie']) + ' and steering you somewhere quieter.'); stress -= 60; if (G.emit) G.emit('helpedAfterAccident', { npc: w.id }); }
     }
-    return { html: '<p class="scene accident">' + lines.join(' ') + '</p>', stress: Math.max(30, stress), social: social, witness: w ? w.id : null };
+    return { html: '<p class="scene accident">' + lines.join(' ') + '</p>', stress: Math.max(30, stress), social: social, witness: w ? w.id : null, pk: pk, busy: busy };
   }
 
   function checkAccident() {
@@ -396,8 +396,71 @@
     n.control = clamp(n.control - 30, 0, MAX);
     note('Stress +' + sc.stress, 'up'); note('Control -30', 'down');
     if (sc.social) { s.status.socialiteFame = clamp(s.status.socialiteFame + sc.social, 0, MAX); note('Socialite fame ' + sc.social, 'down'); }
-    note('Your clothes are soiled. Find a restroom to clean up, or go home and change.', 'info');
-    if (G.emit) G.emit('accident', { kind: kind, where: here().id, witness: sc.witness });
+    if (kind === 'bowels') { note('Your lower clothes are soiled. Rinse them out at a restroom sink, or go home and change, before people notice the smell.', 'info'); }
+    else note('Your clothes are wet. Clean up at a restroom, or go home and change.', 'info');
+    if (G.emit) G.emit('accident', { kind: kind, type: kind, where: here().id, witness: sc.witness });
+    if (kind === 'bowels' && !isSoiled()) s.clothing.lowerSoiled = true; // no wardrobe item to tag
+    // Anyone who saw it: named NPCs (npcs.js adjusts their opinion), classmates (school.js lowers school reputation).
+    if (sc.pk !== 'private') {
+      var by = sc.witness || (sc.busy && sc.pk !== 'secluded' ? (onCampusNow() ? 'student' : 'stranger') : null);
+      if (by) spotted(by, 'accident', { what: kind });
+    }
+  }
+
+  // ---------- being seen: relieving yourself where there's no restroom ----------
+  function onCampusNow() { try { return !!(G.world && G.world.onCampus && G.world.onCampus()); } catch (e) { return false; } }
+  function presentIds() { try { return (window.NPCS && NPCS.present && NPCS.present(G.state)) || []; } catch (e) { return []; } }
+  function isStudentId(id) { if (id === 'students') return true; var n = window.NPCS && NPCS.byId && NPCS.byId[id]; return !!(n && n.group === 'Students'); }
+  // Shared 'spotted' event: school.js turns student sightings into school reputation, npcs.js into named NPC opinion.
+  function spotted(by, kind, extra) {
+    var d = { by: by, kind: kind, student: isStudentId(by), src: 'stats', where: here().id };
+    if (extra) for (var k in extra) d[k] = extra[k];
+    if (G.emit) G.emit('spotted', d);
+  }
+  // Soiled lower clothing: the worn wardrobe item's .soiled flag (wardrobe.js), or stats.clothing.lowerSoiled without a wardrobe.
+  function isSoiled() {
+    try { var W = G.wardrobe || window.Wardrobe; if (W && typeof W.soiled === 'function' && W.soiled()) return true; } catch (e) {}
+    return !!S().clothing.lowerSoiled;
+  }
+  function reliefRisk() {
+    var pk = placeKind(), busy = crowded(), ids = presentIds();
+    var r = { secluded: 0.05, outdoorPublic: busy ? 0.35 : 0.12, indoorPublic: busy ? 0.6 : 0.3, 'class': busy ? 0.75 : 0.35, semi: 0.3, 'private': 0 }[pk];
+    if (r === undefined) r = 0.3;
+    // Ron's crowd() (0 = empty, 1 = packed) refines the guess when available.
+    try { if (G.world && typeof G.world.crowd === 'function') { var cr = G.world.crowd(); if (typeof cr === 'number') r = r * 0.4 + clamp(cr, 0, 1) * (pk === 'secluded' ? 0.2 : 0.7); } } catch (e) {}
+    r += 0.1 * ids.length;
+    if (isOut() && /rain|storm|snow/.test(weatherNow())) r *= 0.7;
+    r *= 1 - (S().skills.skulduggery || 0) / 2000;
+    var aw = S().core.awareness; if (aw) r *= 1 - effective('awareness') / 2500; // a watchful eye picks the moment
+    return clamp(r, 0.02, 0.95);
+  }
+  function riskWord(r) { return r < 0.12 ? 'low' : r < 0.35 ? 'some' : r < 0.6 ? 'high' : 'very high'; }
+  function reliefOption() {
+    var s = S(), n = s.needs, both = n.bowels >= 400, r = reliefRisk();
+    return opt(both ? 'Find somewhere to go' : 'Find somewhere to pee', function () {
+      var risk = reliefRisk(), out = isOut(), campus = onCampusNow();
+      var spot = out ? pick(['behind a hedge', 'in a shadowy corner', 'behind a parked van', 'behind a row of bins', 'under some trees']) : pick(['in an empty back corridor', 'in a quiet stairwell', 'in a corner nobody seems to use']);
+      var relief = n.bladder >= 600 || n.bowels >= 600;
+      n.bladder = 0; if (both) n.bowels = 0;
+      var r2 = rec(s); r2.publicRelief = (r2.publicRelief || 0) + 1;
+      attitude('rulebreaking', 1);
+      var lead = 'You find a spot ' + spot + ' and go as fast as you can. ';
+      if (Math.random() < risk) {
+        var w = presentIds().length ? witness() : null, line, v = w && w.p.sub === 'they' ? '' : 's';
+        if (w) line = lead + 'You are just finishing when ' + w.name + ' comes round the corner and sees you. ' + (w.stage === 'hostile' || w.stage === 'cold' ? w.p.Sub + ' laugh' + v + ' out loud.' : w.stage === 'neutral' ? w.p.Sub + ' stop' + v + ' dead, then turn' + v + ' sharply away.' : w.p.Sub + ' wince' + v + ' and suddenly find' + v + ' ' + w.p.pos + ' phone very interesting.');
+        else line = lead + (campus ? 'Halfway through, a group of students walks past. Someone says, "Oh, come on," and you hear them laughing all the way down the path.' : 'Halfway through, a passer-by stops, stares, and walks off shaking their head.');
+        addStress(90);
+        // On a busy town street, the passer-by is sometimes Officer Dunn on patrol.
+        if (!w && !campus && out && crowded() && Math.random() < 0.25) {
+          var fine = Math.min(money(), 15); if (fine) addMoney(-fine); chg('status.crime', 5);
+          line += ' Unfortunately, it\'s Officer Dunn. ' + (fine ? 'You get a short lecture and a $' + fine + ' fine for public indecency.' : 'You get a short lecture and a warning, since you can\'t pay a fine.');
+          spotted('dunn', 'relieved', { what: both ? 'bowels' : 'bladder', fine: fine });
+        } else spotted(w ? w.id : (campus ? 'student' : 'stranger'), 'relieved', { what: both ? 'bowels' : 'bladder' });
+        return { text: '<p class="scene accident">' + line + '</p>', minutes: both ? 6 : 3 };
+      }
+      if (relief) chg('needs.stress', -30); else addStress(10);
+      return { text: '<p>' + lead + 'Nobody sees. You walk away relieved and a little guilty.</p>', minutes: both ? 6 : 3 };
+    }, { time: both ? 6 : 3, hint: 'Chance of being seen: ' + riskWord(r) });
   }
 
   function checkCollapse() {
@@ -547,7 +610,14 @@
         return { text: '<p>You find a free stall and take care of things.' + (relief ? ' The relief is enormous.' : '') + '</p>', minutes: mins };
       }, { time: function () { return 3 + (n.bowels >= 300 ? 7 : 0); } }));
     }
-    if (s.flags.dirty && canRestroom) {
+    if (rr === false && !home && (n.bladder >= 400 || n.bowels >= 400)) out.actions.push(reliefOption());
+    if (isSoiled() && canRestroom) {
+      out.actions.push(opt('Rinse out your soiled clothes at the sink', function () {
+        s.flags.dirty = false; c.lowerSoiled = false; c.lowerWetness = Math.max(c.lowerWetness, 60);
+        return { text: '<p>You lock yourself in a stall, then scrub your clothes out at the sink as best you can. They\'re soaking wet now, but the smell is gone. They\'ll still need a proper wash.</p>', minutes: 20 };
+      }, { time: 20 }));
+    }
+    if (s.flags.dirty && !isSoiled() && canRestroom) {
       out.actions.push(opt('Clean yourself up', function () {
         s.flags.dirty = false; c.lowerWetness = Math.max(0, c.lowerWetness - 30);
         return { text: '<p>You clean up as best you can at the sink. Your clothes are still damp, but you feel a little more human.</p>', minutes: 10 };
@@ -582,7 +652,7 @@
     }
     if ((hid === 'cafe' || hid === 'cafeteria') && money() >= 3 && n.fatigue >= 300) {
       out.actions.push(opt('Buy a coffee ($3)', function () {
-        addMoney(-3); chg('needs.fatigue', -120); chg('needs.thirst', 80); n.bladder = clamp(n.bladder + 90, 0, MAX); chg('needs.stress', 10);
+        addMoney(-3); chg('needs.fatigue', -120); chg('needs.thirst', 80); n.bladder = clamp(n.bladder + 90, 0, MAX); n.bowels = clamp(n.bowels + 50, 0, MAX); chg('needs.stress', 10);
         return { text: '<p>The coffee is strong enough to stand a spoon in. Your eyes open a little wider.</p>', minutes: 10 };
       }));
     }
@@ -608,7 +678,7 @@
       var wardrobeOn = !!(G.wardrobe || window.Wardrobe);
       if (!wardrobeOn && c.spareOutfits > 0 && (c.lowerWetness > 20 || c.upperWetness > 20 || c.upperIntegrity < 50 || c.lowerIntegrity < 50 || s.flags.dirty)) {
         out.actions.push(opt('Change into fresh clothes', function () {
-          c.upperWetness = 0; c.lowerWetness = 0; c.upperIntegrity = 100; c.lowerIntegrity = 100; c.spareOutfits--; s.flags.dirty = false;
+          c.upperWetness = 0; c.lowerWetness = 0; c.upperIntegrity = 100; c.lowerIntegrity = 100; c.spareOutfits--; s.flags.dirty = false; c.lowerSoiled = false;
           chg('needs.stress', -20);
           return { text: '<p>You change into a clean outfit and toss the old one in the laundry pile.</p>', minutes: 10 };
         }));
@@ -695,6 +765,7 @@
     return '<p>You take a moment to check in with yourself.</p><p>' + parts.join('<br>') + '</p>' +
       (hasPoison() ? '<p>Your stomach is still upset from food poisoning. Keep drinking water and rest; it should pass within a day.</p>' : '') +
       (hasCold() ? '<p>You have a head cold. It should clear in about ' + Math.max(1, Math.round(S().illness.cold / 1440)) + ' day(s), sooner with rest.</p>' : '') +
+      (isSoiled() ? '<p>Your lower clothes are soiled, and the smell is noticeable. Rinse them out at a restroom sink or change before someone says something.</p>' : '') +
       hairLine() +
       (d.length ? '<p>Affecting you: ' + d.map(function (x) { return x.label; }).join(', ') + '.</p>' : '<p>Nothing is dragging you down right now.</p>');
   }
@@ -790,6 +861,7 @@
       '<div class="char-row"><b>Upper integrity</b>: ' + integWord(c.upperIntegrity) + bar(c.upperIntegrity, 100, true) + '</div>' +
       '<div class="char-row"><b>Lower wetness</b>: ' + wetWord(c.lowerWetness) + bar(c.lowerWetness, 100) + '</div>' +
       '<div class="char-row"><b>Lower integrity</b>: ' + integWord(c.lowerIntegrity) + bar(c.lowerIntegrity, 100, true) + '</div>' +
+      (isSoiled() ? '<div class="char-row"><b>Lower clothing</b>: Soiled<p class="flavor">People nearby can smell it. Rinse it out at a restroom sink, or change.</p></div>' : '') +
       '<div class="char-row"><b>Clean outfits at home</b>: ' + c.spareOutfits + '</div>';
   }
 
@@ -806,6 +878,7 @@
     transform: transform, hasTrait: hasTrait, debuffs: debuffs,
     fame: function (kind, d) { chg('status.' + kind + 'Fame', d); },
     crime: function (d) { chg('status.crime', d); },
+    soiled: isSoiled,
     money: money, addMoney: addMoney,
     panelHTML: panelHTML,
     tabs: { Characteristics: tabCharacteristics, Status: tabStatus, Clothing: tabClothing },

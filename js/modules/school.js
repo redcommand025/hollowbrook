@@ -110,6 +110,7 @@
     return {
       standing: standing, gpaLetter: gradeLetter(avg), average: Math.round(avg),
       delinquency: s.delinquency, delinquencyTier: tierOf(s.delinquency),
+      studentRep: srep(), studentRepTier: tierOf(srep()), studentRepText: repText(),
       crime: s.crime, crimeTier: tierOf(s.crime),
       attendance: s.attended + '/' + (s.attended + s.skipped),
       grades: Object.keys(s.grades).map(function (k) { return { subject: SUBJECTS[k].name, pct: s.grades[k], letter: gradeLetter(s.grades[k]) }; }),
@@ -150,6 +151,7 @@
     var base = focus ? rnd(2, 4) : rnd(1, 2);
     base += Math.floor(statVal(subj.stat) / 400);
     if (c.late) { base = Math.max(0, base - 1); delinq(10, 'late to class'); }
+    if (srep() < 250 && base > 0 && chance(0.5)) { base = Math.max(0, base - 1); }
     grade(c.subj, base);
     need('stats.needs.fatigue', focus ? 60 : 35);
     need('stats.needs.stress', focus ? 25 : 10);
@@ -414,7 +416,7 @@
   function leaveClub(id) { delete S().clubs[id]; return { text: '<p>You quietly cross your name off the ' + CLUBS[id].name + ' list.</p>', minutes: 2 }; }
   function attendClub(id) {
     var c = CLUBS[id], m = S().clubs[id], before = clubRank(m.sessions);
-    m.sessions++; m.lastDay = time().day;
+    m.sessions++; m.lastDay = time().day; studentRep(8);
     train(c.stat, 15); need('stats.needs.stress', -50); need('stats.needs.fatigue', 40); fame(c.fame, 3);
     if (c.skill) gainSkill(c.skill, rnd(6, 10));
     var out = '<p><b>' + c.name + '</b></p><p>' + pick(c.flavor) + '</p>';
@@ -465,6 +467,7 @@
     else if (ev < 0.27) { tips = rnd(5, 15); out += '<p>Someone you helped earlier comes back just to say thanks, and leaves a little extra.</p>'; fame('kindness', 2); }
     else if (ev < 0.35) { out += '<p>You drop something with a crash that silences the room. ' + cap(j.boss.split(',')[0]) + ' just closes their eyes for a moment.</p>'; perf -= 5; need('stats.needs.stress', 30); }
     if (id === 'cafe') tips += Math.floor(rnd(0, 6) * (1 + statVal('beauty') / 600));
+    if (srep() < 250) tips = Math.floor(tips * 0.6);
     if (fat > 700) out += '<p>You\'re running on fumes, and it shows in your work.</p>';
     m.perf = clamp(m.perf + perf, 0, 100);
     var pay = rate * hrs + tips; cash(pay);
@@ -724,6 +727,7 @@
   function finishTerm(avg) {
     var s = S(), letter = gradeLetter(avg), out = '';
     if (s.lastTermKey === season() + s.year + ':' + Math.floor((time().day - 1) / 28)) return '';
+    if (avg >= 78) studentRep(30, 'good grades');
     s.lastTermKey = season() + s.year + ':' + Math.floor((time().day - 1) / 28);
     s.transcript.push({ term: season() + ' Y' + s.year, avg: Math.round(avg), letter: letter });
     if (avg >= 50) { s.credits++; out += '<p>You pass the term with a ' + letter + ' average. One more credit toward your degree (' + s.credits + '/' + s.creditsNeeded + ').</p>'; }
@@ -864,6 +868,61 @@
   }
 
   // ---------- the module ----------
+  /* ---------- Student reputation: how your classmates see you (0-1000, starts 500) ---------- */
+  function srep() { var s = G.state && G.state.school; if (!s) return 500; if (typeof s.studentRep !== 'number') s.studentRep = 500; return s.studentRep; }
+  function repText() {
+    var r = srep();
+    return r >= 750 ? 'Well liked. People save you a seat.' : r >= 500 ? 'People know your name and don\'t mind you.' :
+      r >= 350 ? 'There\'s some whispering when you walk past.' : r >= 200 ? 'You\'ve picked up a nickname you didn\'t ask for.' : 'Classmates find reasons to sit elsewhere.';
+  }
+  function studentRep(d, why) {
+    var s = S(); if (!s) return 0; var before = srep();
+    s.studentRep = clamp(before + d, 0, 1000);
+    var real = Math.round(s.studentRep - before);
+    if (real && Math.abs(real) >= 5) G.notify('School reputation ' + (real > 0 ? '+' : '') + real + (why ? ' (' + why + ')' : ''), real > 0 ? 'up' : 'down');
+    return s.studentRep;
+  }
+  function isStudent(by) {
+    if (!by) return false;
+    if (by === 'student' || by === 'students' || by === 'classmate' || by === 'classmates') return true;
+    var n = window.NPCS && NPCS.byId && NPCS.byId[by];
+    return !!(n && n.group === 'Students');
+  }
+  function onCampusHere() { return typeof onCampus === 'function' ? onCampus() : false; }
+  function inClassNow() { var c = currentClass(); return !!(c && at('classroom')); }
+  var REP_HIT = { accident: [80, 45, 25], relieved: [0, 30, 15], smell: [12, 10, 6] }; // [in class, on campus, elsewhere]
+  function repHit(kind, bySomeoneNamed) {
+    var row = REP_HIT[kind] || REP_HIT[/relie|pee|poo|toilet|outdoor/.test(kind || '') ? 'relieved' : 'smell'];
+    var hit = inClassNow() ? row[0] || row[1] : onCampusHere() ? row[1] : row[2];
+    return bySomeoneNamed ? Math.ceil(hit * 0.6) : hit; // one named student talks less than a room full
+  }
+  function onSpotted(d) {
+    d = d || {}; var s = S(); if (!s || !(isStudent(d.by) || (d.student === true && !(window.NPCS && NPCS.byId && NPCS.byId[d.by])))) return;
+    var kind = d.kind || 'smell', t = time(), stamp = t.day * 1440 + t.hour * 60 + t.minute;
+    if (kind === 'accident' && s._classAccidentAt && stamp - s._classAccidentAt < 30) return; // already counted by the class
+    if (kind === 'smell') { if (s._lastSmellAt && stamp - s._lastSmellAt < 60) return; s._lastSmellAt = stamp; }
+    var named = !!(window.NPCS && NPCS.byId && NPCS.byId[d.by]);
+    studentRep(-repHit(kind, named), kind === 'smell' ? 'a classmate noticed the smell' : kind === 'accident' ? 'a classmate saw your accident' : 'a classmate saw you go outdoors');
+    s.repIncidents = (s.repIncidents || 0) + 1;
+  }
+  function onAccident(d) {
+    var s = S(); if (!s || !inClassNow()) return;
+    var t = time(); s._classAccidentAt = t.day * 1440 + t.hour * 60 + t.minute;
+    studentRep(-REP_HIT.accident[0], 'an accident in class');
+    s.repIncidents = (s.repIncidents || 0) + 1;
+  }
+  function repNewDay() { var r = srep(); if (r < 500) studentRep(r < 250 ? 3 : 5); }
+  var WHISPERS = [
+    'Two students by the noticeboard go quiet as you pass, then burst out laughing.',
+    'Someone has drawn a little cartoon of you on the whiteboard. It\'s gone by the time you look again.',
+    'A first-year nudges their friend and nods at you. You pretend not to see.',
+    'You hear your nickname called from across the quad. It isn\'t your name.'
+  ];
+  function repArrive(d) {
+    var l = d && d.location; if (['quad', 'library', 'lecture_hall', 'cafeteria', 'main_building', 'dorm_hall'].indexOf(l) < 0) return;
+    if (srep() < 350 && chance(srep() < 200 ? 0.35 : 0.2)) G.notify(pick(WHISPERS), 'info');
+  }
+
   /* Expected duration for each option, shown by the engine as (h:mm). Dynamic ones compute from the clock. */
   function untilHour(h) { var t = time(); return Math.max(1, h * 60 - (t.hour * 60 + t.minute)); }
   var MINS = [
@@ -1103,7 +1162,7 @@
       return '<tr' + (today ? ' style="color:var(--accent,#c9a96e)"' : '') + '><td>' + (today ? '<b>Today</b> (' + DAYN[wd] + ')' : DAYN[wd]) + '</td>' + TIMETABLE[wd].map(function (k, i) { return '<td>' + pad(BLOCKS[i]) + ':00 ' + SUBJECTS[k].name + ', ' + (ROOMS[k] || '') + '</td>'; }).join('') + '</tr>';
     }).join('');
     var hw = Object.keys(s.homework || {}).map(function (k) { return '<li>' + SUBJECTS[k].name + ' homework, due day ' + s.homework[k] + '</li>'; }).join('');
-    return '<h3>Classes</h3>' + (info ? '<p>' + info.html + '</p>' : '') +
+    return '<h3>Classes</h3>' + (info ? '<p>' + info.html + '</p>' : '') + '<p><b>School reputation:</b> ' + tierOf(srep()) + '. ' + repText() + '</p>' +
       '<p class="flavor">All classes are two hours long and held in Calloway Main Building, off the quad. Midterms are on day 15 and finals on day 26 of each term, and summer is a break.</p>' +
       '<table class="jtable">' + rows + '</table>' + (hw ? '<p><b>Homework due</b></p><ul>' + hw + '</ul>' : '');
   }
@@ -1116,7 +1175,7 @@
       name: "Dean's Office", district: 'Campus', indoor: true, open: [8, 17], restroom: false,
       desc: 'A wood-panelled waiting room in the admin wing: a ticking clock, a potted fern, and a secretary who sees everything.'
     }, [['quad', 2]]);
-    if (G.on) G.on('newDay', newDay);
+    if (G.on) { G.on('newDay', newDay); G.on('newDay', repNewDay); G.on('spotted', onSpotted); G.on('accident', onAccident); G.on('arrive', repArrive); }
     if (G.on) G.on('arrive', function (d) {
       var prev = S().lastLoc; S().lastLoc = d && d.location;
       if ((prev === 'industrial_alley' || prev === 'alley') && d && d.location === 'quad') fenceClimb();
@@ -1125,6 +1184,7 @@
     });
     G.school = mod.api;
     G.school.nextClass = nextClassInfo;
+    G.school.studentRep = studentRep; G.school.studentRepValue = srep; G.school.studentRepText = repText; G.school.isStudent = isStudent;
     // Banner: refresh whenever the story text changes or time moves.
     if (G.addBanner) G.addBanner(function () { var i = G.state && G.state.school && onCampus() ? nextClassInfo() : null; return i ? i.html : null; });
     else if (G.on) { G.on('action', refreshClassBanner); G.on('tick', refreshClassBanner); G.on('start', function () { setTimeout(refreshClassBanner, 0); }); G.on('arrive', function () { setTimeout(refreshClassBanner, 0); }); }

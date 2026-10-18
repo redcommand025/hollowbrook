@@ -605,7 +605,8 @@
         s.flags.sleeping = true;
         return { text: '<p>You lie down for a short nap.</p>', minutes: 60 };
       }));
-      if (c.spareOutfits > 0 && (c.lowerWetness > 20 || c.upperWetness > 20 || c.upperIntegrity < 50 || c.lowerIntegrity < 50 || s.flags.dirty)) {
+      var wardrobeOn = !!(G.wardrobe || window.Wardrobe);
+      if (!wardrobeOn && c.spareOutfits > 0 && (c.lowerWetness > 20 || c.upperWetness > 20 || c.upperIntegrity < 50 || c.lowerIntegrity < 50 || s.flags.dirty)) {
         out.actions.push(opt('Change into fresh clothes', function () {
           c.upperWetness = 0; c.lowerWetness = 0; c.upperIntegrity = 100; c.lowerIntegrity = 100; c.spareOutfits--; s.flags.dirty = false;
           chg('needs.stress', -20);

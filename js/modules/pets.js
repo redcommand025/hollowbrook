@@ -227,11 +227,12 @@
   function newPet(species, opts) {
     opts = opts || {};
     var S = SPECIES[species], keys = Object.keys(PERSONALITIES);
+    var isRare = !opts.breed && !!RARE[species] && chance(0.06);
     var t1 = pick(keys), t2 = pick(keys.filter(function (k) { return k !== t1 && !(k === 'lazy' && t1 === 'playful') && !(k === 'playful' && t1 === 'lazy') && !(k === 'affectionate' && t1 === 'independent') && !(k === 'independent' && t1 === 'affectionate'); }));
     return {
       id: 'pet' + (P().nextId++), species: species, name: opts.name || pick(NAMES), sex: chance(0.5) ? 'f' : 'm',
-      rare: !opts.breed && RARE[k] && chance(0.06) ? true : false,
-      breed: opts.breed || pick(S.breeds), traits: chance(0.6) ? [t1, t2] : [t1],
+      rare: isRare,
+      breed: opts.breed || (isRare ? pick(RARE[species]) : pick(S.breeds)), traits: chance(0.6) ? [t1, t2] : [t1],
       hunger: 800, thirst: 800, energy: 800, hygiene: opts.stray ? 250 : 850, happiness: opts.stray ? 350 : 650, health: opts.stray ? 600 : 1000,
       bond: opts.stray ? 80 : 120, tricks: {}, words: [], sick: false, vaccinated: false, neglect: 0, status: 'home', following: false,
       ageStart: opts.stray ? 200 + Math.floor(Math.random() * 600) : Math.floor(Math.random() * 20), memories: [], adoptedDay: day(), lastWalkDay: day(), lastPetDay: 0, stray: !!opts.stray, runawayDay: null
@@ -584,8 +585,41 @@
   function getOptions() {
     var out = { dialogue: [], actions: [], travel: [], other: [] };
     if (!P()) return out;
-    careOptions(out); shopOptions(out); strayOptions(out);
+    careOptions(out); shopOptions(out); strayOptions(out); showOptions(out);
     return out;
+  }
+
+  // ---------- Sunday pet show (park, 11:00-15:00) ----------
+  function showScore(p) {
+    var learned = sp(p).tricks.filter(function (x) { return (p.tricks[x] || 0) >= 100; }).length;
+    return p.bond / 12 + p.hygiene / 20 + p.happiness / 25 + p.health / 40 + learned * 14 + (p.rare ? 25 : 0) + tending() / 25 + (lifeStage(p) === 'young' ? 8 : 0) + Math.random() * 40;
+  }
+  function showOptions(out) {
+    var st = P(), t = G.time; if (!t || hereId() !== 'park' || t.weekdayIndex !== 6 || t.hour < 11 || t.hour >= 15) return;
+    var wk = Math.floor(day() / 7);
+    var with_ = activePets().filter(function (p) { return p.following && !p.sick; });
+    if (st.lastShowWeek === wk) { out.other.push(opt('Watch the pet show judging', function () { return { text: '<p>You watch the judges peer at a very serious basset hound. The crowd cheers when a rabbit does a perfect hop.</p>', minutes: 20 }; })); return; }
+    if (!with_.length) { out.other.push(opt('Watch the Sunday pet show', function () { stress(-20); return { text: '<p>A ring of bunting, a folding table of ribbons and a dozen proud owners. Next week you could bring a companion of your own and enter.</p>', minutes: 20 }; })); return; }
+    with_.forEach(function (p) {
+      out.actions.push(opt('Enter ' + p.name + ' in the Sunday pet show ($5)', function () {
+        if (G.state.money < 5) return { text: '<p>The entry fee is $5. You don\'t have it on you.</p>', minutes: 1 };
+        if (G.change) G.change('money', -5); st.lastShowWeek = wk; trainTending(4);
+        var me = showScore(p), rivals = [0, 0, 0, 0, 0].map(function () { return 40 + Math.random() * 110; }).sort(function (a, b) { return b - a; });
+        var place = 1 + rivals.filter(function (r) { return r > me; }).length, x = pron(p);
+        var prize = { 1: 40, 2: 20, 3: 10 }[place] || 0, ribbon = { 1: 'blue ribbon (1st)', 2: 'red ribbon (2nd)', 3: 'yellow ribbon (3rd)' }[place];
+        need(p, 'happiness', 100); bond(p, place <= 3 ? 20 : 8);
+        var txt = '<p>You and ' + p.name + ' wait your turn in the ring. The judge checks ' + x.p + ' coat, asks to see a trick, and scribbles on a clipboard.</p>';
+        if (ribbon) {
+          if (G.change) G.change('money', prize);
+          if (G.stats && G.stats.fame) G.stats.fame('socialite', place === 1 ? 15 : 6);
+          if (!p.ribbons) p.ribbons = []; p.ribbons.push(ribbon); memo(p, p.name + ' won a ' + ribbon + ' at the Sunday pet show.');
+          if (sp(p).exotic) hazelLikes(p, 2);
+          txt += '<p>When the results come in, ' + p.name + ' takes the <b>' + ribbon + '</b>' + (prize ? ' and $' + prize + ' in prize money' : '') + '. People stop to say congratulations.</p>';
+          if (G.emit) G.emit('petShowWin', { pet: p.id, place: place });
+        } else txt += '<p>' + p.name + ' places ' + place + 'th out of six. No ribbon this time, but ' + x.s + ' got a lot of attention and seems very pleased with ' + x.r + '. Better grooming and more tricks would help next week.</p>';
+        return { text: txt, minutes: 90 };
+      }));
+    });
   }
 
   // ---------- Companions tab ----------
@@ -596,7 +630,7 @@
     if (!st.list.length) h.push('<p class="flavor">No companions yet. Paws & Whiskers in the shopping centre has animals for adoption, and strays sometimes turn up around town.</p>');
     st.list.forEach(function (p) {
       var S = sp(p), t = tierOf(p.bond), learned = S.tricks.filter(function (x) { return (p.tricks[x] || 0) >= 100; });
-      h.push('<div class="pet-card"><h4>' + p.name + ' <small>' + S.label + ', ' + p.breed + (p.stray ? ', rescued' : '') + '</small></h4>');
+      h.push('<div class="pet-card"><h4>' + p.name + ' <small>' + S.label + ', ' + p.breed + (p.stray ? ', rescued' : '') + (p.rare ? ', <b>rare</b>' : '') + '</small></h4>' + (p.ribbons && p.ribbons.length ? '<p>Ribbons: ' + p.ribbons.join(', ') + '</p>' : ''));
       if (p.status === 'runaway') { h.push('<p class="flavor">Missing since day ' + p.runawayDay + '. Search the park, Elm Row, the old mill or the woods.</p></div>'); return; }
       h.push('<p class="flavor">' + moodLine(p) + '</p>');
       if (QUIRKS[p.species]) h.push('<p class="flavor">Care notes: ' + QUIRKS[p.species] + '</p>');

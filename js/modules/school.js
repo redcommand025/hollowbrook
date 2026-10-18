@@ -73,6 +73,7 @@
   function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
   function grade(subj, d) {
     var g = S().grades; var before = g[subj];
+    if (d > 0) { var sc = d * clamp((104 - before) / 45, 0.05, 1); d = Math.floor(sc) + (Math.random() < sc % 1 ? 1 : 0); if (!d) return; }
     g[subj] = clamp(before + d, 0, 100);
     var b = gradeLetter(before), a = gradeLetter(g[subj]);
     G.notify(SUBJECTS[subj].name + ' grade ' + (d >= 0 ? '+' : '') + d + (a !== b ? ' (now ' + a + ')' : ''), d >= 0 ? 'up' : 'down');
@@ -193,7 +194,7 @@
   }
 
   // ---------- exams (every 7th day if weekday, else next weekday) ----------
-  function isExamDay() { var t = time(); return S().examDue && TIMETABLE[t.weekday] && t.hour >= 9 && t.hour < 12; }
+  function isExamDay() { var t = time(), x = S(); if (x.expelled || x.graduated || (G.time && G.time.season === 'Summer')) return false; return x.examDue && TIMETABLE[t.weekday] && t.hour >= 9 && t.hour < 12; }
   var sitExam = function () {
     var s = S(), out = '<p>The exam hall is silent except for the clock. You turn over the paper.</p>', total = 0;
     Object.keys(s.grades).forEach(function (k) {
@@ -722,6 +723,8 @@
 
   function finishTerm(avg) {
     var s = S(), letter = gradeLetter(avg), out = '';
+    if (s.lastTermKey === season() + s.year + ':' + Math.floor((time().day - 1) / 28)) return '';
+    s.lastTermKey = season() + s.year + ':' + Math.floor((time().day - 1) / 28);
     s.transcript.push({ term: season() + ' Y' + s.year, avg: Math.round(avg), letter: letter });
     if (avg >= 50) { s.credits++; out += '<p>You pass the term with a ' + letter + ' average. One more credit toward your degree (' + s.credits + '/' + s.creditsNeeded + ').</p>'; }
     else { out += '<p>You fail the term with a ' + letter + ' average. No credit this time.</p>'; }
@@ -738,13 +741,13 @@
     }
     return out;
   }
-  // replace the old weekly exam with midterms (day 14+) and finals (day 26+)
+  // replace the old weekly exam with midterms (day 15+) and finals (day 26+)
   sitExam = function () {
     var s = S(), kind = s.examType || 'midterm', fin = kind === 'finals', total = 0;
     var out = '<p><b>' + (fin ? 'Finals' : 'Midterms') + '.</b> The exam hall is silent except for the clock and someone\'s nervous foot. You turn over the paper.</p>';
     var stress = (G.state.stats && G.state.stats.needs && G.state.stats.needs.stress) || 0;
     Object.keys(s.grades).forEach(function (k) {
-      var roll = s.grades[k] + rnd(-12, 12) + Math.floor(statVal('willpower') / 200) - Math.floor(stress / 250) + Math.min(6, s.studiedTerm);
+      var roll = s.grades[k] + rnd(-16, 8) + Math.floor(statVal('willpower') / 200) - Math.floor(stress / 200) + Math.min(5, Math.floor(s.studiedTerm / 3));
       roll = clamp(roll, 0, 100); total += roll;
       grade(k, (roll >= s.grades[k] ? 1 : -1) * (fin ? 4 : 2));
     });
@@ -774,8 +777,8 @@
       if (s.scholarship) { cash(150); G.notify('Scholarship stipend: +$150', 'up'); }
       G.notify(termLabel() + ' begins', 'info');
     }
-    if (d === 14 || d === 26) { s.examDue = true; s.examType = d === 26 ? 'finals' : 'midterm'; G.notify((d === 26 ? 'Finals' : 'Midterms') + ' start today in the lecture building, 09:00', 'info'); }
-    if (s.examDue && d !== 14 && d !== 26 && d !== 15 && d !== 27 && d !== 16 && d !== 28) s.examDue = false;
+    if (d === 15 || d === 26) { s.examDue = true; s.examType = d === 26 ? 'finals' : 'midterm'; G.notify((d === 26 ? 'Finals' : 'Midterms') + ' start today in the lecture building, 09:00', 'info'); }
+    if (s.examDue && [15, 16, 17, 26, 27, 28].indexOf(d) < 0) { if (s.examType === 'finals') { s.examDue = false; } else s.examDue = false; }
   }
 
   // --- club events, once per term ---

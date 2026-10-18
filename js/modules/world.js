@@ -36,8 +36,8 @@
                      desc: 'The heart of Hollowbrook: bunting between lampposts, a bakery, a pharmacy, the Copper Kettle, the grocer and the florist.' },
     cafe:          { name: 'The Copper Kettle Café', district: 'Town', indoor: true, open: [7, 19], restroom: true,
                      desc: 'Mismatched armchairs, a chalkboard menu, and a cat who sleeps on the windowsill.' },
-    market:        { name: 'Hollowbrook Grocer', district: 'Town', indoor: true, open: [8, 21], restroom: true,
-                     desc: 'A family-run grocery with fresh bread in the mornings and discount stickers after six.' },
+    market:        { name: 'Hollowbrook Grocer', district: 'Town', indoor: true, open: [7, 22], restroom: true,
+                     desc: 'A family-run grocery store: a bakery shelf by the door, aisles of fruit and veg, tins, pasta and noodles, a chiller of milk and drinks, and discount stickers after six.' },
     florist:       { name: 'Fern & Foxglove Florist', district: 'Town', indoor: true, open: [9, 18],
                      desc: 'Buckets of cut flowers spill onto the pavement. It always smells like rain inside.' },
     park:          { name: 'Millpond Park', district: 'Town', indoor: false, open: null,
@@ -143,7 +143,7 @@
     school: 'quad', college: 'quad', campus_grounds: 'quad', campus_gates: 'college_road', market_square: 'town_square', pub: 'bar', shop: 'market', forest: 'woods', back_alley: 'alley', home: 'dorm_room', dorms: 'dorm_hall', campus: 'quad', classroom: 'lecture_hall', farm: 'campus_farm',
     office: 'deans_office', street: 'main_street',
     college_classroom: 'lecture_hall', college_library: 'library', college_quad: 'quad', college_office: 'deans_office',
-    meadow_farm: 'campus_farm', town_market: 'market'
+    meadow_farm: 'campus_farm', town_market: 'market', grocer: 'market', grocery: 'market', groceries: 'market', grocery_store: 'market', supermarket: 'market'
   };
   function resolve(id) { return LOCATIONS[id] ? id : (ALIASES[id] || id); }
   var ADJ = {};
@@ -881,6 +881,28 @@
         opts.actions.push({ label: 'Shelter under an awning until it eases', minutes: 40, run: function () {
           var m = 40; G.change('stats.needs.stress', 10);
           return { text: '<p>You tuck yourself under the nearest overhang and watch the rain bounce off the pavement.</p>', minutes: m };
+        } });
+      }
+
+      if (w.location === 'market' && isOpen('market')) {
+        var hr = G.time.hour, sn = season(), busy = crowd('market');
+        var PRODUCE = { spring: 'early rhubarb, bunches of radishes and the first strawberries, still pricey', summer: 'crates of tomatoes, punnets of berries and corn still in its husks',
+          autumn: 'local apples by the sack, squash, and a basket of muddy potatoes from a farm up the valley', winter: 'clementines in net bags, parsnips, and sprouts on the stalk' };
+        var AISLES = [
+          ['Produce', function () { return 'You wander the fruit and veg: ' + (PRODUCE[sn] || PRODUCE.autumn) + '. A hand-written sign says "Ask Marcus about the bruised box, half price."'; }],
+          ['Bakery', function () { var hr = G.time.hour; return hr < 10 ? 'The bakery shelf is still warm: crusty loaves, soft rolls and a tray of iced buns. The whole front of the shop smells of it.'
+            : hr >= 18 ? 'The bakery shelf is picked over, but what\'s left wears yellow discount stickers: a lopsided loaf, two rolls, a lonely croissant.'
+            : 'Sliced loaves, bagels and a few cakes under a plastic dome. The good stuff went this morning.'; }],
+          ['Dairy', function () { return 'The chiller hums. Milk in three sizes, local butter in paper, eggs from the campus farm, and a cheese wedge someone has clearly put back in the wrong place.'; }],
+          ['Drinks', function () { return 'Bottled water, fizzy drinks, juice cartons and a fridge of energy drinks with a "students: 2 for $3" sign taped crookedly to the door.'; }]
+        ];
+        AISLES.forEach(function (a) {
+          opts.actions.push({ label: 'Browse the ' + a[0].toLowerCase() + ' aisle', minutes: 3, sub: 'Aisles', run: function () { return { text: '<p>' + a[1]() + '</p>', minutes: 3 }; } });
+        });
+        var q = 1 + Math.round(busy * 8);
+        opts.actions.push({ label: 'Queue at the checkout', minutes: q, sub: 'Aisles', run: function () {
+          var line = busy > 0.5 ? 'The queue snakes back past the magazines. Someone ahead is paying in coins.' : busy > 0.2 ? 'There are a couple of people ahead of you.' : 'There\'s nobody waiting, and the till beeps you straight through.';
+          return { text: '<p>' + line + ' The checkout has a bowl of lollipops and a charity tin for the animal shelter.</p>', minutes: q };
         } });
       }
 

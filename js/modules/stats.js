@@ -593,6 +593,88 @@
     return o;
   }
 
+  // ---------- groceries: buy at Hollowbrook Grocer (market), eat/drink anywhere, cook at home ----------
+  // Stored as stats.groceries.items = { id: [dayBought, ...] } (one entry per serving).
+  // Lucy's inventory can read G.groceries.list() and set G.groceries.limit = function () { return n; } for a carry limit.
+  var GROCERIES = {
+    water:   { label: 'Bottle of water',   unit: 'bottle',  price: 1, qty: 1, verb: 'Drink', thirst: 250, mins: 1, text: 'You twist the cap off and drain half the bottle in one go.' },
+    milk:    { label: 'Carton of milk',    unit: 'glass',   price: 2, qty: 4, slot: 0.25, verb: 'Drink', thirst: 160, hunger: 50, mins: 2, spoils: 2, text: 'Cold, creamy, and exactly what you needed.' },
+    bread:   { label: 'Loaf of bread',     unit: 'slice',   price: 3, qty: 8, slot: 0.125, verb: 'Eat', hunger: 90, thirst: -10, mins: 2, spoils: 5, ingredient: true, text: 'You tear off a slice and eat it plain. Not exciting, but it does the job.' },
+    fruit:   { label: 'Bag of apples',     unit: 'apple',   price: 4, qty: 4, slot: 0.25, verb: 'Eat', hunger: 70, thirst: 30, bowels: 25, iname: 'apple', mins: 3, spoils: 7, text: 'Crisp and a little sour. You feel virtuous for about a minute.' },
+    snacks:  { label: 'Bag of crisps',     unit: 'handful', price: 2, qty: 2, slot: 0.5, verb: 'Eat', hunger: 110, thirst: -30, mins: 2, text: 'Salty, crunchy, and gone far too fast.' },
+    noodles: { label: 'Instant noodles',   unit: 'pot',     price: 1, qty: 1, verb: 'Make', hunger: 260, thirst: -20, mins: 10, needsHome: true, text: 'Boiling water, three minutes, and a sachet of something orange. Comfort in a cup.' },
+    pasta:   { label: 'Pasta and sauce',   unit: 'portion', price: 5, qty: 2, slot: 0.5, ingredient: true },
+    eggs:    { label: 'Half a dozen eggs', unit: 'egg',     price: 3, qty: 6, slot: 0.25, iname: 'egg', spoils: 10, ingredient: true }
+  };
+  // When Lucy's G.inventory is loaded it owns storage, carrying and spoilage; the stats.groceries store below is the fallback.
+  function INV() { return (G.inventory && G.inventory.define) ? G.inventory : null; }
+  var invDefined = false;
+  function defineInv() { var v = INV(); if (!v || invDefined) return; invDefined = true;
+    Object.keys(GROCERIES).forEach(function (k) { var d = GROCERIES[k];
+      var strip = d.label.replace(/^(Bottle|Carton|Loaf|Bag|Half a dozen) of /i, '').toLowerCase();
+      if (d.iname) return v.define(k, { name: d.iname, slots: d.slot || 1, spoilDays: d.spoils || 0, kind: 'grocery' });
+      v.define(k, { name: d.unit + ' of ' + d.label.replace(/^(Bottle|Carton|Loaf|Bag|Half a dozen) of /i, '').toLowerCase(), plural: grocName(k, 2).replace(/^2 /, '') + ' of ' + d.label.replace(/^(Bottle|Carton|Loaf|Bag|Half a dozen) of /i, '').toLowerCase(), slots: d.slot || 1, spoilDays: d.spoils || 0, kind: 'grocery' }); }); }
+  function groc() { var s = S(); if (!s.groceries) s.groceries = { items: {} }; return s.groceries.items; }
+  function grocCount(id) { var v = INV(); if (v) { defineInv(); return v.count(id); } var g = groc()[id]; return g ? g.length : 0; }
+  function grocTotal() { var v = INV(); if (v) return v.bagUsed(); var g = groc(), n = 0; for (var k in g) n += g[k].length; return n; }
+  function grocLimit() { var v = INV(); if (v) return v.BAG_SLOTS; try { if (G.groceries && typeof G.groceries.limit === 'function') return G.groceries.limit(); } catch (e) {} return 24; }
+  function grocAdd(id, n) { var v = INV(); if (v) { defineInv(); return v.add(id, n); } var g = groc(); g[id] = g[id] || []; for (var i = 0; i < n; i++) g[id].push(today()); }
+  function grocTake(id) { var v = INV(); if (v) { var f = v.freshness(id); return v.take(id, 1) ? (f !== null && f < 0.1 ? -999 : today()) : null; } var g = groc()[id]; if (!g || !g.length) return null; return g.shift(); } // oldest first
+  function isOff(id, day) { var d = GROCERIES[id]; return !!(d && d.spoils && today() - day > d.spoils); }
+  function grocName(id, n) { var d = GROCERIES[id]; return n + ' ' + d.unit + (n === 1 ? '' : (/sh$|ch$/.test(d.unit) ? 'es' : 's')); }
+  function exposeGroceries() { var prev = G.groceries || {}; G.groceries = {
+    CATALOG: GROCERIES, count: grocCount, total: grocTotal, add: grocAdd, take: grocTake,
+    list: function () { var v = INV(); if (v) return v.list('bag').concat(v.list('fridge')); var g = groc(); return Object.keys(g).filter(function (k) { return g[k].length; }).map(function (k) { return { id: k, label: GROCERIES[k] ? GROCERIES[k].label : k, count: g[k].length, off: g[k].filter(function (d) { return isOff(k, d); }).length }; }); },
+    spoiled: function (id) { return (groc()[id] || []).filter(function (d) { return isOff(id, d); }).length; },
+    limit: prev.limit
+  }; }
+  function groceryOptions(out, n, home) {
+    var hid = here().id;
+    if (hid === 'market') {
+      var full = grocTotal(), lim = grocLimit();
+      Object.keys(GROCERIES).forEach(function (k) {
+        var d = GROCERIES[k], tooMany = INV() ? (defineInv(), INV().bagRoom() < d.qty * (d.slot || 1)) : full + d.qty > lim, broke = money() < d.price;
+        out.actions.push(opt('Buy ' + d.label.charAt(0).toLowerCase() + d.label.slice(1) + ' ($' + d.price + ')', function () {
+          addMoney(-d.price); grocAdd(k, d.qty); attitude('spending', 1);
+          if (G.emit) G.emit('groceriesBought', { id: k, qty: d.qty, price: d.price });
+          return { text: '<p>You pop the ' + d.label.toLowerCase() + ' in your basket and pay at the till. (' + grocName(k, d.qty) + ')</p>', minutes: 2 };
+        }, { sub: 'Groceries', time: 2, disabled: tooMany || broke, hint: broke ? 'Not enough money' : tooMany ? 'You can\'t carry any more groceries' : d.verb ? d.verb + ': ' + (d.hunger ? 'hunger +' + d.hunger + ' ' : '') + (d.thirst > 0 ? 'thirst +' + d.thirst : '') : 'Cooking ingredient' }));
+      });
+    }
+    // Eat or drink what you're carrying
+    Object.keys(GROCERIES).forEach(function (k) {
+      var d = GROCERIES[k]; if (!d.verb || !grocCount(k)) return;
+      if (d.needsHome && !home) return;
+      var useful = (d.hunger && n.hunger < 900) || (d.thirst > 0 && n.thirst < 900);
+      if (!useful) return;
+      var lbl = d.verb === 'Make' ? 'Make a pot of instant noodles' : d.verb + ' ' + (d.verb === 'Drink' ? (k === 'milk' ? 'a glass of milk' : 'a bottle of water') : (k === 'fruit' ? 'an apple' : k === 'bread' ? 'a slice of bread' : 'some crisps'));
+      out.actions.push(opt(lbl + ' (' + grocCount(k) + ' left)', function () {
+        var day = grocTake(k), off = isOff(k, day);
+        if (d.hunger) chg('needs.hunger', d.hunger);
+        if (d.thirst) chg('needs.thirst', d.thirst);
+        n.bowels = clamp(n.bowels + (d.hunger ? 15 : 0) + (d.bowels || 0), 0, MAX);
+        if (d.thirst > 100) n.bladder = clamp(n.bladder + 40, 0, MAX);
+        if (off) { maybePoison(0.5); return { text: '<p>' + (k === 'milk' ? 'One sip and you know. The milk has gone off.' : 'It tastes stale and a bit off. You finish it anyway.') + '</p>', minutes: d.mins }; }
+        return { text: '<p>' + d.text + '</p>', minutes: d.mins };
+      }, { sub: 'Your groceries', time: d.mins }));
+    });
+    // Cook a proper meal from ingredients
+    if ((home || hid === 'dorm_hall') && n.hunger < 800) {
+      var recipe = grocCount('pasta') ? ['pasta', 1, 'pasta with sauce'] : (grocCount('eggs') >= 2 && grocCount('bread')) ? ['eggs', 2, 'eggs on toast'] : null;
+      if (recipe) out.actions.push(opt('Cook ' + recipe[2], function () {
+        var anyOff = false;
+        for (var i = 0; i < recipe[1]; i++) { if (isOff(recipe[0], grocTake(recipe[0]))) anyOff = true; }
+        if (recipe[0] === 'eggs' && isOff('bread', grocTake('bread'))) anyOff = true;
+        var skill = S().skills.cooking || 0, bonus = Math.round(skill / 10);
+        chg('needs.hunger', 480 + bonus); chg('needs.stress', -20); chg('needs.thirst', 20);
+        n.bowels = clamp(n.bowels + 50, 0, MAX); trainSkill('cooking', 8);
+        if (hasTrait('homeCook')) { chg('needs.hunger', 110); chg('needs.stress', -20); }
+        if (anyOff) maybePoison(0.4);
+        return { text: '<p>You cook ' + recipe[2] + ' in the shared kitchen and eat it while it\'s hot. Proper food, and cheaper than eating out.' + (anyOff ? ' One of the ingredients smelled a little past it.' : '') + '</p>', minutes: 30 };
+      }, { sub: 'Your groceries', time: 30 }));
+    }
+  }
+
   function getOptions() {
     var s = S(), n = s.needs, c = s.clothing;
     var out = { dialogue: [], actions: [], travel: [], other: [] };
@@ -738,6 +820,7 @@
         return { text: '<p>You pick up a box of cold tablets and take one with water at the counter. Within the hour things feel a little less foggy. <span class="flavor">(Your cold will clear about twice as fast.)</span></p>', minutes: 10 };
       }));
     }
+    groceryOptions(out, n, home);
     out.other.push(opt('Check yourself over', function () { return { text: selfDescription(), minutes: 1 }; }));
     return out;
   }
@@ -888,6 +971,7 @@
   function boot() {
     if (!window.G || !G.register) return setTimeout(boot, 20);
     G.stats = api;
+    exposeGroceries();
     G.register({
       id: 'stats',
       init: function (state) {

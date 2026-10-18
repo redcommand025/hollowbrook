@@ -64,7 +64,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     name: 'Marcus Vane',
     group: 'Influential',
     age: 34,
-    role: 'Owner of Vane & Daughters general store',
+    role: 'Owner of Hollowbrook Grocer',
     defaults: {
       gender: 'penis',
       appearance: 'male'
@@ -675,6 +675,41 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       loc: 'woods'
     }]
   }, {
+    id: 'dot',
+    name: 'Dot Pearce',
+    group: 'Neighbors',
+    age: 58,
+    role: 'Cashier at Hollowbrook Grocer for thirty-one years',
+    defaults: {
+      gender: 'vagina',
+      appearance: 'female'
+    },
+    blurb: 'Reading glasses on a beaded chain, a cardigan in every colour, and a memory for what everyone in town buys.',
+    likes: ['cooking', 'kindness'],
+    gifts: {
+      herbal_tea: 2,
+      flowers: 2,
+      chocolate: 1,
+      coffee: 1,
+      pastry: 1
+    },
+    schedule: [{
+      days: WEEKDAYS,
+      from: 7,
+      to: 15,
+      loc: 'market'
+    }, {
+      days: [5],
+      from: 13,
+      to: 22,
+      loc: 'market'
+    }, {
+      days: [6],
+      from: 10,
+      to: 12,
+      loc: 'church'
+    }]
+  }, {
     id: 'fen',
     name: 'Fen',
     group: 'Non-Human',
@@ -823,6 +858,9 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     var n = BY_ID[id];
     var st = S();
     if (st && ns(st).dates[id] && ns(st).dates[id].active) return ns(st).dates[id].loc;
+    try {
+      if (grocerRun(id)) return 'market';
+    } catch (e) {}
     try {
       if (MARKET_STALLS[id] && window.G.world && window.G.world.marketLive && window.G.world.marketLive() && t.hour >= 9 && t.hour < 12) return 'town_square';
     } catch (e) {}
@@ -3318,6 +3356,103 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       }]
     }
   };
+  // ---------- Hollowbrook Grocer: Dot the cashier + classmates out shopping ----------
+  Object.assign(SMALLTALK, {
+    dot: {
+      cold: ['"Card or cash. Bag\'s five cents."'],
+      neutral: ['"You\'re one of the college lot. I can tell by the noodles."', '"Milk\'s on offer. Don\'t buy the one at the front, it\'s the oldest."', '"Self-checkout\'s broken again. Thank goodness. I hate that thing."'],
+      friendly: ['"I put a few of the good apples aside. Don\'t tell the manager."', '"You\'re eating better. I notice these things. It\'s my job, practically."'],
+      friend: ['"Thirty-one years on this till. I\'ve rung up half this town\'s weddings and all of its hangovers."'],
+      close: ['She slips a chocolate bar into your bag without scanning it and winks. "Staff discount. Very unofficial."']
+    }
+  });
+  Object.assign(DATING_LINES, {
+    dot: ['"Closing up in ten. Walk me to the bus?"', 'She has saved you the last fresh loaf, wrapped in paper with a little heart drawn on it.']
+  });
+  Object.assign(HEART, {
+    dot: [{
+      prompt: '"Do you ever think about what people buy? It tells you everything."',
+      replies: [{
+        label: '"What does mine say?"',
+        text: '"That you\'re tired and you\'re trying. Mostly trying." She smiles. "It\'s a good basket."',
+        rep: 5,
+        aff: 2
+      }, {
+        label: '"That\'s a bit nosy."',
+        text: '"Nosy\'s free. Bag\'s five cents."',
+        rep: 2
+      }, {
+        label: '"Tell me a secret one."',
+        text: '"The mayor buys the same frozen lasagne every Friday. Every. Friday."',
+        rep: 4,
+        aff: 2
+      }]
+    }, {
+      prompt: '"My husband used to do the late shift with me. Six years gone now."',
+      replies: [{
+        label: '"What was he like?"',
+        text: '"Terrible at maths. Wonderful at everything else." Her voice catches, then steadies.',
+        rep: 6,
+        aff: 3
+      }, {
+        label: '"I\'m sorry."',
+        text: '"Don\'t be. I had him. Plenty don\'t get that."',
+        rep: 4
+      }, {
+        label: 'Help her stack the baskets',
+        text: 'You work side by side in silence. She squeezes your arm when you\'re done.',
+        rep: 5,
+        aff: 3
+      }]
+    }, {
+      prompt: '"A chain wants to buy the shop off Marcus. I\'ve not told anyone."',
+      replies: [{
+        label: '"We\'ll fight it."',
+        text: '"We?" She laughs, and then she cries a little, and then she laughs again. "We, then."',
+        rep: 7,
+        aff: 6
+      }, {
+        label: '"Talk to Mina. She loves a petition."',
+        text: '"The council girl? Maybe I will."',
+        rep: 5,
+        aff: 2
+      }, {
+        label: '"Would you retire?"',
+        text: '"And do what? Talk to the cat?"',
+        rep: 3
+      }]
+    }]
+  });
+  Object.assign(PET_REACT, {
+    dot: {
+      like: 1,
+      line: '"No dogs in the shop, love." She sneaks it a biscuit anyway.'
+    }
+  });
+  Object.assign(BIRTHDAYS, {
+    dot: ['Spring', 17]
+  });
+  INVITE_SPOT.dot = 'cafe';
+  Object.assign(ROMANCE_PLUS, {
+    dot: {
+      title: 'Closing Time',
+      offer: '"I\'ve never once left this shop on time. Come by at closing and make me. Bring something sweet."',
+      summary: 'Dot wants you to come by Hollowbrook Grocer at closing time. Bring chocolate.',
+      steps: [{
+        kind: 'item',
+        item: 'chocolate',
+        text: 'Bring Dot a bar of chocolate.'
+      }, {
+        kind: 'meet',
+        loc: 'market',
+        from: 21,
+        to: 22,
+        text: 'Meet Dot at Hollowbrook Grocer between 21:00 and 22:00.',
+        scene: 'Dot switches off the lights aisle by aisle until only the fridges hum. You share the chocolate sitting on the counter, legs swinging like teenagers. She tells you she always wanted to see the sea in winter. When she kisses you, she tastes of chocolate and she laughs into it, and then the evening is just yours.'
+      }]
+    }
+  });
+  RELATIONS.push(['dot', 'rosa', 'friends', 'Rosa and Dot have done the Sunday crossword together for twenty years.'], ['dot', 'marcus', 'friends', 'Marcus owns the Grocer, but everyone knows Dot runs it. They bicker like an old married couple.'], ['dot', 'jules', 'friends', 'Jules bakes the bread Dot sells, and Dot pretends not to know Jules eats half of it.']);
   var _loop2 = function _loop2() {
     var R = ROMANCE_PLUS[id],
       qid = 'rom_' + id;
@@ -4047,6 +4182,41 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       }
     }
   }];
+  QX.push({
+    id: 'dot_delivery',
+    giver: 'dot',
+    title: 'Delivery Day',
+    minRep: 5,
+    offer: '"Lorry\'s early and the stock boy\'s late. Give me an hour shifting tins and I\'ll see you right."',
+    summary: 'Help Dot restock the shelves at Hollowbrook Grocer.',
+    steps: [Go('market', 7, 15, 'Restock shelves with Dot at Hollowbrook Grocer (1 hour).', 'Restock the shelves with Dot', 'Tins, cereal, a pallet of toilet roll that fights back. Dot directs you like an air traffic controller and hums the whole time.', 60, {
+      fatigue: 30
+    })],
+    reward: {
+      rep: 8,
+      money: 12,
+      skill: ['housekeeping', 3]
+    }
+  }, {
+    id: 'dot_petition',
+    giver: 'dot',
+    title: 'Save the Grocer',
+    minRep: 35,
+    after: 'dot_delivery',
+    offer: '"A supermarket chain wants Marcus to sell up, and he\'s tempted. If enough people sign, the council has to hear it, and he\'ll listen to the council. Would you ask around? Start with that council girl."',
+    summary: 'Help Dot gather support to keep Hollowbrook Grocer open.',
+    steps: [Tk('mina', 'Ask Mina Sato to back Dot\'s petition.', 'Ask Mina to back Dot\'s petition', 'Mina\'s eyes light up. "A petition? For a local business? Give me that clipboard."'), Go('town_square', 9, 17, 'Collect signatures in Market Square.', 'Collect signatures for the Grocer', 'Two hours with a clipboard. Most people sign. One man asks if the Grocer will finally stock oat milk. You promise nothing.', 120, {
+      fatigue: 20
+    }), Tk('dot', 'Bring the signatures back to Dot.', 'Give Dot the signatures', 'She counts them twice, then a third time, and has to sit down on a crate. "Well. Well, well."')],
+    reward: {
+      rep: 18,
+      fame: ['kindnessFame', 6],
+      also: {
+        mina: 5,
+        rosa: 4
+      }
+    }
+  });
   var qxFlag = function qxFlag(q, i) {
     return 'qx_' + q + '_s' + i;
   };
@@ -4779,6 +4949,28 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     } catch (e) {}
     return live ? "<p>" + nm(id) + " is minding a market stall of " + MARKET_STALLS[id] + ".</p>" : '';
   }
+  // Classmates sometimes pop out for groceries (a stable pick per day so they don't flicker in and out).
+  var GROCER_STUDENTS = ['sam', 'theo', 'ollie', 'mina'];
+  var GROCER_LINES = {
+    sam: '"Don\'t judge my basket," Sam says. It is entirely instant noodles and a single, defiant lemon.',
+    theo: 'Theo is reading the protein content of every yoghurt with great seriousness.',
+    ollie: 'Ollie is frozen in front of the cereal, as if choosing wrong would be permanent.',
+    mina: 'Mina has a written list, in colour-coded pens, and is ticking it off at speed.'
+  };
+  function grocerRun(id) {
+    if (!GROCER_STUDENTS.includes(id)) return false;
+    var t = time();
+    var h = t.hour,
+      wk = t.weekdayIndex >= 5;
+    var slot = wk ? h >= 11 && h < 13 : h >= 17 && h < 19;
+    if (!slot) return false;
+    var seed = (t.day * 31 + id.charCodeAt(0) * 7 + id.length * 13) % 7;
+    return seed < 2; // roughly 2 days in 7
+  }
+  function grocerGreet(state, id) {
+    return loc(state) === 'market' && grocerRun(id) && GROCER_LINES[id] ? "<p>You bump into " + nm(id) + " in the aisles. " + GROCER_LINES[id] + "</p>" : '';
+  }
+  var CASHIER_LINES = ['The evening cashier, a student from the college, scans your things without looking up from a textbook.', 'The cashier asks if you want a bag, then sighs when you say yes.', 'A tired cashier wishes you a good night and seems to mean it.'];
   // ---------- Smell, accidents and being seen (named NPC side) ----------
   // Reads the player's state defensively so it works with whatever stats.js / wardrobe.js expose:
   //   strong: soiled lower clothing (stats.clothing.lowerSoiled, a worn item with .soiled, or an unwashed bowel accident)
@@ -5094,7 +5286,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               node: 'root'
             };
             var st = _stage(s, id).key;
-            var pr = petReaction(s, id) + birthdayGreet(s, id) + conditionLine(s, id) + socialGreet(s, id) + marketGreet(s, id) + sightGreet(s, id);
+            var pr = petReaction(s, id) + birthdayGreet(s, id) + conditionLine(s, id) + socialGreet(s, id) + marketGreet(s, id) + grocerGreet(s, id) + sightGreet(s, id);
             if (first) return {
               text: pr + ("You introduce yourself. " + BY_ID[id].blurb + " \"" + BY_ID[id].name + ",\" " + pronouns(id).sub + " say" + (pronouns(id).be === 'are' ? '' : 's') + ". \"Nice to meet you.\""),
               minutes: 5

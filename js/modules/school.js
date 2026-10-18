@@ -438,9 +438,24 @@
                shifts: ['You muck out the goat pen. Biscuit supervises, eating your sleeve.', 'Fence repairs along the lower field. The wind is sharp but the work is honest.', 'You load crates of squash into the van for the dining commons.'] },
     library: { name: 'Whitlock Library', title: 'Library assistant', loc: 'library', from: 9, to: 22, pay: 10, needStat: 'awareness', boss: 'Mr. Okonkwo, the head librarian', fame: 'business',
                intro: 'The head librarian peers over half-moon glasses. "Shelving, the returns desk, and absolute silence. Can you manage that?"',
-               shifts: ['You reshelve a trolley of returns. Someone has used a slice of ham as a bookmark.', 'The returns desk is quiet, so you quietly read half a novel between stampings.', 'You help a panicked first-year find three sources for an essay due at midnight.'] }
+               shifts: ['You reshelve a trolley of returns. Someone has used a slice of ham as a bookmark.', 'The returns desk is quiet, so you quietly read half a novel between stampings.', 'You help a panicked first-year find three sources for an essay due at midnight.'] },
+    grocer:  { name: 'Hollowbrook Grocer', title: 'Shelf stocker', loc: 'market', from: 7, to: 22, hrs: 2, pay: 10, needStat: 'physique', boss: 'the store manager', fame: 'business', fitsClasses: true,
+               intro: 'The store manager hands you a box cutter and a hi-vis tabard. "Two-hour shifts, built round your timetable. Stack them so the labels face out, and the new stock goes at the back."',
+               shifts: ['You face up the tinned aisle until every label points the same way. It feels oddly satisfying.', 'A pallet of milk and eggs turns up early, so you rotate the chiller and move the older dates to the front.',
+                        'You restock the noodle shelf twice. Exam season empties it as fast as you can fill it.', 'Someone stacked a pyramid of oranges at the end of the aisle. You rebuild it after a child pulls one from the bottom.'] }
   };
   if (window.G && G.world && G.world.location && G.world.location('cafe') && G.world.location('cafe').name) JOBS.cafe.name = G.world.location('cafe').name;
+  try { var _gl = G.world && G.world.location && G.world.location('market'); if (_gl) { if (_gl.name) JOBS.grocer.name = _gl.name; if (_gl.open && _gl.open.length === 2) { JOBS.grocer.from = _gl.open[0]; JOBS.grocer.to = _gl.open[1]; } } } catch (e) {}
+  function jobHrs(j) { return j.hrs || 3; }
+  // a class block (2h) overlapping [hour, hour+hrs) today, or null
+  function classClash(hrs) {
+    var t = time(), list = TIMETABLE[t.weekday]; if (!list) return null;
+    if (G.time && G.time.season === 'Summer') return null;
+    var s = S(); if (s.expelled || s.graduated) return null;
+    var a = t.hour + t.minute / 60, b = a + hrs;
+    for (var i = 0; i < BLOCKS.length; i++) if (a < BLOCKS[i] + 2 && b > BLOCKS[i]) return { subj: list[i], start: BLOCKS[i] };
+    return null;
+  }
   function applyJob(id) {
     var j = JOBS[id], s = S(), v = statVal(j.needStat);
     if (s.jobs[id] && s.jobs[id].refusedDay === time().day) return { text: '<p>You already asked today. Better leave it until tomorrow.</p>', minutes: 1 };
@@ -449,7 +464,7 @@
     if (chance(clamp(0.5 + v / 1000, 0.5, 0.98))) {
       s.jobs[id] = { hired: true, shifts: 0, lastDay: 0, perf: 50, raise: 0 };
       G.notify('Hired: ' + j.title + ' at ' + j.name, 'up');
-      return { text: '<p>' + j.intro + '</p><p>You\'re hired as a ' + j.title.toLowerCase() + '. You can pick up a 3-hour shift any day between ' + j.from + ':00 and ' + j.to + ':00, $' + j.pay + '/hr.</p>', minutes: 20 };
+      return { text: '<p>' + j.intro + '</p><p>You\'re hired as a ' + j.title.toLowerCase() + '. You can pick up a ' + jobHrs(j) + '-hour shift any day between ' + j.from + ':00 and ' + j.to + ':00, $' + j.pay + '/hr.' + (j.fitsClasses ? ' Shifts never overlap your classes.' : '') + '</p>', minutes: 20 };
     }
     s.jobs[id] = { refusedDay: time().day };
     return { text: '<p>The interview goes stiffly. ' + cap(j.boss) + ' says they\'ll "keep your details on file". Try again another day.</p>', minutes: 20 };
@@ -459,7 +474,7 @@
     if (m.lastDay === t.day) return { text: '<p>You\'ve already worked a shift here today.</p>', minutes: 1 };
     var fat = (G.state.stats && G.state.stats.needs && G.state.stats.needs.fatigue) || 0;
     m.lastDay = t.day; m.shifts++;
-    var rate = j.pay + m.raise, hrs = 3, out = '<p><b>' + (RANKS[id] ? RANKS[id][m.rank || 0] : j.title) + ' shift at ' + j.name + '</b></p><p>' + pick(j.shifts) + '</p>';
+    var rate = j.pay + m.raise, hrs = jobHrs(j), out = '<p><b>' + (RANKS[id] ? RANKS[id][m.rank || 0] : j.title) + ' shift at ' + j.name + '</b></p><p>' + pick(j.shifts) + '</p>';
     var perf = rnd(-5, 8) + Math.floor(statVal(j.needStat) / 250) - (fat > 700 ? 8 : 0);
     var tips = 0;
     var ev = Math.random();
@@ -476,6 +491,7 @@
     if (id === 'library') { var sj = pick(Object.keys(SUBJECTS)); if (chance(0.4)) grade(sj, 1); train('awareness', 6); }
     if (id === 'farm') train('physique', 8);
     if (id === 'cafe') train('beauty', 4);
+    if (id === 'grocer') { train('physique', 5); if (t.hour + hrs >= 19 && chance(0.5)) { need('stats.needs.hunger', 120); out += '<p>At closing, the manager lets staff take home the yellow-stickered bread. You eat a roll on the way out.</p>'; } }
     out += '<p>You clock out with $' + pay + (tips ? ' ($' + tips + ' in tips)' : '') + '.</p>';
     out = checkPromotion(id, out);
     if (m.perf < 15) { delete S().jobs[id]; out += '<p>At the end of the shift, ' + j.boss.split(',')[0] + ' tells you, kindly but firmly, not to come back.</p>'; G.notify('Fired from ' + j.name, 'down'); }
@@ -550,10 +566,12 @@
     Object.keys(JOBS).forEach(function (k) {
       var j = JOBS[k], m = s.jobs[k];
       if (here !== j.loc) return;
-      var open = t.hour >= j.from && t.hour + 3 <= j.to;
+      var hrs = jobHrs(j), open = t.hour >= j.from && t.hour + hrs <= j.to;
+      var clash = j.fitsClasses && m && m.hired && open && m.lastDay !== t.day ? classClash(hrs) : null;
       if (!m || !m.hired) o.dialogue.push({ label: 'Ask about work as a ' + j.title.toLowerCase(), run: function () { return applyJob(k); } });
       else {
-        if (open && m.lastDay !== t.day) o.actions.push({ label: 'Work a 3-hour ' + j.title.toLowerCase() + ' shift ($' + (j.pay + m.raise) + '/hr)', run: function () { return workShift(k); } });
+        if (open && m.lastDay !== t.day && !clash) o.actions.push({ label: 'Work a ' + hrs + '-hour ' + j.title.toLowerCase() + ' shift ($' + (j.pay + m.raise) + '/hr)', mins: hrs * 60, run: function () { return workShift(k); } });
+        if (clash) o.other.push({ label: 'Ask about a stocking shift', mins: 1, run: function () { return { text: '<p>The manager checks the rota. "You\'ve got ' + SUBJECTS[clash.subj].name + ' at ' + clash.start + ':00. Come back after class, we\'ll find you a slot."</p>', minutes: 1 }; } });
         o.other.push({ label: 'Quit your job at ' + j.name, run: function () { return quitJob(k); } });
       }
     });
@@ -809,7 +827,7 @@
   }
 
   // --- job promotions ---
-  var RANKS = { cafe: ['Barista', 'Senior barista', 'Shift supervisor'], farm: ['Farmhand', 'Senior farmhand', 'Farm foreman'], library: ['Library assistant', 'Senior assistant', 'Archives assistant'] };
+  var RANKS = { grocer: ['Shelf stocker', 'Senior stocker', 'Stock supervisor'], cafe: ['Barista', 'Senior barista', 'Shift supervisor'], farm: ['Farmhand', 'Senior farmhand', 'Farm foreman'], library: ['Library assistant', 'Senior assistant', 'Archives assistant'] };
   function checkPromotion(id, out) {
     var m = S().jobs[id]; if (!m) return out; m.rank = m.rank || 0;
     var need2 = [[10, 60], [25, 70]][m.rank];

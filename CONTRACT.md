@@ -66,3 +66,8 @@ Every option should declare `minutes` (aliases `mins`, `time`; a number or a fun
 - On `accident` with `kind: 'bowels'` (or `'soiled'`), the worn bottoms get `soiled: true` and the event `soiled` is emitted.
 - `G.wardrobe.soiled()` (alias `isSoiled()`) returns true while the worn bottoms are soiled. `G.wardrobe.soiledHours()` returns hours worn since, and `G.wardrobe.markSoiled()` sets it manually.
 - Changing out of soiled bottoms, or a restroom clean-up or shower (when `stats.flags.dirty` is cleared), ends it. While soiled: style −4 and stress +6 per hour. The accident event can use `kind` or `type`. Soiled items can't be worn again until laundry.
+
+### Inventory (Lucy, inventory.js)
+- Builds on Jimmy's `G.groceries`, and sets `G.groceries.limit` to 24 portions, or 36 with a canvas tote bag ($8 at the grocer).
+- The Bag tab lists `G.groceries.list()` with counts and anything gone off.
+- `G.inventory.limit()`, `used()`, `room()` and `hasTote()`.

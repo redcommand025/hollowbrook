@@ -123,6 +123,48 @@
       schedule: [ { days: [1,2,3,4,5], from: 9, to: 18, loc: 'hair_salon' },
                   { days: [4, 5], from: 19, to: 23, loc: 'bar' },
                   { days: [6], from: 11, to: 14, loc: 'cafe' } ] },
+    // ---------- Phase 4 additions: every category now has at least three ----------
+    { id: 'raman', name: 'Dr. Priya Raman', group: 'Teachers', age: 45, role: 'Chemistry professor who runs the college greenhouse',
+      defaults: { gender: 'vagina', appearance: 'female' },
+      blurb: 'Safety goggles pushed up into grey-streaked hair, and pockets that rattle with seed packets.',
+      likes: ['school', 'tending'], gifts: { herbal_tea: 3, book: 2, coffee: 1, chocolate: -1 },
+      schedule: [ { days: WEEKDAYS, from: 9, to: 14, loc: 'lecture_hall' },
+                  { days: WEEKDAYS, from: 14, to: 18, loc: 'campus_farm' },
+                  { days: WEEKEND, from: 7, to: 10, loc: 'park' } ] },
+    { id: 'ollie', name: 'Ollie Brennan', group: 'Students', age: 18, role: 'First-year music student, painfully shy',
+      defaults: { gender: 'penis', appearance: 'male' },
+      blurb: 'Headphones round his neck, a violin case he hugs like a shield, and a blush that arrives before he does.',
+      likes: ['kindness', 'willpower'], gifts: { chocolate: 3, coffee: 1, sketchbook: 1, flowers: -1 },
+      schedule: [ { days: WEEKDAYS, from: 9, to: 12, loc: 'lecture_hall' },
+                  { days: WEEKDAYS, from: 12, to: 13, loc: 'cafeteria' },
+                  { days: WEEKDAYS, from: 13, to: 16, loc: 'library' },
+                  { days: WEEKEND, from: 14, to: 18, loc: 'cafe' },
+                  { days: ALL, from: 19, to: 23, loc: 'dorm_hall' } ] },
+    { id: 'mina', name: 'Mina Sato', group: 'Students', age: 20, role: 'Student council president with a five-year plan',
+      defaults: { gender: 'vagina', appearance: 'female' },
+      blurb: 'Colour-coded planner, a blazer in every weather, and a handshake that closes deals.',
+      likes: ['socialite', 'school'], gifts: { coffee: 2, book: 2, flowers: 1, sandwich: -1 },
+      schedule: [ { days: WEEKDAYS, from: 8, to: 9, loc: 'cafe' },
+                  { days: WEEKDAYS, from: 9, to: 15, loc: 'quad' },
+                  { days: WEEKDAYS, from: 15, to: 18, loc: 'library' },
+                  { days: [3], from: 18, to: 21, loc: 'lecture_hall' },
+                  { days: WEEKEND, from: 10, to: 13, loc: 'town_hall' } ] },
+    { id: 'benny', name: 'Benny Moss', group: 'Outcasts', age: 47, role: 'Fisherman with a prison record, mending nets at the docks',
+      defaults: { gender: 'penis', appearance: 'male' },
+      blurb: 'Hands like old rope, a faded tattoo of an anchor, and a laugh that surprises people.',
+      likes: ['willpower', 'skulduggery'], gifts: { sandwich: 2, coffee: 2, chocolate: 1, flowers: -1 },
+      schedule: [ { days: ALL, from: 5, to: 13, loc: 'docks' },
+                  { days: ALL, from: 18, to: 22, loc: 'bar' } ] },
+    { id: 'nell', name: 'Nell Bramble', group: 'Non-Human', age: 'older than she looks, and she looks about 40', role: 'Herbalist who lives at the edge of Hollow Woods',
+      defaults: { gender: 'vagina', appearance: 'female' },
+      blurb: 'Moss-green shawl, bare feet in any weather, and a basket that always smells of rain. People say she never crosses running water.',
+      likes: ['tending', 'awareness'], gifts: { chocolate: 2, flowers: 2, herbal_tea: 1, pastry: 1, coffee: -1 },
+      schedule: [ { days: ALL, from: 7, to: 18, loc: 'woods' } ] },
+    { id: 'fen', name: 'Fen', group: 'Non-Human', age: 'an adult of no fixed age', role: 'Ferryman at the River Docks',
+      defaults: { gender: 'vagina', appearance: 'androgynous' },
+      blurb: 'Eyes the grey-green of river water, and a long coat that somehow never gets wet in the rain.',
+      likes: ['awareness', 'kindness'], gifts: { pastry: 2, book: 2, chocolate: 1, water: -1 },
+      schedule: [ { days: ALL, from: 14, to: 23, loc: 'docks' } ] },
   ];
   window.NNPC_ROSTER = ROSTER.map(n => ({ id: n.id, name: n.name, category: n.group, gender: n.defaults.gender, appearance: n.defaults.appearance, blurb: n.blurb }));
   const BY_ID = {};
@@ -172,6 +214,7 @@
     const n = BY_ID[id];
     const st = S();
     if (st && ns(st).dates[id] && ns(st).dates[id].active) return ns(st).dates[id].loc;
+    try { if (MARKET_STALLS[id] && window.G.world && window.G.world.marketLive && window.G.world.marketLive() && t.hour >= 9 && t.hour < 12) return 'town_square'; } catch (e) {}
     for (const e of n.schedule) {
       if (e.days.includes(typeof t.weekdayIndex === 'number' ? t.weekdayIndex : t.weekday) && t.hour >= e.from && t.hour < e.to) return e.loc;
     }
@@ -215,6 +258,8 @@
     water:      { name: 'bottle of water',    price: 2,  shop: 'market' },
     book:       { name: 'used paperback',     price: 8,  shop: 'library' },
     sketchbook: { name: 'sketchbook',         price: 10, shop: 'market' },
+    chocolate:  { name: 'bar of chocolate',   price: 5,  shop: 'market' },
+    herbal_tea: { name: 'tin of herbal tea',  price: 7,  shop: 'florist' },
   };
   const has = (state, it) => (ns(state).items[it] || 0) > 0;
   const addItem = (state, it, n = 1) => { ns(state).items[it] = (ns(state).items[it] || 0) + n; };
@@ -645,10 +690,12 @@
       const spots = { eleanor: 'cafe', marcus: 'bar', hart: 'library', okafor: 'park', sam: 'park', theo: 'town_square', rosa: 'residential',
         jules: 'cafe', wren: 'alley', silas: 'town_square', kit: 'park', morrow: 'campus_farm', hazel: 'park', dee: 'bar' };
       const hour = t.isWeekend ? pick([11, 14, 17]) : pick([17, 18, 19]);
-      N.invites[n.id] = { day: t.day, loc: spots[n.id] || 'cafe', hour, done: false };
+      spots[n.id] = spots[n.id] || INVITE_SPOT[n.id] || 'cafe';
+      N.invites[n.id] = { day: t.day, loc: spots[n.id], hour, done: false };
       const place = (window.G.world && window.G.world.location && window.G.world.location(spots[n.id])) ? window.G.world.location(spots[n.id]).name : spots[n.id];
       window.G.notify(`A note from ${n.name}: "Meet me at ${place} around ${hour}:00 today?"`, 'info');
     }
+    processRumors(state);
     // Jealousy: dating more than one person risks someone finding out
     const ps = partners(state);
     if (ps.length > 1) {
@@ -677,6 +724,268 @@
     return out;
   }
 
+
+  // ---------- Phase 4: new NPC content ----------
+  Object.assign(SMALLTALK, {
+    raman: { cold: ['"Unless you are here about the lab safety form, I am busy."'],
+             neutral: ['"Everything is chemistry. Bread, rust, falling in love. Mostly bread."', '"Do not touch the purple tray. I mean it, and so does the tray."'],
+             friendly: ['"You have soil under your nails. Good. It means you were useful."'],
+             friend: ['"I wanted to be a poet. Then I found out that tomatoes actually answer you."'],
+             close: ['She hands you a seedling in a yoghurt pot. "Name it. Then keep it alive. That is friendship, scientifically."'] },
+    ollie: { cold: ['Ollie flinches and turns up his headphones.'],
+             neutral: ['"Oh! H-hi. Sorry. I was humming. Was I humming?"', '"The practice rooms are booked until December. I play in the stairwell. The acoustics are... fine."'],
+             friendly: ['"I wrote down a tune that you\'d like, maybe. Or not. Probably not."'],
+             friend: ['"You\'re the only person here I don\'t rehearse conversations with first."'],
+             close: ['He actually meets your eyes. "I played better this week. I think it\'s because of you."'] },
+    mina:  { cold: ['"I have a three-minute window. You\'ve used two."'],
+             neutral: ['"Have you signed the petition? There is always a petition."', '"Theo thinks the rowing budget is sacred. Theo is wrong."'],
+             friendly: ['"You\'re organised enough to be dangerous. I respect that."'],
+             friend: ['"Everyone thinks I want to be mayor. I want to be the person the mayor calls."'],
+             close: ['She closes the planner, which you have never seen her do. "Just talk to me. No agenda."'] },
+    benny: { cold: ['"Docks are public. Doesn\'t mean you\'re welcome on mine."'],
+             neutral: ['"River\'s low. Fish are sulking."', '"Don\'t stand on the coiled rope. That\'s how people end up swimming."'],
+             friendly: ['"You\'re alright, kid. You don\'t stare at the tattoos."'],
+             friend: ['"Did six years. Came out, and the river was still here. Only thing that waited."'],
+             close: ['He tosses you the end of a net. "Here. Hold this. Nobody else I\'d trust with it."'] },
+    nell:  { cold: ['Nell does not look up from her basket. The birds stop singing until you leave.'],
+             neutral: ['"Nettles for the blood, yarrow for the cuts, and patience for everything else."', '"You walked here the long way. Good. The short way is not for you yet."'],
+             friendly: ['"Take this sprig of rosemary. For remembering. You will need it."'],
+             friend: ['"Rosa Delgado thinks I am a quack. I delivered her eldest. She does not remember that."'],
+             close: ['She laughs, and for a moment the wood seems to lean closer to listen. "You may come here whenever you like."'] },
+    fen:   { cold: ['Fen watches the water instead of you.'],
+             neutral: ['"Crossing is a dollar. Coming back is free, if you come back."', '"The river is in a mood today. Mind your feet."'],
+             friendly: ['"You asked my name properly the first time. Few do."'],
+             friend: ['"I have rowed this stretch a long while. Longer than the bridge. Longer than the bridge before that."'],
+             close: ['Fen trails a hand in the river and smiles. "It likes you. It doesn\'t like anyone."'] },
+  });
+  Object.assign(DATING_LINES, {
+    raman: ['"I labelled a seed tray with your name. Purely for record-keeping." She is blushing.', 'She takes off her goggles to kiss your cheek, which you are told is a great honour.'],
+    ollie: ['He plays four notes when he sees you. "That\'s yours. Everyone gets four notes. Yours are the nicest."', 'Ollie holds your hand under the table and goes very red about it.'],
+    mina:  ['"I scheduled you in. Permanently. Don\'t argue, it\'s in pen."', 'She straightens your collar. "Campaign photo. Kidding. Mostly."'],
+    benny: ['"Saved you the best of the catch. Don\'t tell the cat."', 'He hums an old sea song under his breath when you sit beside him.'],
+    nell:  ['"I dreamt you would come by today. I put the kettle on before you knocked."', 'A bramble catches your sleeve, and Nell scolds it gently until it lets go.'],
+    fen:   ['"No fare for you. Not ever." Fen brushes river-cold fingers over yours.', '"The water was calmer this morning. I think it knew you were coming."'],
+  });
+  Object.assign(HEART, {
+    raman: [
+      { prompt: '"Why do you study? Honestly."', replies: [
+        { label: '"To understand things."', text: '"Good. Most people only want the certificate." She nods slowly.', rep: 5, aff: 2 },
+        { label: '"To get a good job."', text: '"Honest. I can work with honest."', rep: 3 },
+        { label: '"I haven\'t worked it out yet."', text: '"Neither had I, at your age. Or at forty." She laughs.', rep: 4, aff: 3 } ] },
+      { prompt: '"My husband thinks I love the greenhouse more than I love him. He may be right."', replies: [
+        { label: '"Have you told him that?"', text: '"We are... separated. So, in a way, yes." She looks at you differently.', rep: 5, aff: 3 },
+        { label: '"Plants don\'t argue back."', text: '"Exactly! At last, someone understands."', rep: 4, aff: 2 },
+        { label: 'Just listen', text: 'She talks about her marriage for a long time, carefully, as if testing each word.', rep: 6, aff: 3 } ] },
+      { prompt: '"If I left the college, would anyone keep the greenhouse alive?"', replies: [
+        { label: '"I would."', text: 'She looks at you for a very long time. "I believe you."', rep: 6, aff: 6 },
+        { label: '"Don\'t leave."', text: '"Ha. Nobody has asked me that before."', rep: 5, aff: 4 },
+        { label: '"Someone always does."', text: '"That is true of greenhouses. Less so of people."', rep: 3 } ] } ],
+    ollie: [
+      { prompt: '"Do you ever feel like everyone else got the instructions and you didn\'t?"', replies: [
+        { label: '"All the time."', text: 'He breathes out, shakily relieved. "Oh. Okay. Good. Not good, but good."', rep: 5, aff: 3 },
+        { label: '"Nobody has instructions."', text: '"That\'s... actually really comforting?"', rep: 4, aff: 2 },
+        { label: '"You just have to fake it."', text: '"I\'m bad at faking." But he smiles.', rep: 2 } ] },
+      { prompt: '"My dad wanted me to do engineering. I said music. We haven\'t talked since."', replies: [
+        { label: '"You were brave."', text: '"I was terrified." "That\'s what brave is," you say. He goes quiet.', rep: 6, aff: 3 },
+        { label: '"Maybe call him?"', text: '"Maybe. After the recital. If it goes well."', rep: 4, aff: 2 },
+        { label: '"Play me something instead."', text: 'He does, right there in the corridor. It\'s beautiful and a little sad.', rep: 5, aff: 4 } ] },
+      { prompt: '"Would you come to my recital? You don\'t have to. I just... would like you there."', replies: [
+        { label: '"Front row."', text: 'He grins so widely he has to look away.', rep: 6, aff: 6 },
+        { label: '"Wouldn\'t miss it."', text: '"Okay. Okay! Now I really can\'t mess up."', rep: 5, aff: 4 },
+        { label: '"If I\'m free."', text: '"Right. Yeah. Sure." He deflates a little.', rep: 1 } ] } ],
+    mina: [
+      { prompt: '"Is it bad that I like winning more than I like being liked?"', replies: [
+        { label: '"It\'s honest."', text: '"Honest. I\'ll take honest."', rep: 4, aff: 2 },
+        { label: '"Can\'t you have both?"', text: '"I\'m working on it. You\'re helping, apparently."', rep: 5, aff: 3 },
+        { label: '"A bit, yeah."', text: 'She laughs, startled. "Rude. Accurate."', rep: 3, aff: 2 } ] },
+      { prompt: '"My parents run a restaurant. Eighteen-hour days. I swore I would never be that tired."', replies: [
+        { label: '"You already are."', text: 'She opens her mouth to argue, then doesn\'t. "...Yes. I am."', rep: 6, aff: 3 },
+        { label: '"What would you rather be?"', text: '"Nobody has asked me that since I was nine." She thinks about it.', rep: 5, aff: 4 },
+        { label: '"They must be proud."', text: '"They are. I wish that made it easier."', rep: 4 } ] },
+      { prompt: '"If I lose the election, who am I?"', replies: [
+        { label: '"Still you."', text: 'She takes your hand, briefly, and squeezes. "Thank you."', rep: 6, aff: 6 },
+        { label: '"Someone with free evenings."', text: '"Imagine." She laughs properly for the first time.', rep: 5, aff: 3 },
+        { label: '"You won\'t lose."', text: '"Flattery. I\'ll allow it."', rep: 3, aff: 1 } ] } ],
+    benny: [
+      { prompt: '"You ever done something you can\'t take back?"', replies: [
+        { label: '"Yes."', text: 'He nods once. No questions. "Then you know."', rep: 5, aff: 2 },
+        { label: '"Not yet."', text: '"Keep it that way, kid."', rep: 3 },
+        { label: '"What did you do?"', text: '"Stole a car. Crashed it. Hurt a man. He got better. I didn\'t, for a while."', rep: 5, aff: 3 } ] },
+      { prompt: '"Got a son. Twenty-two. Lives in the city. Doesn\'t write."', replies: [
+        { label: '"Do you write to him?"', text: '"...Can\'t read good. Can\'t write good." He looks ashamed. "Never told anyone that."', rep: 7, aff: 3 },
+        { label: '"Give him time."', text: '"Gave him six years. Wasn\'t my choice."', rep: 3 },
+        { label: 'Sit with him a while', text: 'You watch the river together. It helps.', rep: 5, aff: 3 } ] },
+      { prompt: '"People see the record. You see something else. Why?"', replies: [
+        { label: '"Because I know you."', text: 'He has to look away, at the water. "Damn river\'s in my eye."', rep: 6, aff: 6 },
+        { label: '"Everyone deserves a second go."', text: '"Most say that. You mean it."', rep: 5, aff: 3 },
+        { label: '"You make good coffee."', text: 'A huge, surprised laugh. "That I do."', rep: 4, aff: 2 } ] } ],
+    nell: [
+      { prompt: '"What do you think lives in these woods?"', replies: [
+        { label: '"Foxes. Owls. Maybe you."', text: '"Maybe me," she agrees, eyes glinting.', rep: 4, aff: 2 },
+        { label: '"Things older than the town."', text: 'She looks at you sharply, then smiles. "You listen. Good."', rep: 6, aff: 2 },
+        { label: '"Nothing. It\'s just trees."', text: '"Trees are never just trees." She is not offended.', rep: 2 } ] },
+      { prompt: '"I had a sister once. She went across the river and did not come back the same."', replies: [
+        { label: '"Is that why you don\'t cross?"', text: '"One of the reasons. The other is my business." But she is pleased you noticed.', rep: 6, aff: 3 },
+        { label: '"I\'m sorry."', text: '"So was she, I think. In the end."', rep: 4, aff: 2 },
+        { label: '"Tell me about her."', text: 'She does, for an hour, and the light changes strangely while she talks.', rep: 5, aff: 4 } ] },
+      { prompt: '"Would you remember me, if I let you forget?"', replies: [
+        { label: '"Don\'t let me."', text: 'She tucks a sprig of rosemary behind your ear. "Then I won\'t."', rep: 6, aff: 6 },
+        { label: '"I\'d remember anyway."', text: '"Many have said so." A pause. "You might be the first to mean it."', rep: 5, aff: 4 },
+        { label: '"Is that a threat?"', text: 'She laughs like birdsong. "A courtesy."', rep: 3, aff: 2 } ] } ],
+    fen: [
+      { prompt: '"What do you think the river carries?"', replies: [
+        { label: '"Water and mud."', text: '"Also those." Fen seems amused.', rep: 2 },
+        { label: '"Memories."', text: 'Fen goes still. "Yes. That too."', rep: 6, aff: 2 },
+        { label: '"Whatever people throw in."', text: '"Unfortunately," Fen sighs, fishing out a crisp packet.', rep: 4, aff: 2 } ] },
+      { prompt: '"Morrow and I came here around the same time. We do not talk about from where."', replies: [
+        { label: '"You don\'t have to."', text: '"Thank you." The water calms around the boat.', rep: 6, aff: 3 },
+        { label: '"Somewhere far?"', text: '"Somewhere close, in the wrong direction."', rep: 4, aff: 2 },
+        { label: '"Are you happy here?"', text: '"Happier, lately." Fen looks at you a moment too long.', rep: 5, aff: 4 } ] },
+      { prompt: '"Will you ride across with me tonight? No fare. No reason."', replies: [
+        { label: '"Yes."', text: 'The crossing is silent, and the stars are doubled in the water.', rep: 6, aff: 6 },
+        { label: '"Where does it go?"', text: '"Only to the other bank. Tonight."', rep: 4, aff: 3 },
+        { label: '"Another time."', text: '"There are always other times. For me."', rep: 2 } ] } ],
+  });
+  Object.assign(PET_REACT, {
+    raman: { like: 1, line: '"Fascinating. Has it been vaccinated? Wonderful creature, wonderful."' },
+    ollie: { like: 2, line: 'Ollie sits right down on the floor and lets your pet climb all over him. He is beaming.' },
+    mina:  { like: 0, line: '"Cute. Keep it off my blazer."', species: { cat: { like: 1, line: '"Oh. Oh, it\'s purring. Okay. I like this one."' } } },
+    benny: { like: 1, line: '"Good little beast. Here." He finds a scrap of fish somewhere.', species: { cat: { like: 2, line: 'The cat walks straight to Benny. "Dockcats know their own," he says, pleased.' } } },
+    nell:  { like: 2, line: 'Your pet sits down at Nell\'s feet and looks at her as if waiting for an instruction.' },
+    fen:   { like: 1, line: 'Fen crouches and murmurs something. Your pet seems to understand it better than you do.', species: { dog: { like: 0, line: 'The dog barks once at Fen, then whines and hides behind you.' } } },
+  });
+  Object.assign(BIRTHDAYS, { raman: ['Autumn', 4], ollie: ['Winter', 10], mina: ['Summer', 2], benny: ['Spring', 8], nell: ['Autumn', 28], fen: ['Summer', 21] });
+  const INVITE_SPOT = { raman: 'campus_farm', ollie: 'dorm_hall', mina: 'cafe', benny: 'docks', nell: 'woods', fen: 'docks' };
+  Object.assign(ROMANCE_PLUS, {
+    raman: { title: 'Under Glass', offer: '"The night-blooming cereus in the greenhouse opens once a year, for one night. I would like to see it with someone. Bring tea. Proper tea."',
+      summary: 'Dr. Raman wants you there when the greenhouse\'s night-blooming cactus opens. Bring her a tin of herbal tea.',
+      steps: [ { kind: 'item', item: 'herbal_tea', text: 'Bring Dr. Raman a tin of herbal tea.' },
+               { kind: 'meet', loc: 'campus_farm', from: 19, to: 23, text: 'Meet Dr. Raman in the farm greenhouse between 19:00 and 23:00.',
+                 scene: 'The greenhouse smells of wet earth and something sweet. At ten past ten the great white flower unfolds, slow as breathing. Priya forgets to take notes. "I have watched this alone for nine years," she says, and when she kisses you her hands still smell of soil.' } ] },
+    ollie: { title: 'Four Notes', offer: '"I wrote something. For you. I want to play it for you in the park, at dusk, when nobody\'s around. Bring chocolate? It helps my nerves."',
+      summary: 'Ollie wrote you a song and wants to play it in the park at dusk. Bring him chocolate for his nerves.',
+      steps: [ { kind: 'item', item: 'chocolate', text: 'Bring Ollie a bar of chocolate.' },
+               { kind: 'meet', loc: 'park', from: 18, to: 22, text: 'Meet Ollie at Millpond Park between 18:00 and 22:00.',
+                 scene: 'He plays by the pond with his eyes shut. The song starts with four notes you recognise, and grows into something that makes the ducks go quiet. When it ends he is shaking. You take the violin out of his hands, carefully, and kiss him.' } ] },
+    mina: { title: 'Off the Record', offer: '"The debate is Thursday. After it, I want one hour where I am not the president of anything. Meet me in the square. Bring coffee, I will have earned it."',
+      summary: 'Mina wants one hour off the record with you after the council debate. Bring her a coffee.',
+      steps: [ { kind: 'item', item: 'coffee', text: 'Bring Mina a takeaway coffee.' },
+               { kind: 'meet', loc: 'town_square', from: 20, to: 23, text: 'Meet Mina in the Town Square between 20:00 and 23:00.',
+                 scene: 'She takes off the blazer and sits on the edge of the fountain, kicking her heels. For an hour she talks about nothing that matters. When the church clock strikes, she leans in. "Off the record," she says, and kisses you.' } ] },
+    benny: { title: 'Low Tide', offer: '"Never taken anyone out on the boat. Sunset, Sunday. Bring a sandwich. I\'ll bring the rest."',
+      summary: 'Benny wants to take you out on his boat at sunset. Bring a sandwich.',
+      steps: [ { kind: 'item', item: 'sandwich', text: 'Bring Benny a sandwich.' },
+               { kind: 'meet', loc: 'docks', from: 18, to: 21, text: 'Meet Benny at the River Docks between 18:00 and 21:00.',
+                 scene: 'The boat creaks out into a river gone gold. Benny catches nothing and doesn\'t care. He tells you about his son, and his years inside, and you tell him things you haven\'t told anyone. When he kisses you, it is careful, like he is afraid you will break, or he will.' } ] },
+    nell: { title: 'Hedge Light', offer: '"There is a light that walks in the woods on certain nights. I would show you, if you are brave. Bring something sweet for the hedge, it is only polite."',
+      summary: 'Nell wants to show you the walking light in Hollow Woods. Bring a bar of chocolate as an offering.',
+      steps: [ { kind: 'item', item: 'chocolate', text: 'Bring Nell a bar of chocolate.' },
+               { kind: 'meet', loc: 'woods', from: 21, to: 24, text: 'Meet Nell in Hollow Woods after 21:00.',
+                 scene: 'Nell leaves the chocolate on a stone. Later it is gone. A pale light drifts between the trees, and Nell holds your hand so you do not follow it. "Most people only see it once," she whispers. "I would like you to see it many times." She kisses you, and the woods are very quiet.' } ] },
+    fen: { title: 'The Crossing', offer: '"Once a year I make a crossing that is not for fares. I would take you. Bring a pastry. The river likes to be bribed."',
+      summary: 'Fen wants to take you on a special late-night crossing. Bring a pastry for the river.',
+      steps: [ { kind: 'item', item: 'pastry', text: 'Bring Fen a pastry.' },
+               { kind: 'meet', loc: 'docks', from: 21, to: 24, text: 'Meet Fen at the River Docks after 21:00.',
+                 scene: 'Fen drops the pastry into the water, and the current carries the boat without the oars. Halfway across, the far bank goes dim and the stars come very close. "This is the only place I have ever felt at home," Fen says. "Until you." The kiss tastes faintly of river.' } ] },
+  });
+
+  // ---------- NPC-to-NPC relationships ----------
+  const RELATIONS = [
+    ['sam', 'ollie', 'friends', 'They share a dorm corridor and a sketchbook-for-mixtape trading habit.'],
+    ['sam', 'theo', 'exes', 'They dated in first year. It ended badly, and they are still careful around each other.'],
+    ['theo', 'mina', 'rivals', 'Mina wants to cut the rowing budget. Theo would rather die.'],
+    ['mina', 'eleanor', 'friends', 'Mina interns at the town hall on weekends, and Eleanor sees a lot of herself in her.'],
+    ['eleanor', 'marcus', 'rivals', 'They have been fighting about parking on Main Street for six years.'],
+    ['marcus', 'dee', 'exes', 'They were engaged once. Dee still cuts his hair, which says a lot about both of them.'],
+    ['marcus', 'benny', 'rivals', 'Benny sells fish off his boat for half of what Marcus charges.'],
+    ['hart', 'raman', 'friends', 'The two of them have a standing Friday argument about whether poetry or chemistry matters more.'],
+    ['okafor', 'raman', 'rivals', 'Every year they fight over the same slice of the science and sports budget.'],
+    ['okafor', 'theo', 'friends', 'She is the reason he became captain, and they both know it.'],
+    ['rosa', 'jules', 'friends', 'Rosa leaves soup on Jules\'s doorstep after night shifts. Jules leaves bread on hers.'],
+    ['rosa', 'nell', 'rivals', 'Rosa calls Nell\'s remedies nonsense. Nell calls Rosa\'s hip a self-inflicted wound.'],
+    ['wren', 'benny', 'friends', 'Benny looks out for Wren and pretends he doesn\'t.'],
+    ['wren', 'mina', 'rivals', 'They were roommates in first year, before Wren dropped out. Neither has forgiven the other.'],
+    ['silas', 'jules', 'exes', 'They lived together for a year, and the songs about it are still on Silas\'s set list.'],
+    ['silas', 'ollie', 'friends', 'Silas gives Ollie free lessons on stage nerves, and Ollie pays him in sandwiches.'],
+    ['kit', 'nell', 'friends', 'They have known each other a very long time, perhaps longer than seems possible.'],
+    ['kit', 'hazel', 'friends', 'Kit supplies the pet shop\'s catnip and Hazel supplies Kit\'s gossip about dogs.'],
+    ['morrow', 'fen', 'friends', 'They arrived in Hollowbrook around the same time, and neither will say from where.'],
+    ['dee', 'hazel', 'friends', 'Their shops share a wall in the shopping centre and a kettle in the back.'],
+    ['fen', 'benny', 'rivals', 'Two people, one river, and some strong opinions about who has right of way.'],
+  ];
+  function links(id) {
+    return RELATIONS.filter(r => r[0] === id || r[1] === id).map(r => ({ other: r[0] === id ? r[1] : r[0], type: r[2], note: r[3], key: [r[0], r[1]].sort().join('_') }));
+  }
+  function linkOf(a, b) { return links(a).find(l => l.other === b) || null; }
+  // Word gets around: helping or hurting someone shifts how their friends and rivals see you.
+  function ripple(state, id, kind) {
+    links(id).forEach(l => {
+      if (!rel(state, l.other)) return;
+      const d = kind === 'help' ? (l.type === 'friends' ? 3 : l.type === 'rivals' ? -2 : 0) : (l.type === 'friends' ? -3 : l.type === 'rivals' ? 1 : 0);
+      if (d) changeRep(state, l.other, d, true);
+    });
+  }
+  const PAIR_LINES = {
+    friends: ['are deep in conversation, laughing at something only they understand.', 'wave at each other across the room like old friends.', 'are sharing a bag of crisps and arguing amiably.'],
+    rivals: ['are pointedly ignoring each other.', 'exchange a very polite, very frosty nod.', 'are arguing in low voices. They stop when they see you.'],
+    exes: ['are carefully standing as far apart as possible.', 'catch each other\'s eye, then both look away too quickly.', 'have a stiff, short conversation that seems to cost them both.'],
+  };
+  function pairScenes(state, here) {
+    const out = [];
+    for (let i = 0; i < here.length; i++) for (let j = i + 1; j < here.length; j++) {
+      const l = linkOf(here[i], here[j]);
+      if (l) { out.push(`${nm(here[i])} and ${nm(here[j])} ${pick(PAIR_LINES[l.type])}`); setFlag(state, 'link_' + l.key); }
+    }
+    return out;
+  }
+  // Jealousy: flirting while you're with someone else
+  function flirtJealousy(state, id) {
+    const ps = partners(state).filter(p => p !== id);
+    if (!ps.length) return '';
+    const here = present(state);
+    const seen = ps.find(p => here.includes(p));
+    const N = ns(state);
+    if (seen) {
+      const r = rel(state, seen);
+      changeRep(state, seen, -10); r.aff = clamp(r.aff - 20, 0, 100);
+      window.G.notify(`${BY_ID[seen].name}: Affection -20`, 'down');
+      if (r.aff < 30) { r.romance = 1; window.G.notify(`${BY_ID[seen].name} has ended things with you.`, 'down'); }
+      return `<p>${nm(seen)} saw that. ${pronouns(seen).Sub} ${pronouns(seen).be === 'are' ? 'turn' : 'turns'} and ${pronouns(seen).be === 'are' ? 'walk' : 'walks'} out without a word.</p>`;
+    }
+    N.rumors = N.rumors || [];
+    const chance = 0.18 + (rel(state, 'dee').met ? 0.1 : 0);
+    ps.forEach(p => {
+      const close = linkOf(p, id) && linkOf(p, id).type === 'friends' ? 0.15 : 0;
+      if (Math.random() < chance + close) N.rumors.push({ partner: p, with: id, day: time().day });
+    });
+    return '';
+  }
+  function processRumors(state) {
+    const N = ns(state);
+    (N.rumors || []).forEach(rm => {
+      const r = rel(state, rm.partner); if (!r || r.romance < 3) return;
+      window.G.notify(`${BY_ID[rm.partner].name} heard you were flirting with ${BY_ID[rm.with].name}.`, 'down');
+      changeRep(state, rm.partner, -6); r.aff = clamp(r.aff - 12, 0, 100);
+      window.G.notify(`${BY_ID[rm.partner].name}: Affection -12`, 'down');
+      r.hurt = time().day;
+      if (r.aff < 30) { r.romance = 1; window.G.notify(`${BY_ID[rm.partner].name} has ended things with you.`, 'down'); }
+    });
+    N.rumors = [];
+  }
+  // Greeting extras: exes of your partner, a recent hurt, full moon and market-day touches
+  function socialGreet(state, id) {
+    const t = time(), r = rel(state, id);
+    let out = '';
+    if (r.hurt !== undefined && t.day - r.hurt <= 1 && r.romance >= 3) out += `<p>${nm(id)} is quiet with you today. Something you did got back to ${pronouns(id).obj}.</p>`;
+    const ex = links(id).find(l => l.type === 'exes' && rel(state, l.other) && rel(state, l.other).romance >= 3);
+    if (ex && r.exDay !== t.day) { r.exDay = t.day; out += `<p>${nm(id)}: "So. You and ${BY_ID[ex.other].name}." A pause. "Good luck with that."</p>`; }
+    const W = window.G.world || {};
+    try { if (W.moonFull && W.moonFull() && t.hour >= 19 && ['kit', 'morrow', 'nell', 'fen'].includes(id)) out += `<p>${nm(id)} keeps glancing up at the full moon, ${pick(['restless', 'oddly bright-eyed', 'humming under their breath'])}.</p>`; } catch (e) {}
+    return out;
+  }
+  // Saturday farmers' market: some people set up stalls in the square
+  const MARKET_STALLS = { rosa: 'tomatoes', jules: 'bread', kit: 'cut flowers', nell: 'herbs and tinctures', benny: 'smoked fish' };
+
   // ---------- Dialogue trees (topics) ----------
   // Each topic: { label, need(state,id)->bool, run(state,id)->{text,minutes} }
   const TOPICS = [
@@ -697,6 +1006,13 @@
         if (b && rel(state, id).rep >= 15) { setFlag(state, 'bday_' + id); bt = ` Their birthday is day ${b[1]} of ${b[0]}.`; }
         return { text: `${nm(id)} is ${n.role.toLowerCase()}. ${n.blurb} ${p.Sub} ${p.be} ${typeof n.age === 'number' ? n.age : n.age}.${bt}`, minutes: 10 };
     } },
+    { label: 'Ask who they\'re close to', need: (s, id) => rel(s, id).rep >= 10 && links(id).length > 0, run(state, id) {
+        const ls = links(id), unknown = ls.filter(l => !flag(state, 'link_' + l.key));
+        const l = unknown.length ? pick(unknown) : pick(ls);
+        setFlag(state, 'link_' + l.key);
+        const lead = { friends: `"${BY_ID[l.other].name}? We're good friends."`, rivals: `${pronouns(id).Sub} ${pronouns(id).be === 'are' ? 'roll' : 'rolls'} ${pronouns(id).pos} eyes. "Don't get me started on ${BY_ID[l.other].name}."`, exes: `${pronouns(id).Sub} ${pronouns(id).be === 'are' ? 'go' : 'goes'} a little quiet. "${BY_ID[l.other].name} and I used to be together."` }[l.type];
+        return { text: `${nm(id)}: ${lead} ${l.note}`, minutes: 10 };
+    } },
     { label: 'Compliment', need: (s, id) => rel(s, id).rep >= 0, run(state, id) {
         const r = rel(state, id), t = time();
         if (r.lastCompDay === t.day) { changeRep(state, id, -2); return { text: `${nm(id)} gives you a look. "Twice in one day? Laying it on a bit thick."`, minutes: 5 }; }
@@ -712,7 +1028,8 @@
         const chance = 0.35 + r.rep / 200 + r.aff / 300;
         if (Math.random() < chance) {
           changeAff(state, id, 5);
-          return { text: `You flirt with ${nm(id)}. ${pick(['A slow smile.', 'They duck their head, cheeks warm.', 'A laugh, and a lingering look.', '"Oh, is that how it is?"'])}`, minutes: 10 };
+          const jl = flirtJealousy(state, id);
+          return { text: jl + `You flirt with ${nm(id)}. ${pick(['A slow smile.', 'They duck their head, cheeks warm.', 'A laugh, and a lingering look.', '"Oh, is that how it is?"'])}`, minutes: 10 };
         }
         changeRep(state, id, -3);
         safeChange('stats.needs.stress', 20);
@@ -737,6 +1054,7 @@
     { label: 'Insult', need: () => true, run(state, id) {
         changeRep(state, id, -10);
         if (rel(state, id).aff > 0) changeAff(state, id, -8);
+        ripple(state, id, 'hurt');
         return { text: `You say something cutting to ${nm(id)}. ${pick(['They stare at you, hurt.', 'Their face closes like a door.', '"Wow. Okay."'])}`, minutes: 5 };
     } },
     { label: 'Say goodbye', need: () => true, run(state, id) {
@@ -821,6 +1139,354 @@
                { text: 'Meet at the cafe between 18:00 and 21:00.', done: s => flag(s, qid + '_dinner') } ] };
   });
 
+
+  // ---------- Phase 4: two more quests per NPC ----------
+  // Steps run in order. kinds: item (give to `to` or the giver), talk (talk to `to`), go (an action at loc during [from,to)).
+  const It = (item, text, to) => ({ kind: 'item', item, text, to });
+  const Tk = (to, text, label, reply) => ({ kind: 'talk', to, text, label, reply });
+  const Go = (loc, from, to, text, label, scene, minutes, fx) => Object.assign({ kind: 'go', loc, from, to, text, label, scene, minutes: minutes || 60 }, fx || {});
+  const QX = [
+    // Eleanor
+    { id: 'eleanor_notices', giver: 'eleanor', title: 'Notices', minRep: 5,
+      offer: '"The town meeting notices need putting up. The square, Main Street, the shopping centre. Would you? The intern is at an exam."',
+      summary: 'Eleanor needs town meeting notices pinned up around Hollowbrook.',
+      steps: [ Go('town_square', 8, 20, 'Pin a notice on the Town Square board.', 'Pin up Eleanor\'s notice', 'You pin the notice between a lost cat poster and an advert for guitar lessons.', 15),
+               Go('main_street', 8, 20, 'Pin a notice on Main Street.', 'Pin up Eleanor\'s notice', 'A shopkeeper lets you tape it inside her window and reads it twice.', 15),
+               Go('shopping_centre', 9, 20, 'Pin a notice in the shopping centre.', 'Pin up Eleanor\'s notice', 'Security pretends not to see you use their corkboard.', 15) ],
+      reward: { rep: 10, money: 15, fame: ['kindnessFame', 3] } },
+    { id: 'eleanor_listening', giver: 'eleanor', title: 'Listening Tour', minRep: 35, after: 'eleanor_notices',
+      offer: '"Mina tells me the students think I never listen. Bring me three honest complaints. Honest ones. I can take it."',
+      summary: 'Eleanor wants three honest complaints about the town from students.',
+      steps: [ Tk('mina', 'Ask Mina what students really think of the mayor.', 'Ask what students think of the mayor', '"Bus fares, rents, and the fact the library shuts at eleven during exams. Tell her I said so."'),
+               Tk('theo', 'Ask Theo for a complaint.', 'Ask Theo what he\'d tell the mayor', '"The river path has no lights. We row at six and nearly die every morning."'),
+               Tk('sam', 'Ask Sam for a complaint.', 'Ask Sam what they\'d tell the mayor', '"There\'s nowhere in town for students to show art. Not one wall."'),
+               Tk('eleanor', 'Report back to Eleanor.', 'Give Eleanor the complaints', 'She writes every word down. "Lights on the river path. That I can do by spring."') ],
+      reward: { rep: 12, fame: ['socialiteFame', 6] } },
+    // Marcus
+    { id: 'marcus_rounds', giver: 'marcus', title: 'Deliveries', minRep: 5,
+      offer: '"My van\'s in the shop. Two boxes need delivering: Rosa on Elm Row, and Jules\'s flour. Twenty dollars."',
+      summary: 'Marcus needs two grocery boxes delivered by hand.',
+      steps: [ Tk('rosa', 'Deliver Rosa\'s grocery box.', 'Hand Rosa her grocery box', '"Finally! Tell Marcus his tomatoes are a disgrace. Mine are better."'),
+               Tk('jules', 'Deliver Jules\'s flour order.', 'Hand Jules the flour order', '"Twenty-five kilos. You carried this? You\'re my hero for at least an hour."') ],
+      reward: { rep: 8, money: 20, fame: ['businessFame', 3] } },
+    { id: 'marcus_benny', giver: 'marcus', title: 'The Supplier', minRep: 35, after: 'marcus_rounds',
+      offer: '"Benny Moss sells fish off his boat for half my price. I can\'t beat him, so maybe I should buy from him. Put out feelers? He won\'t talk to me."',
+      summary: 'Marcus wants you to sound out Benny Moss about supplying the store.',
+      steps: [ Tk('benny', 'Put Marcus\'s offer to Benny at the docks.', 'Tell Benny that Marcus wants to buy his fish', 'Benny squints. "Vane wants my fish? Tell him fair price, cash, and he says please. In person."'),
+               Tk('marcus', 'Tell Marcus what Benny said.', 'Tell Marcus what Benny said', '"In person. And please." Marcus pinches the bridge of his nose. "...Fine. Fine!"') ],
+      reward: { rep: 10, money: 25, fame: ['businessFame', 5], also: { benny: 5 } } },
+    // Hart
+    { id: 'hart_found_poem', giver: 'hart', title: 'Found Poetry', minRep: 5,
+      offer: '"An assignment, just for you: find me poetry in the wild. Graffiti, a gravestone, anything someone meant."',
+      summary: 'Professor Hart wants you to find two pieces of poetry out in the world.',
+      steps: [ Go('alley', 0, 24, 'Copy down the verse sprayed in the Back Alley.', 'Copy the verse sprayed on the alley wall', 'In faded silver paint, half hidden by a drainpipe: "we were here, and it was loud, and it was ours." You copy it carefully.', 20),
+               Go('church', 7, 20, 'Copy an epitaph in St. Aldric\'s churchyard.', 'Copy an epitaph in the churchyard', 'On a mossy stone: "She kept the light on." Nothing else. It is the best poem you have read all term.', 30),
+               Tk('hart', 'Bring your findings to Professor Hart.', 'Show Professor Hart your found poems', 'He reads them twice, then a third time. "This," he taps the epitaph, "is why we bother."') ],
+      reward: { rep: 10, train: ['awareness', 10] } },
+    { id: 'hart_novel', giver: 'hart', title: 'The Manuscript', minRep: 35, after: 'hart_found_poem',
+      offer: '"I\'ve finished the novel. I need one honest reader, and then Priya Raman, who will be brutal. Will you read it? I left a copy at the library desk."',
+      summary: 'Professor Hart finished his novel and wants honest readers.',
+      steps: [ Go('library', 8, 23, 'Read Hart\'s manuscript at the library (3 hours).', 'Read Hart\'s manuscript', 'Three hundred pages about a lighthouse keeper who writes letters to no one. It is slow, and strange, and the last chapter makes you put it down and stare out of the window.', 180, { fatigue: 60 }),
+               Tk('raman', 'Get Dr. Raman\'s verdict.', 'Ask Dr. Raman what she thought of Hart\'s novel', '"Chapter four is unforgivable. The ending is the best thing he\'s ever written. Do not tell him I said the second part."'),
+               Tk('hart', 'Give Professor Hart your verdict.', 'Give Professor Hart your honest verdict', 'He listens without interrupting, which you suspect is a first. "The ending. Really?" He looks younger.') ],
+      reward: { rep: 15, train: ['willpower', 10], grade: ['lit', 5] } },
+    // Okafor
+    { id: 'okafor_bibs', giver: 'okafor', title: 'Lost Kit', minRep: 5,
+      offer: '"Somebody left the team bibs at the docks after the river run. Bring them back before they walk off by themselves."',
+      summary: 'Coach Okafor needs the team bibs fetched from the docks.',
+      steps: [ Go('docks', 6, 22, 'Collect the bag of bibs from the River Docks.', 'Collect the abandoned team bibs', 'The bag is under a bench, damp and indescribably fragrant. You carry it at arm\'s length.', 15),
+               Tk('okafor', 'Return the bibs to Coach Okafor.', 'Hand Coach Okafor the bibs', '"Don\'t breathe in. Good lad. Good lass. Good whatever you are. Thank you."') ],
+      reward: { rep: 8, train: ['physique', 5] } },
+    { id: 'okafor_trials', giver: 'okafor', title: 'Time Trial', minRep: 35, after: 'okafor_bibs',
+      offer: '"I\'ve seen you train. Drills with Theo in the gym, then a dawn time trial at the docks. Show me what you\'ve got."',
+      summary: 'Coach Okafor wants to see you do drills and a dawn time trial.',
+      steps: [ Go('gym', 15, 18, 'Do sprint drills at the gym in the afternoon.', 'Run sprint drills', 'Shuttles, ladders, and Theo shouting encouragement that is mostly swearing. You nearly throw up. You don\'t.', 60, { fatigue: 120, thirst: -100 }),
+               Go('docks', 6, 8, 'Run the dawn time trial along the river path.', 'Run the dawn time trial', 'Mist, cold air, and your own breath. At the finish Okafor looks at her stopwatch for a long time. "Huh," she says. From her, that is a medal.', 45, { fatigue: 100 }),
+               Tk('okafor', 'Hear Coach Okafor\'s verdict.', 'Ask Coach Okafor how you did', '"You\'re on the list for the spring meet. Don\'t make me regret it."') ],
+      reward: { rep: 15, train: ['physique', 20], skill: ['athletics', 15] } },
+    // Sam
+    { id: 'sam_yellow', giver: 'sam', title: 'Cadmium Yellow', minRep: 5,
+      offer: '"I ran out of yellow mid-sunflower. The grocer keeps paint on the craft shelf. I\'d go, but I\'m holding the composition in my head."',
+      summary: 'Sam needs a tube of yellow paint from the grocer\'s craft shelf.',
+      steps: [ Go('market', 8, 21, 'Buy a tube of yellow paint at the grocer ($5).', 'Buy a tube of yellow paint ($5)', 'The last tube, hidden behind a stack of glitter glue.', 5, { cost: 5 }),
+               Tk('sam', 'Bring Sam the paint.', 'Give Sam the yellow paint', 'Sam snatches it and kisses the tube. "You saved this sunflower\'s life."') ],
+      reward: { rep: 8, aff: 2 } },
+    { id: 'sam_show', giver: 'sam', title: 'Opening Night', minRep: 35, after: 'sam_yellow',
+      offer: '"The student show needs hanging, and I want live music at the opening. Ollie would be perfect, but he\'d die if I asked. You ask."',
+      summary: 'Help Sam hang the student art show and talk Ollie into playing the opening.',
+      steps: [ Go('lecture_hall', 16, 21, 'Help hang the student show in the lecture building.', 'Help hang the student art show', 'Two hours of spirit levels and arguing about whether a painting is upside down. It is, it turns out, meant to be.', 120),
+               Tk('ollie', 'Talk Ollie into playing at the opening.', 'Ask Ollie to play at Sam\'s opening', 'He goes white, then pink. "For Sam? Okay. Okay. I\'ll play quietly. In a corner. Facing the wall."'),
+               Go('quad', 17, 21, 'Go to the opening night on the quad.', 'Go to Sam\'s opening night', 'Fairy lights, warm wine, and Ollie playing in a corner, facing the wall, beautifully. Sam cries a little when someone buys a painting.', 90, { stress: -60 }) ],
+      reward: { rep: 15, train: ['beauty', 5], also: { ollie: 4 } } },
+    // Theo
+    { id: 'theo_essay', giver: 'theo', title: 'Due Friday', minRep: 5,
+      offer: '"I have an essay due Friday and I have written the title. Help? Hart said to use proper sources, whatever those are."',
+      summary: 'Theo needs help with an essay. Get sources from Professor Hart, then sit with him at the library.',
+      steps: [ Tk('hart', 'Ask Professor Hart which sources Theo should use.', 'Ask Professor Hart about sources for Theo\'s essay', '"Tell Mr. Lindqvist that Wikipedia is not a source, it is a mood. Here, three books."'),
+               Go('library', 17, 23, 'Help Theo write the essay at the library.', 'Help Theo with his essay', 'Theo writes four hundred words, deletes three hundred, then gets it. "Oh! It\'s like rowing! You just keep going!" It is not like rowing. It works anyway.', 120),
+               Tk('theo', 'Check in with Theo.', 'Ask Theo how the essay went', '"B-minus! A B-minus! I\'m framing it."') ],
+      reward: { rep: 10, train: ['awareness', 5] } },
+    { id: 'theo_sorry', giver: 'theo', title: 'Old Paint', minRep: 35, after: 'theo_essay',
+      offer: '"Sam and I... it ended badly, first year. My fault. I want to say sorry properly. Would you give Sam flowers from me? I can\'t face it."',
+      summary: 'Theo wants to apologise to his ex, Sam. Bring Sam a bouquet of flowers from him.',
+      steps: [ It('flowers', 'Give Sam a bouquet of flowers from Theo.', 'sam'),
+               Tk('theo', 'Tell Theo how Sam took it.', 'Tell Theo how Sam took the flowers', 'He lets out a breath. "Sam said that? Okay. Okay." He looks lighter than you\'ve ever seen him.') ],
+      reward: { rep: 12, also: { sam: 6 } } },
+    // Rosa
+    { id: 'rosa_blight', giver: 'rosa', title: 'Blight', minRep: 5,
+      offer: '"My tomatoes have blight. I refuse to ask that witch in the woods. You ask her. Don\'t say it\'s for me."',
+      summary: 'Rosa\'s tomatoes have blight. Ask Nell Bramble for a remedy without saying who it\'s for.',
+      steps: [ Tk('nell', 'Ask Nell Bramble for a blight remedy.', 'Ask Nell about a remedy for tomato blight', 'Nell hands you a jar without looking up. "Tell Rosa to water the roots, not the leaves. And that she is welcome."'),
+               Go('residential', 7, 19, 'Treat Rosa\'s tomatoes on Elm Row.', 'Treat Rosa\'s tomatoes', 'You spray every plant and water at the roots. Rosa watches from the porch, arms folded, refusing to ask where the remedy came from.', 45),
+               Tk('rosa', 'Tell Rosa the job\'s done.', 'Tell Rosa her tomatoes are treated', '"It worked? Of course it worked. I knew it would." A pause. "...Tell her thank you."') ],
+      reward: { rep: 10, skill: ['tending', 10], fame: ['kindnessFame', 3], also: { nell: 3 } } },
+    { id: 'rosa_photos', giver: 'rosa', title: 'Miguel\'s Photographs', minRep: 35, after: 'rosa_blight',
+      offer: '"There is a box of photos in my attic. Forty years. I want them in albums before my eyes go. And I forget what year we married, if you can believe it."',
+      summary: 'Help Rosa sort her photos, and find her wedding date in the parish register.',
+      steps: [ Go('residential', 9, 20, 'Sort the photo box in Rosa\'s attic (2 hours).', 'Sort Rosa\'s photographs', 'Black-and-white weddings, colour christenings, a young man with a moustache laughing at the camera. You put them in order, and Rosa narrates every one.', 120),
+               Go('church', 7, 20, 'Check St. Aldric\'s parish register for the wedding date.', 'Search the parish register', 'Delgado, Miguel, and Ortega, Rosa. The ink is brown with age. The fourteenth of June.', 30),
+               Tk('rosa', 'Tell Rosa the date.', 'Tell Rosa her wedding date', '"The fourteenth. Of course. It rained." She holds your hand very tightly.') ],
+      reward: { rep: 15, fame: ['kindnessFame', 5] } },
+    // Jules
+    { id: 'jules_buns', giver: 'jules', title: 'Secret Ingredient', minRep: 5,
+      offer: '"Rosa makes these conchas. I would sell my soul for that recipe. She won\'t give it to me. Charm it out of her."',
+      summary: 'Jules wants Rosa\'s concha recipe. Coax it out of her.',
+      steps: [ Tk('rosa', 'Coax the concha recipe out of Rosa.', 'Ask Rosa for her concha recipe', '"For Jules? Fine. But the secret is lard, and patience, and you tell nobody else." She writes it on a napkin.'),
+               Tk('jules', 'Give Jules the recipe.', 'Give Jules Rosa\'s recipe', 'Jules reads the napkin and puts a hand on their heart. "Lard. Of course it\'s lard."') ],
+      reward: { rep: 8, skill: ['cooking', 10], also: { rosa: 2 } } },
+    { id: 'jules_stall', giver: 'jules', title: 'The Stall', minRep: 35, after: 'jules_buns',
+      offer: '"I want to sell at the Saturday market. Just to see if anyone likes my bread. Run the stall with me? I can\'t do the talking-to-people part."',
+      summary: 'Help Jules run a bread stall at the Saturday farmers\' market in the Town Square.',
+      steps: [ Go('town_square', 8, 13, 'Run Jules\'s bread stall at the Saturday market (8:00 to 13:00).', 'Run Jules\'s bread stall', 'You do the talking. Jules does the blushing. You sell out by eleven, and a woman asks if Jules does wedding cakes.', 180, { market: true, fatigue: 60 }),
+               Tk('jules', 'Split the takings with Jules.', 'Count the takings with Jules', '"Sold out. Sold. Out." They hug you, flour and all.') ],
+      reward: { rep: 15, money: 30, fame: ['businessFame', 5] } },
+    // Wren
+    { id: 'wren_skip', giver: 'wren', title: 'Skip Night', minRep: 5,
+      offer: '"The shopping centre bins perfectly good food at closing. Help me grab some before they lock the skip. Benny\'s got nothing in this week."',
+      summary: 'Help Wren take thrown-out food from the shopping centre skip, and share it with Benny.',
+      steps: [ Go('shopping_centre', 18, 22, 'Raid the skip behind the shopping centre after 18:00.', 'Raid the shopping centre skip with Wren', 'Bagged salads, day-old bread, a whole wheel of brie still in its wax. Wren keeps watch while you fill a rucksack. Nobody notices. You feel like a bandit.', 30, { crime: 2 }),
+               Tk('benny', 'Share the haul with Benny.', 'Give Benny some of the skip food', 'Benny looks in the bag. "Is that brie?" He tries not to look grateful, and fails.') ],
+      reward: { rep: 10, fame: ['kindnessFame', 2], also: { benny: 4 } } },
+    { id: 'wren_forms', giver: 'wren', title: 'Re-enrolment', minRep: 35, after: 'wren_skip',
+      offer: '"Don\'t laugh. I want to go back. Finish the degree. Mina knows how the forms work. I\'d rather eat glass than ask her."',
+      summary: 'Wren wants to re-enrol at the college. Get Mina\'s help, and pick up the forms.',
+      steps: [ Tk('mina', 'Persuade Mina to help Wren with the forms.', 'Ask Mina to help Wren re-enrol', 'Mina goes very still. "Wren wants to come back?" A long pause. "...Tell her section C is a trap. I\'ll fill in the rest."'),
+               Go('deans_office', 8, 17, 'Pick up the re-enrolment forms at the Dean\'s Office.', 'Collect Wren\'s re-enrolment forms', 'The secretary hands them over with a look that says she has seen everything twice.', 20),
+               Tk('wren', 'Give Wren the forms.', 'Give Wren the forms', 'Wren reads Mina\'s handwriting in the margins for a long time. "She did all this?" Quietly: "Huh."') ],
+      reward: { rep: 18, fame: ['kindnessFame', 5], also: { mina: 4 } } },
+    // Silas
+    { id: 'silas_strings', giver: 'silas', title: 'Broken String', minRep: 5,
+      offer: '"Snapped my G string. Not a joke. The shop in the shopping centre sells them, but I owe them money."',
+      summary: 'Silas needs new guitar strings from the shopping centre.',
+      steps: [ Go('shopping_centre', 9, 20, 'Buy guitar strings at the shopping centre ($8).', 'Buy a set of guitar strings ($8)', 'The shop assistant asks if they\'re for Silas. "Tell him he still owes us," she says, smiling.', 10, { cost: 8 }),
+               Tk('silas', 'Give Silas the strings.', 'Give Silas the strings', 'He restrings in two minutes flat and plays you something bright and quick. "That one was free."') ],
+      reward: { rep: 8, stressFx: -20 } },
+    { id: 'silas_notebook', giver: 'silas', title: 'The Songbook', minRep: 35, after: 'silas_strings',
+      offer: '"Jules still has my notebook of songs. From when we lived together. I can\'t ask. Would you?"',
+      summary: 'Get Silas\'s old songbook back from his ex, Jules.',
+      steps: [ Tk('jules', 'Ask Jules for Silas\'s notebook.', 'Ask Jules about Silas\'s songbook', 'Jules digs it out of a drawer. "I kept it safe. Tell him... tell him the third song is still my favourite."'),
+               Tk('silas', 'Return the songbook to Silas.', 'Give Silas his songbook', 'He opens it to the third song without looking. "She said that?" He has to stop for a moment.') ],
+      reward: { rep: 15, also: { jules: 3 } } },
+    // Kit
+    { id: 'kit_wedding', giver: 'kit', title: 'Two Hundred Roses', minRep: 5,
+      offer: '"A wedding order. Two hundred roses, all de-thorned, delivered to the church by tonight. Help?"',
+      summary: 'Help Kit prepare a wedding order and deliver it to St. Aldric\'s Church.',
+      steps: [ Go('florist', 9, 18, 'Help Kit strip thorns at the florist (2 hours).', 'Strip thorns for the wedding order', 'Two hours, two hundred roses, and only a few pricked fingers. Kit\'s ears twitch to the radio the whole time.', 120),
+               Go('church', 7, 20, 'Deliver the arrangements to St. Aldric\'s Church.', 'Deliver the wedding flowers', 'The church smells like a garden by the time you\'re done. The bride\'s mother cries, which you\'re told is a good sign.', 40) ],
+      reward: { rep: 10, money: 20, skill: ['tending', 5] } },
+    { id: 'kit_comb', giver: 'kit', title: 'Something Old', minRep: 35, after: 'kit_wedding',
+      offer: '"Nell keeps something of my grandmother\'s. A comb. She won\'t give it to just anyone, but I think she\'d give it to you."',
+      summary: 'Ask Nell Bramble for Kit\'s grandmother\'s comb.',
+      steps: [ Tk('nell', 'Ask Nell for Kit\'s grandmother\'s comb.', 'Ask Nell for Kit\'s grandmother\'s comb', 'Nell takes a small carved comb out of her shawl as if she had been waiting. "Tell the fox it was always hers."'),
+               Tk('kit', 'Give Kit the comb.', 'Give Kit her grandmother\'s comb', 'Kit holds it to her chest, ears flat with feeling. "It smells like her house," she whispers.') ],
+      reward: { rep: 15, also: { nell: 5 } } },
+    // Morrow
+    { id: 'morrow_goats', giver: 'morrow', title: 'The Goat Situation', minRep: 5,
+      offer: '"The goats have found a hole in the fence. One has gone to the pond. She is called Duchess. She does not want to come back."',
+      summary: 'Mend the farm fence, then fetch Duchess the goat back from the park pond.',
+      steps: [ Go('campus_farm', 6, 19, 'Mend the goat pen fence at the farm.', 'Mend the goat pen fence', 'Wire, posts, and a hammer. The other goats supervise. They are not impressed.', 60, { fatigue: 60 }),
+               Go('park', 6, 22, 'Find Duchess at Millpond Park and bring her home.', 'Coax Duchess the goat home', 'Duchess is eating a bin. It takes a sandwich, two apologies and a long walk to persuade her home.', 60),
+               Tk('morrow', 'Tell Morrow the goats are safe.', 'Tell Morrow Duchess is home', '"Duchess has told me you were very patient." Morrow\'s eyes glow. "She is lying, but kindly."') ],
+      reward: { rep: 10, skill: ['tending', 10], train: ['physique', 5] } },
+    { id: 'morrow_message', giver: 'morrow', title: 'Across the Water', minRep: 35, after: 'morrow_goats',
+      offer: '"There is someone at the river I have not spoken with in a long while. Tell Fen that Morrow remembers the hill."',
+      summary: 'Carry a message from Morrow to Fen at the River Docks, and bring back the answer.',
+      steps: [ Tk('fen', 'Tell Fen that Morrow remembers the hill.', 'Tell Fen that Morrow remembers the hill', 'Fen is quiet for a long time. "Tell Morrow the hill remembers too. And that the boat is always there."'),
+               Tk('morrow', 'Bring Fen\'s answer back to Morrow.', 'Give Morrow Fen\'s answer', 'Morrow closes their eyes. When they open them, they are very bright. "Thank you. You do not know what you carried. It was heavy."') ],
+      reward: { rep: 15, train: ['awareness', 10], also: { fen: 5 } } },
+    // Hazel
+    { id: 'hazel_kittens', giver: 'hazel', title: 'Foster Week', minRep: 5,
+      offer: '"A litter of kittens came in. They need their checks at the vet next door before I can rehome them. Would you take them over?"',
+      summary: 'Take Hazel\'s foster kittens to the vet clinic for their checks.',
+      steps: [ Go('vet_clinic', 8, 18, 'Take the foster kittens to the vet clinic.', 'Take the kittens for their check-up', 'Four kittens, one carrier, and a lot of very small outrage. All healthy. The vet names one after you.', 60),
+               Tk('hazel', 'Report back to Hazel.', 'Tell Hazel the kittens are healthy', '"All four? Oh, good." Pip whistles from her shoulder. "Pip says thank you. I say thank you too."') ],
+      reward: { rep: 10, skill: ['tending', 5], fame: ['kindnessFame', 4] } },
+    { id: 'hazel_homes', giver: 'hazel', title: 'Forever Homes', minRep: 35, after: 'hazel_kittens',
+      offer: '"Three animals need homes: an old tabby, a collie, and a very shy rabbit. You know everyone. Ask around?"',
+      summary: 'Find homes for three of Hazel\'s rescues by asking around town.',
+      steps: [ Tk('rosa', 'Ask Rosa about adopting the old tabby.', 'Ask Rosa if she\'d adopt an old tabby', '"An old cat? For an old woman? Yes. Obviously. Bring her Tuesday."'),
+               Tk('okafor', 'Ask Coach Okafor about the collie.', 'Ask Coach Okafor if she\'d adopt a collie', '"A collie. A running collie." She is already smiling. "Fine. Yes."'),
+               Tk('ollie', 'Ask Ollie about the shy rabbit.', 'Ask Ollie if he\'d adopt a shy rabbit', '"A shy rabbit? I\'m a shy rabbit." He nods very fast. "Yes. Please."'),
+               Tk('hazel', 'Tell Hazel the good news.', 'Tell Hazel all three have homes', 'Hazel sits down on an upturned crate and laughs with relief. "You absolute miracle."') ],
+      reward: { rep: 15, fame: ['kindnessFame', 6], also: { rosa: 2, okafor: 2, ollie: 2 } } },
+    // Dee
+    { id: 'dee_model', giver: 'dee', title: 'Hair Model', minRep: 5,
+      offer: '"I need a model for the stylists\' showcase. Two hours in the chair. You get paid, you get gorgeous. Win-win."',
+      summary: 'Sit as Dee\'s hair model for the showcase at the salon.',
+      steps: [ Go('hair_salon', 9, 18, 'Sit as Dee\'s model at the salon (2 hours).', 'Sit for Dee\'s showcase', 'Two hours of pins, spray and gossip. A room full of stylists applauds your head. Dee takes all the credit, rightly. Every pin comes out at the end.', 120),
+               Tk('dee', 'Collect your fee from Dee.', 'Ask Dee how the showcase went', '"First place, darling. You were a canvas." She tucks twenty dollars in your pocket.') ],
+      reward: { rep: 10, money: 20, train: ['beauty', 8] } },
+    { id: 'dee_lilies', giver: 'dee', title: 'The One Thing Dee Doesn\'t Know', minRep: 35, after: 'dee_model',
+      offer: '"Someone has left lilies at my door every Monday for a month. Anonymous. I know everything in this town except this. It is killing me."',
+      summary: 'Find out who has been leaving lilies at Dee\'s salon door.',
+      steps: [ Tk('kit', 'Ask Kit who has been buying lilies.', 'Ask Kit who\'s been buying lilies', 'Kit\'s ears twitch. "I\'m not supposed to say. He pays cash. He\'s very bad at whistling."'),
+               Tk('marcus', 'Ask Marcus about the lilies.', 'Ask Marcus if he\'s been leaving Dee lilies', 'Marcus goes the colour of a tomato. "They were her wedding flowers. I just... don\'t tell her. Tell her. I don\'t know."'),
+               Tk('dee', 'Tell Dee who it was.', 'Tell Dee who leaves the lilies', 'Dee puts down her scissors for the first time you\'ve ever seen. "Marcus," she says, softly. "That idiot."') ],
+      reward: { rep: 15, also: { marcus: 4 } } },
+    // Raman
+    { id: 'raman_seeds', giver: 'raman', title: 'Seed Bank', minRep: 5,
+      offer: '"I\'m building a seed bank of local wildflowers. Collect seed heads in Hollow Woods, then help me sow them in the greenhouse."',
+      summary: 'Collect wild seeds in Hollow Woods and sow them in the farm greenhouse.',
+      steps: [ Go('woods', 7, 19, 'Collect wild seed heads in Hollow Woods.', 'Collect wild seed heads', 'Knapweed, campion, and something Nell, watching from the path, tells you not to pick. You don\'t.', 60),
+               Go('campus_farm', 6, 19, 'Sow the seed trays in the farm greenhouse.', 'Sow the seed trays', 'Forty trays, neatly labelled. Priya inspects your handwriting and approves.', 60),
+               Tk('raman', 'Report to Dr. Raman.', 'Tell Dr. Raman the trays are sown', '"Excellent. In six weeks we will know if you have a green thumb or are merely enthusiastic."') ],
+      reward: { rep: 10, skill: ['tending', 10], train: ['awareness', 5] } },
+    { id: 'raman_night', giver: 'raman', title: 'Midnight Readings', minRep: 35, after: 'raman_seeds',
+      offer: '"My experiment needs readings at midnight. My assistant has flu. You are reliable, which in a scientist is rarer than genius."',
+      summary: 'Take Dr. Raman\'s midnight lab readings in the lecture building.',
+      steps: [ Go('lecture_hall', 0, 3, 'Take the readings in the lab between midnight and 3:00.', 'Take the midnight lab readings', 'The building hums after dark. You write numbers into a notebook by the light of the fume hood, and feel, for an hour, like a real scientist.', 60, { fatigue: 80 }),
+               Tk('raman', 'Give Dr. Raman the readings.', 'Give Dr. Raman the readings', 'She checks them twice. "Clean data. Do you know how rare that is?" She sounds almost moved.') ],
+      reward: { rep: 15, train: ['awareness', 10], grade: ['sci', 4] } },
+    // Ollie
+    { id: 'ollie_listen', giver: 'ollie', title: 'Stage Fright', minRep: 5,
+      offer: '"Would you listen to me play? Just you. In the stairwell. I need to practise playing in front of a person."',
+      summary: 'Listen to Ollie practise, then ask Silas for advice on stage nerves.',
+      steps: [ Go('dorm_hall', 19, 23, 'Listen to Ollie practise in the Ashford Hall stairwell.', 'Listen to Ollie practise', 'He plays facing the wall at first. Halfway through he turns round. By the end he\'s looking at you.', 60, { stress: -40 }),
+               Tk('silas', 'Ask Silas for stage-nerve advice for Ollie.', 'Ask Silas how to beat stage nerves', '"Tell the kid to pick one face in the crowd and play to them. Works every time. Usually."'),
+               Tk('ollie', 'Pass Silas\'s advice to Ollie.', 'Give Ollie Silas\'s advice', '"One face. Okay." He looks at you, then very quickly away.') ],
+      reward: { rep: 10, fame: ['kindnessFame', 2] } },
+    { id: 'ollie_openmic', giver: 'ollie', title: 'First Open Mic', minRep: 35, after: 'ollie_listen',
+      offer: '"I signed up for the Lantern open mic. I want to throw up. Please sit at the front. I\'ll play to your face."',
+      summary: 'Sit in the front row for Ollie\'s first open mic at the Lantern Pub.',
+      steps: [ Go('bar', 20, 23, 'Watch Ollie\'s open mic at the Lantern Pub (20:00 to 23:00).', 'Sit at the front for Ollie\'s open mic', 'His bow shakes on the first note. Then he finds you, and steadies. The pub goes quiet, then very loud. Silas whistles from the back.', 90, { stress: -60 }),
+               Tk('ollie', 'Congratulate Ollie.', 'Tell Ollie he was brilliant', '"I didn\'t throw up!" he says, glowing. "I did not throw up!"') ],
+      reward: { rep: 15, also: { silas: 3 } } },
+    // Mina
+    { id: 'mina_petition', giver: 'mina', title: 'Petition', minRep: 5,
+      offer: '"Longer library hours during exams. I need three signatures from people who matter. Sam, Theo, and Professor Hart."',
+      summary: 'Collect three signatures for Mina\'s library-hours petition.',
+      steps: [ Tk('sam', 'Get Sam\'s signature.', 'Ask Sam to sign Mina\'s petition', 'Sam signs with a tiny doodle of a book. "For Mina? Sure. She scares me, but sure."'),
+               Tk('theo', 'Get Theo\'s signature.', 'Ask Theo to sign Mina\'s petition', 'Theo groans. "If it\'s for Mina, it\'s a trap." He signs anyway. "Longer library hours is fair."'),
+               Tk('hart', 'Get Professor Hart\'s signature.', 'Ask Professor Hart to sign Mina\'s petition', '"Longer library hours? I would sign in blood. Ink will do." He signs with a flourish.'),
+               Tk('mina', 'Hand Mina the signatures.', 'Give Mina the signed petition', '"Theo signed? You\'re a miracle worker. Don\'t tell anyone I said miracle."') ],
+      reward: { rep: 10, fame: ['socialiteFame', 4] } },
+    { id: 'mina_campaign', giver: 'mina', title: 'Campaign Trail', minRep: 35, after: 'mina_petition',
+      offer: '"Re-election. Flyers on the quad, and I need the mayor\'s endorsement. She likes you. Everyone likes you. It\'s annoying."',
+      summary: 'Hand out Mina\'s flyers and get Mayor Whitlock\'s endorsement.',
+      steps: [ Go('quad', 9, 17, 'Hand out flyers on the Main Quad (2 hours).', 'Hand out Mina\'s campaign flyers', 'You hand out two hundred flyers and pick up about forty off the ground. Several people say they\'ll vote for you, which is not the point.', 120, { fatigue: 40 }),
+               Tk('eleanor', 'Ask Mayor Whitlock to endorse Mina.', 'Ask Eleanor to endorse Mina', '"Endorse Mina? I\'ve been waiting for her to ask. Tell her she has it, and that she owes me nothing."'),
+               Tk('mina', 'Give Mina the good news.', 'Tell Mina she has the mayor\'s endorsement', 'Mina reads the note and has to sit down. "She said I owe her nothing?" Quietly: "I owe you, though."') ],
+      reward: { rep: 15, skill: ['charm', 10], also: { eleanor: 3 } } },
+    // Benny
+    { id: 'benny_nets', giver: 'benny', title: 'Mending', minRep: 5,
+      offer: '"Nets don\'t mend themselves. Two hours. Fifteen dollars and a fish."',
+      summary: 'Help Benny mend his fishing nets at the docks.',
+      steps: [ Go('docks', 5, 13, 'Mend nets with Benny at the River Docks (2 hours).', 'Mend nets with Benny', 'Needle, twine, knot, pull. Benny talks the whole time about fish he has known. Your fingers ache. It is weirdly peaceful.', 120, { fatigue: 50 }) ],
+      reward: { rep: 8, money: 15, train: ['willpower', 5] } },
+    { id: 'benny_letter', giver: 'benny', title: 'Letter Home', minRep: 35, after: 'benny_nets',
+      offer: '"My son. I want to write him. I can\'t write good. You write, I\'ll talk. Library\'s quiet. Then post it at the town hall."',
+      summary: 'Help Benny write a letter to his son, then post it.',
+      steps: [ Go('library', 8, 23, 'Write Benny\'s letter at the library.', 'Write Benny\'s letter to his son', 'Benny talks, slowly. You write. "Tell him I\'m sorry. No. Tell him I\'m proud. Both." It takes an hour and both of you need a minute afterwards.', 60),
+               Go('town_hall', 8, 18, 'Post the letter at the town hall post box.', 'Post Benny\'s letter', 'It drops into the box with a soft sound that feels much bigger than it is.', 10),
+               Tk('benny', 'Tell Benny it\'s posted.', 'Tell Benny the letter is posted', 'He nods. Just nods. Then he grips your shoulder so hard it hurts. "Thanks, kid."') ],
+      reward: { rep: 18, fame: ['kindnessFame', 6] } },
+    // Nell
+    { id: 'nell_gather', giver: 'nell', title: 'Gathering', minRep: 5,
+      offer: '"Yarrow, picked with the dew still on it. Moonwort from the millpond, after dark. I can do one. I cannot do both."',
+      summary: 'Gather dew-wet yarrow in the woods at dawn, and moonwort at the park pond after dark.',
+      steps: [ Go('woods', 5, 8, 'Gather yarrow in Hollow Woods before 8:00.', 'Gather dew-wet yarrow', 'The woods are silver with dew. You find the yarrow exactly where Nell said, as if it had been waiting.', 45),
+               Go('park', 20, 24, 'Pick moonwort by the millpond after 20:00.', 'Pick moonwort by the pond', 'The little fern-leaves shine faintly under the moon. You decide not to think about that.', 30),
+               Tk('nell', 'Bring Nell the herbs.', 'Give Nell the herbs', 'She sniffs them and nods. "Well picked. The woods like you." It sounds like a compliment and a warning.') ],
+      reward: { rep: 10, skill: ['tending', 8], train: ['awareness', 5] } },
+    { id: 'nell_parcel', giver: 'nell', title: 'Running Water', minRep: 35, after: 'nell_gather',
+      offer: '"There is a parcel for me across the river. I do not cross running water. Do not ask. Fen will take you."',
+      summary: 'Ask Fen to ferry you across the river to collect Nell\'s parcel.',
+      steps: [ Tk('fen', 'Ask Fen to take you across the river.', 'Ask Fen to ferry you across for Nell', '"For Nell? No fare." Fen is already untying the boat. "Come back when you\'re ready."'),
+               Go('docks', 14, 23, 'Cross the river and collect Nell\'s parcel.', 'Cross the river and collect the parcel', 'On the far bank, a parcel wrapped in brown paper sits on a fence post. Nobody is there. The crossing back feels longer.', 60),
+               Tk('nell', 'Give Nell the parcel.', 'Give Nell the parcel', 'She unwraps it with shaking hands: a faded ribbon and a pressed flower. "My sister\'s," she says. "Thank you."') ],
+      reward: { rep: 15, train: ['awareness', 10], also: { fen: 5 } } },
+    // Fen
+    { id: 'fen_lamp', giver: 'fen', title: 'The Lamp', minRep: 5,
+      offer: '"My lamp has gone out. It only takes the oil they keep at the Lantern Pub. Old habits."',
+      summary: 'Fetch lamp oil from the Lantern Pub for Fen\'s lamp.',
+      steps: [ Go('bar', 12, 24, 'Ask for lamp oil at the Lantern Pub.', 'Ask the Lantern Pub for lamp oil', 'The landlord fetches a dusty bottle from under the bar without asking who it\'s for. "Tell Fen it\'s on the house. Always is."', 10),
+               Tk('fen', 'Bring Fen the lamp oil.', 'Give Fen the lamp oil', 'The lamp catches with a soft green flame. Fen smiles. "Better. It was dark without it."') ],
+      reward: { rep: 8, train: ['awareness', 5] } },
+    { id: 'fen_names', giver: 'fen', title: 'Names on the Water', minRep: 35, after: 'fen_lamp',
+      offer: '"Once a year I read the names of those the river took. Morrow used to stand with me. Ask them to come. And come yourself."',
+      summary: 'Ask Morrow to join Fen, then read the names of the drowned with them at the docks at night.',
+      steps: [ Tk('morrow', 'Ask Morrow to come to the docks.', 'Ask Morrow to join Fen at the docks', 'Morrow\'s eyes glow softly. "Yes. I should never have stopped."'),
+               Go('docks', 21, 24, 'Read the names on the water with Fen and Morrow after 21:00.', 'Read the names on the water', 'Fen reads, Morrow answers, and you light a candle for each name. There are a great many. The river is very still the whole time.', 60, { stress: -40 }) ],
+      reward: { rep: 15, train: ['willpower', 10], also: { morrow: 5 } } },
+  ];
+  const qxFlag = (q, i) => 'qx_' + q + '_s' + i;
+  const qxPrevDone = (state, Q, i) => Q.steps.slice(0, i).every((_, j) => flag(state, qxFlag(Q.id, j)));
+  QX.forEach(Q => {
+    QUESTS[Q.id] = { giver: Q.giver, title: Q.title, minRep: Q.minRep, after: Q.after, offer: Q.offer, summary: Q.summary, qx: Q,
+      steps: Q.steps.map((st, i) => ({ text: st.text, done: s => flag(s, qxFlag(Q.id, i)) })),
+      reward: s => {
+        const R = Q.reward || {};
+        if (R.rep) changeRep(s, Q.giver, R.rep);
+        if (R.aff && rel(s, Q.giver).rep >= 15) changeAff(s, Q.giver, R.aff);
+        if (R.money) safeChange('money', R.money);
+        if (R.fame) safeChange('stats.status.' + R.fame[0], R.fame[1]);
+        if (R.stressFx) safeChange('stats.needs.stress', R.stressFx);
+        try { if (R.train && window.G.stats && window.G.stats.train) window.G.stats.train(R.train[0], R.train[1]); } catch (e) {}
+        try { if (R.skill && window.G.stats && window.G.stats.trainSkill) window.G.stats.trainSkill(R.skill[0], R.skill[1]); } catch (e) {}
+        try { if (R.grade && s.school && s.school.grades && typeof s.school.grades[R.grade[0]] === 'number') s.school.grades[R.grade[0]] = Math.min(100, s.school.grades[R.grade[0]] + R.grade[1]); } catch (e) {}
+        if (R.also) for (const o in R.also) if (rel(s, o)) changeRep(s, o, R.also[o]);
+      } };
+  });
+  function qxTalkOptions(state, id) {
+    const out = [];
+    QX.forEach(Q => {
+      if (questStatus(state, Q.id) !== 'active') return;
+      Q.steps.forEach((st, i) => {
+        if (flag(state, qxFlag(Q.id, i)) || !qxPrevDone(state, Q, i)) return;
+        if (st.kind === 'talk' && st.to === id) out.push({ label: st.label, run(s) { setFlag(s, qxFlag(Q.id, i)); return { text: `${nm(id)}: ${st.reply}`, minutes: 10 }; } });
+        if (st.kind === 'item' && (st.to || Q.giver) === id && has(state, st.item)) out.push({ label: `Give ${BY_ID[id].name} the ${ITEMS[st.item].name} (${Q.title})`, run(s) {
+          ns(s).items[st.item]--; setFlag(s, qxFlag(Q.id, i));
+          return { text: `${nm(id)} takes the ${ITEMS[st.item].name}. ${st.to && st.to !== Q.giver ? `"From ${BY_ID[Q.giver].name}? Really?" ${pronouns(id).Sub} ${pronouns(id).be === 'are' ? 'look' : 'looks'} at the gift for a long moment.` : '"Perfect. Thank you."'}`, minutes: 5 };
+        } });
+      });
+    });
+    return out;
+  }
+  function qxLocationActions(state) {
+    const out = [], here = loc(state), t = time();
+    QX.forEach(Q => {
+      if (questStatus(state, Q.id) !== 'active') return;
+      Q.steps.forEach((st, i) => {
+        if (st.kind !== 'go' || st.loc !== here || flag(state, qxFlag(Q.id, i)) || !qxPrevDone(state, Q, i)) return;
+        const h = t.hour;
+        const inWin = st.from <= st.to ? (h >= st.from && h < st.to) : (h >= st.from || h < st.to);
+        if (!inWin) return;
+        if (st.market) { let live = false; try { live = !!(window.G.world && window.G.world.marketLive && window.G.world.marketLive()); } catch (e) {} if (!live) return; }
+        out.push({ label: st.label, run(s) {
+          if (st.cost && money(s) < st.cost) return { text: 'You check your wallet. Not enough.', minutes: 1 };
+          if (st.cost) safeChange('money', -st.cost);
+          setFlag(s, qxFlag(Q.id, i));
+          if (st.fatigue) safeChange('stats.needs.fatigue', st.fatigue);
+          if (st.thirst) safeChange('stats.needs.thirst', st.thirst);
+          if (st.stress) safeChange('stats.needs.stress', st.stress);
+          if (st.crime) safeChange('stats.status.crime', st.crime);
+          return { text: st.scene, minutes: st.minutes };
+        } });
+      });
+    });
+    return out;
+  }
+
   function unlockRomanceQuest(state, id) {
     const q = 'rom_' + id;
     if (!ns(state).quests[q]) ns(state).offers[q] = true;
@@ -843,6 +1509,7 @@
     ns(state).quests[q] = 'done';
     window.G.notify(`Quest complete: ${def.title}`, 'up');
     if (def.reward) def.reward(state);
+    if (!def.romance) ripple(state, def.giver, 'help');
     if (def.romance) {
       const r = rel(state, def.giver);
       r.romance = 3;
@@ -853,7 +1520,7 @@
 
   // ---------- Location actions tied to quests / shopping ----------
   function locationActions(state) {
-    const here = loc(state), t = time(), out = [];
+    const here = loc(state), t = time(), out = qxLocationActions(state);
     // Shopping for gift items
     for (const it in ITEMS) {
       const I = ITEMS[it];
@@ -919,11 +1586,13 @@
       const def = QUESTS[q];
       if (def.giver !== id) continue;
       const st = questStatus(state, q);
-      const canOffer = !st && (def.romance ? ns(state).offers[q] : rel(state, id).rep >= (def.minRep || 0));
+      const canOffer = !st && (def.romance ? ns(state).offers[q] : rel(state, id).rep >= (def.minRep || 0) && (!def.after || questStatus(state, def.after) === 'done'));
+      if (canOffer && !def.romance && out.some(o => o.sideOffer)) continue;
       if (canOffer) out.push({ label: def.romance ? `(Romance) Talk about ${def.title.toLowerCase()}` : `Ask if ${pronouns(id).sub} need${pronouns(id).be === 'are' ? '' : 's'} help`, run(s) {
         startQuest(s, q); return { text: `${nm(id)}: ${def.offer}`, minutes: 10 };
-      } });
+      }, sideOffer: !def.romance });
     }
+    qxTalkOptions(state, id).forEach(o => out.push(o));
     const pq = QUESTS['rom_' + id];
     if (pq && pq.plus && questStatus(state, 'rom_' + id) === 'active') {
       pq.plus.steps.forEach((st, i) => {
@@ -1062,20 +1731,32 @@
       <h4>Active</h4>${active.join('') || '<p>Nothing pressing. Enjoy it while it lasts.</p>'}
       <h4>Invitations</h4>${Object.keys(ns(state).invites || {}).filter(id => !ns(state).invites[id].done).map(id => { const iv = ns(state).invites[id]; const pl = (window.G.world && window.G.world.location && window.G.world.location(iv.loc)) ? window.G.world.location(iv.loc).name : iv.loc; return `<div class="jentry">${BY_ID[id].name}: ${pl}, around ${iv.hour}:00 today.</div>`; }).join('') || '<p>No one is waiting on you today.</p>'}
       <h4>Completed</h4><ul>${done.join('') || '<li>None yet.</li>'}</ul>
+      <h4>Connections</h4><ul>${RELATIONS.filter(r => flag(state, 'link_' + [r[0], r[1]].sort().join('_'))).map(r => `<li>${BY_ID[r[0]].name} and ${BY_ID[r[1]].name}: ${{ friends: 'friends', rivals: 'rivals', exes: 'exes' }[r[2]]}. ${r[3]}</li>`).join('') || '<li>You don\'t know who\'s close to whom yet. Ask around.</li>'}</ul>
       <h4>People</h4><ul>${people.join('') || '<li>You haven\'t really met anyone yet.</li>'}</ul>`;
   }
 
+  function ensureRels(state) {
+    const N = state.npcs; if (!N) return;
+    ['rel', 'quests', 'offers', 'flags', 'counters', 'items', 'dates'].forEach(k => { N[k] = N[k] || {}; });
+    ROSTER.forEach(n => { if (!N.rel[n.id]) N.rel[n.id] = { rep: 0, aff: 0, romance: 0, met: false, known: false }; });
+  }
+  function marketGreet(state, id) {
+    if (!MARKET_STALLS[id] || whereIs(id) !== 'town_square') return '';
+    let live = false; try { live = !!window.G.world.marketLive(); } catch (e) {}
+    return live ? `<p>${nm(id)} is minding a market stall of ${MARKET_STALLS[id]}.</p>` : '';
+  }
   // ---------- Module ----------
   const mod = {
     id: 'npcs',
     init(state) {
-      if (state.npcs) return;
+      if (state.npcs) { ensureRels(state); return; }
       const rels = {};
       ROSTER.forEach(n => (rels[n.id] = { rep: 0, aff: 0, romance: 0, met: false, known: false }));
       rels.rosa.rep = 15; rels.jules.rep = 5; // neighbors start warm
       state.npcs = { rel: rels, quests: {}, offers: {}, flags: {}, counters: {}, items: {}, dates: {}, talking: null };
     },
     onTick(minutes, state) {
+      ensureRels(state);
       // Gentle reputation drift toward 0 once per day for people you ignore.
       const t = time();
       if (ns(state).lastDay !== t.day) {
@@ -1104,7 +1785,7 @@
           const first = !rr.met; rr.met = true; rr.known = true;
           ns(s).talking = { id, node: 'root' };
           const st = stage(s, id).key;
-          const pr = petReaction(s, id) + birthdayGreet(s, id) + conditionLine(s, id);
+          const pr = petReaction(s, id) + birthdayGreet(s, id) + conditionLine(s, id) + socialGreet(s, id) + marketGreet(s, id);
           if (first) return { text: pr + `You introduce yourself. ${BY_ID[id].blurb} "${BY_ID[id].name}," ${pronouns(id).sub} say${pronouns(id).be === 'are' ? '' : 's'}. "Nice to meet you."`, minutes: 5 };
           const greet = rel(s, id).romance >= 3 ? 'breaks into a smile meant only for you.' : { hostile: 'glares at you.', cold: 'barely acknowledges you.', neutral: 'nods hello.', friendly: 'smiles when they see you.', friend: 'waves you over.', close: 'lights up the moment you arrive.' }[st];
           return { text: `${nm(id)} ${greet}` + pr, minutes: 1 };
@@ -1114,13 +1795,14 @@
       // Who's around (flavor), shown under Other
       const here = present(state);
       if (here.length) res.other.push({ label: `Look around (${here.length} familiar face${here.length > 1 ? 's' : ''})`, run(s) {
-        return { text: here.map(id => `${nm(id)}: ${BY_ID[id].blurb}`).join('<br>'), minutes: 1 };
+        const pairs = pairScenes(s, here);
+        return { text: here.map(id => `${nm(id)}: ${BY_ID[id].blurb}`).join('<br>') + (pairs.length ? '<p>' + pairs.join('<br>') + '</p>' : ''), minutes: 1 };
       } });
       return res;
     },
   };
 
-  window.NPCS = { rep: id => (S() && S().npcs ? S().npcs.rel[id].rep : 0), list: ROSTER, byId: BY_ID, quests: QUESTS, items: ITEMS, journalHTML, present, pronouns, whereIs, stage };
+  window.NPCS = { changeRep: (state, id, d, quiet) => { if (state && state.npcs && state.npcs.rel[id]) changeRep(state, id, d, quiet); }, relations: RELATIONS, rep: id => (S() && S().npcs ? S().npcs.rel[id].rep : 0), list: ROSTER, byId: BY_ID, quests: QUESTS, items: ITEMS, journalHTML, present, pronouns, whereIs, stage };
   window.G && (window.G.npcs = {
     exoticsUnlocked: () => !!(window.G.state && window.G.state.npcs && window.G.state.npcs.flags.exotics_unlocked),
     rep: id => (window.G.state && window.G.state.npcs ? window.G.state.npcs.rel[id].rep : 0),

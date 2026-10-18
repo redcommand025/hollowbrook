@@ -270,6 +270,7 @@
     '#sol-creation .cr-btn{background:#3b4a63;color:#fff;border:none;border-radius:6px;padding:9px 18px;font:inherit;cursor:pointer}' +
     '#sol-creation .cr-btn.alt{background:#34353e}' +
     '#sol-creation .cr-err{color:#e48b7a;margin-right:auto;align-self:center}' +
+    '#sol-creation .cr-foot{position:sticky;bottom:0;z-index:5;background:#1b1c22;border-top:1px solid #33343d;padding:10px 0 12px;margin-top:18px;flex-wrap:wrap;box-shadow:0 -6px 12px #0008}' +
     '@media(max-width:720px){#sol-creation .cr-grid{grid-template-columns:1fr}#sol-creation .cr-side{position:static}}';
 
   var ui = { tab: 'you', root: null, c: null };
@@ -359,7 +360,7 @@
       '<div class="cr-tabs">' + tabs + '</div>' +
       '<div class="cr-grid"><div class="cr-main">' + body + '</div>' +
       '<div class="cr-side">' + paperdollSVG(p) + '<div class="cr-desc">' + esc(describe(p)) + '</div></div></div>' +
-      '<div class="cr-actions"><span class="cr-err"></span>' +
+      '<div class="cr-actions cr-foot"><span class="cr-err"></span>' +
       '<button type="button" class="cr-btn alt" data-act="randomize">Randomize look</button>' +
       '<button type="button" class="cr-btn" data-act="begin">Step off the bus</button></div></div>';
   }
@@ -403,7 +404,14 @@
 
   function finish() {
     var c = ui.c, err = $('.cr-err', ui.root);
-    if (!c.player.name.trim()) { ui.tab = 'you'; render(); $('.cr-err', ui.root).textContent = 'You need a name before you step off the bus.'; return; }
+    if (!c.player.name.trim()) {
+      ui.tab = 'you'; render();
+      var msg = 'You need a name before you step off the bus.';
+      [].forEach.call(ui.root.querySelectorAll('.cr-err'), function (e) { e.textContent = msg; });
+      var nf = $('[data-f=name]', ui.root);
+      if (nf) { nf.style.outline = '2px solid #d9a441'; nf.placeholder = 'Type a name here first'; try { nf.scrollIntoView({ block: 'center' }); nf.focus(); } catch (e) {} }
+      return;
+    }
     if (c.player.age < 18) c.player.age = 18;
     c.player.name = c.player.name.trim();
     c.done = true;
@@ -411,7 +419,8 @@
     var g = G();
     if (g) {
       if (g.emit) g.emit('creationDone', c);
-      if (typeof g.start === 'function') g.start();
+      try { if (typeof g.start === 'function') g.start(); }
+      catch (e) { console.error(e); if (g.story) g.story('<p><b>Something went wrong starting the game:</b> ' + esc(String(e && e.message || e)) + '</p><p>Please tell the developers this message.</p>'); }
     }
   }
 

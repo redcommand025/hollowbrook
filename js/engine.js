@@ -11,7 +11,7 @@
     try {
       var bar = document.getElementById('errbar');
       if (!bar) { bar = document.createElement('div'); bar.id = 'errbar'; bar.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:5000;background:#5a1d1d;color:#fff;font:12px system-ui;padding:6px 10px;white-space:pre-wrap'; document.body.appendChild(bar); }
-      bar.textContent = 'Something broke: ' + e.message + ' (' + String(e.filename || '').split('/').pop() + ':' + e.lineno + '). Please tell the developers.';
+      bar.textContent = 'Something broke: ' + e.message + ' (' + String(e.filename || '').split('/').pop().split('?')[0] + ':' + e.lineno + ':' + (e.colno || 0) + ') [build 20261018c]. Please tell the developers.';
     } catch (x) {}
   });
   var memStore = {};
@@ -329,7 +329,7 @@
         el('overlay').classList.remove('titlemode');
         if (act === 'close') { started ? closeOverlay() : openTitle(); }
         else if (act === 'continue') G.load();
-        else if (act === 'begin') { store.remove(SAVE_KEY); closeOverlay(); if (!G.module('creation')) G.start(); }
+        else if (act === 'begin') { closeOverlay(); store.remove(SAVE_KEY); if (!G.module('creation')) G.start(); }
         else if (act === 'saves') openSaves();
         else if (act === 'help') openHelp();
         else if (act === 'load') G.loadSlot(n);

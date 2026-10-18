@@ -613,14 +613,14 @@
           return { text: '<p>You change into a clean outfit and toss the old one in the laundry pile.</p>', minutes: 10 };
         }));
       }
-      if (c.spareOutfits < 3) {
+      if (!wardrobeOn && c.spareOutfits < 3) {
         out.actions.push(opt('Do laundry ($3)', function () {
           if (money() < 3) return { text: '<p>You don\'t have enough for the machines.</p>', minutes: 1 };
           addMoney(-3); c.spareOutfits = 3; trainSkill('housekeeping', 8);
           return { text: '<p>You haul your laundry down to the machines and wait it out, half-reading a textbook.</p>', minutes: 90 };
         }));
       }
-      if (c.upperIntegrity < 80 || c.lowerIntegrity < 80) {
+      if (!wardrobeOn && (c.upperIntegrity < 80 || c.lowerIntegrity < 80)) {
         out.actions.push(opt('Mend your clothes', function () {
           var gain = 15 + S().skills.housekeeping / 40;
           c.upperIntegrity = clamp(c.upperIntegrity + gain, 0, 100); c.lowerIntegrity = clamp(c.lowerIntegrity + gain, 0, 100);

@@ -19,7 +19,7 @@
     try {
       var bar = document.getElementById('errbar');
       if (!bar) { bar = document.createElement('div'); bar.id = 'errbar'; bar.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:5000;background:#5a1d1d;color:#fff;font:12px system-ui;padding:6px 10px;white-space:pre-wrap'; document.body.appendChild(bar); }
-      bar.textContent = 'Something broke: ' + e.message + ' (' + String(e.filename || '').split('/').pop().split('?')[0] + ':' + e.lineno + ':' + (e.colno || 0) + ') [build 20261018e]. Please tell the developers.';
+      bar.textContent = 'Something broke: ' + e.message + ' (' + String(e.filename || '').split('/').pop().split('?')[0] + ':' + e.lineno + ':' + (e.colno || 0) + ') [build 20261018f]. Please tell the developers.';
     } catch (x) {}
   });
   var memStore = {};
@@ -183,7 +183,9 @@
     Object.keys(titles).forEach(function (k) {
       if (!current[k].length) return;
       html += '<section class="optgroup"><h3>' + titles[k] + ':</h3><ul>';
+      var lastSub = null;
       current[k].forEach(function (o, i) {
+        if (o.sub && o.sub !== lastSub) { html += '</ul><h4 class="optsub">' + esc(o.sub) + ':</h4><ul>'; lastSub = o.sub; }
         html += '<li><a href="#" class="opt' + (o.disabled ? ' disabled' : '') + '" data-g="' + k + '" data-i="' + i + '"' +
           (o.hint ? ' title="' + esc(o.hint) + '"' : '') + '>' + (hints && !o.disabled && visibleN < 9 ? '<span class="num">' + (visibleN + 1) + '</span>' : '') + o.label + '</a></li>';
         if (!o.disabled) visibleN++;

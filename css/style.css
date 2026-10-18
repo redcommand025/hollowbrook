@@ -53,3 +53,5 @@ table.saves td { padding:8px 6px; border-bottom:1px solid #2a2e37; }
 #overlay button.on { border-color:var(--accent) !important; color:var(--accent); }
 .daysum { margin:12px 0; padding:10px 14px; border-left:3px solid var(--accent); background:#1c1f26; font-size:.95em; }
 ul.ach { list-style:none; padding:0; } ul.ach li { padding:6px 0; border-bottom:1px solid #2a2e37; color:var(--dim); } ul.ach li.got { color:var(--ink); }
+
+.optsub { margin: 6px 0 2px 10px; font-size: 0.85em; color: #9aa3b5; font-weight: 600; text-transform: none; }

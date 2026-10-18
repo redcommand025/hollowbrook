@@ -19,7 +19,7 @@
     try {
       var bar = document.getElementById('errbar');
       if (!bar) { bar = document.createElement('div'); bar.id = 'errbar'; bar.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:5000;background:#5a1d1d;color:#fff;font:12px system-ui;padding:6px 10px;white-space:pre-wrap'; document.body.appendChild(bar); }
-      bar.textContent = 'Something broke: ' + e.message + ' (' + String(e.filename || '').split('/').pop().split('?')[0] + ':' + e.lineno + ':' + (e.colno || 0) + ') [build 20261018f]. Please tell the developers.';
+      bar.textContent = 'Something broke: ' + e.message + ' (' + String(e.filename || '').split('/').pop().split('?')[0] + ':' + e.lineno + ':' + (e.colno || 0) + ') [build 20261018g]. Please tell the developers.';
     } catch (x) {}
   });
   var memStore = {};
@@ -175,8 +175,18 @@
   }
 
   var current = {};
+  /* Persistent banners: modules register fn() -> html or null; shown above the story every render. */
+  var banners = [];
+  G.addBanner = function (fn) { banners.push(fn); };
+  function renderBanners() {
+    var b = el('banners'); if (!b) return;
+    var out = '';
+    banners.forEach(function (fn) { try { var h = fn(); if (h) out += '<div class="banner">' + h + '</div>'; } catch (e) { console.error(e); } });
+    b.innerHTML = out; b.hidden = !out;
+  }
   function render() {
     if (!started) return;
+    renderBanners();
     current = collectOptions();
     var titles = { dialogue: 'Dialogue', actions: 'Actions', travel: 'Travel', other: 'Other' };
     var html = '', visibleN = 0, hints = !G.settings || G.settings.numberHints !== false;

@@ -53,3 +53,7 @@ Pets (Jimmy): petbed, cattree, tank are pet furniture; lizards should require ta
 State `G.state.hair {length cm, natural, dyed, dyeDays, lastCut}`. Grows ~1 cm per game week; short cuts grow out into longer styles.
 `G.salon.length()`, `band()` (buzzed|short|ear|chin|shoulder|midback|waist), `lengthWord()`, `scruffy()`, `rootsShowing()`, `faded()`, `dyed()`, `natural()`, `daysSinceCut()`, `note()`.
 Event `hairChanged {what: cut|dye|grow|style, style, color}`. Location `hair_salon` (Ron).
+
+
+## Banners
+`G.addBanner(fn)`: fn() returns an HTML string or null, re-evaluated every render, and shown in a persistent strip above the story text (not replaced by turn text).

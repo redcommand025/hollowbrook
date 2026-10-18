@@ -1010,6 +1010,69 @@
     }
   }
 
+  /* ---------- Next-class reminder (campus only) and Journal timetable ---------- */
+  var DAYN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function placeName(id) { var l = G.world && G.world.location && G.world.location(id); return (l && l.name) || 'the lecture building'; }
+  function onCampus() {
+    var l = G.world && G.world.location && G.world.location(loc());
+    return !!(l && (l.district === 'Campus' || l.district === 'Campus Edge'));
+  }
+  function whenLabel(offset, wd) { return offset === 0 ? 'today' : offset === 1 ? 'tomorrow' : DAYN[wd]; }
+  function inLabel(mins) { var h = Math.floor(mins / 60), m = mins % 60; return h ? h + 'h' + (m ? ' ' + m + 'm' : '') : m + 'm'; }
+  // Returns { html, plain } describing the class in progress or the next one, or null.
+  function nextClassInfo() {
+    var s = S(); if (!s) return null;
+    var t = time(), room = placeName(LOC.classroom);
+    if (s.graduated) return { html: 'You have graduated. No more classes.', plain: 'Graduated: no more classes.' };
+    if (s.expelled) return { html: 'You are expelled. You can appeal at the dean\'s office.', plain: 'Expelled: appeal at the dean\'s office.' };
+    if (!inTerm()) return { html: 'Summer break. Classes start again in Autumn.', plain: 'Summer break: classes start again in Autumn.' };
+    if (s.suspendedUntil > t.day) return { html: 'Suspended. You can go back to class on day ' + s.suspendedUntil + '.', plain: 'Suspended until day ' + s.suspendedUntil + '.' };
+    if (isExamDay()) { var ex = (s.examType === 'finals' ? 'Finals' : 'Midterms'); return { html: '<b>' + ex + ' today</b>, 09:00 to 12:00, in ' + room + '.', plain: ex + ' today, 09:00 to 12:00, ' + room + '.' }; }
+    var cur = currentClass();
+    if (cur) {
+      var sj = SUBJECTS[cur.subj];
+      return { html: '<b>Class now:</b> ' + sj.name + ' with ' + sj.teacher + ' in ' + room + ', until ' + pad(cur.start + 2) + ':00' + (cur.late ? ' (you\'re late)' : '') + '.',
+        plain: sj.name + ' is on now in ' + room + ', until ' + pad(cur.start + 2) + ':00.' };
+    }
+    var nowM = t.hour * 60 + t.minute;
+    for (var off = 0; off <= 7; off++) {
+      var wd = (t.weekday + off) % 7, list = TIMETABLE[wd]; if (!list) continue;
+      for (var i = 0; i < BLOCKS.length; i++) {
+        var startM = BLOCKS[i] * 60 + off * 1440; if (startM <= nowM) continue;
+        var sj2 = SUBJECTS[list[i]], hw = s.homework && s.homework[list[i]] ? ' Homework is due.' : '';
+        var when = whenLabel(off, wd) + ' at ' + pad(BLOCKS[i]) + ':00';
+        return { html: '<b>Next class:</b> ' + sj2.name + ' with ' + sj2.teacher + ', ' + when + (off === 0 ? ' (in ' + inLabel(startM - nowM) + ')' : '') + ', in ' + room + '.' + hw,
+          plain: sj2.name + ', ' + when + ', ' + room + '.' + hw };
+      }
+    }
+    return null;
+  }
+  function refreshClassBanner() {
+    if (typeof document === 'undefined' || !G.state || !G.state.school) return;
+    var story = document.getElementById('story'); if (!story || !story.parentNode) return;
+    var b = document.getElementById('sol-nextclass');
+    if (!b) {
+      b = document.createElement('div'); b.id = 'sol-nextclass';
+      b.style.cssText = 'margin:0 0 10px;padding:6px 10px;border-left:3px solid var(--accent,#c9a96e);background:rgba(255,255,255,.04);font-size:.92em';
+      story.parentNode.insertBefore(b, story);
+    }
+    var info = onCampus() ? nextClassInfo() : null;
+    b.hidden = !info; b.style.display = info ? '' : 'none';
+    if (info) b.innerHTML = info.html;
+  }
+  function journalSection() {
+    if (!G.state || !G.state.school) return '';
+    var info = nextClassInfo(), s = S(), room = placeName(LOC.classroom);
+    var rows = [1, 2, 3, 4, 5].map(function (wd) {
+      return '<tr><td>' + DAYN[wd] + '</td>' + TIMETABLE[wd].map(function (k, i) { return '<td>' + pad(BLOCKS[i]) + ':00 ' + SUBJECTS[k].name + '</td>'; }).join('') + '</tr>';
+    }).join('');
+    var hw = Object.keys(s.homework || {}).map(function (k) { return '<li>' + SUBJECTS[k].name + ' homework, due day ' + s.homework[k] + '</li>'; }).join('');
+    return '<h3>Classes</h3>' + (info ? '<p>' + info.html + '</p>' : '') +
+      '<p class="flavor">All classes are two hours long, in ' + room + ' inside Calloway Main Building. Midterms are on day 15 and finals on day 26 of each term, and summer is a break.</p>' +
+      '<table class="jtable">' + rows + '</table>' + (hw ? '<p><b>Homework due</b></p><ul>' + hw + '</ul>' : '');
+  }
+
   function boot() {
     if (!window.G || !G.register) return setTimeout(boot, 50);
     G.register(mod);
@@ -1025,6 +1088,27 @@
       var line = policeStop(); if (line) { S().pendingStop = true; G.notify('Officer Dunn wants a word', 'info'); }
     });
     G.school = mod.api;
+    G.school.nextClass = nextClassInfo;
+    // Banner: refresh whenever the story text changes or time moves.
+    if (G.on) { G.on('action', refreshClassBanner); G.on('tick', refreshClassBanner); G.on('start', function () { setTimeout(refreshClassBanner, 0); }); G.on('arrive', function () { setTimeout(refreshClassBanner, 0); }); }
+    var hookStory = function () {
+      var st = typeof document !== 'undefined' && document.getElementById('story');
+      if (!st) return setTimeout(hookStory, 200);
+      if (typeof MutationObserver !== 'undefined') new MutationObserver(function () { refreshClassBanner(); }).observe(st, { childList: true });
+      refreshClassBanner();
+    };
+    hookStory();
+    // Journal: prepend the class section to whichever module owns the Journal tab.
+    if (G.addTab && !G._schoolJournalHooked) {
+      G._schoolJournalHooked = true;
+      var addTab = G.addTab;
+      G.addTab = function (tab) {
+        if (tab && tab.id === 'journal' && tab.render && !tab._school) {
+          var r = tab.render; tab = { id: tab.id, label: tab.label, order: tab.order, _school: true, render: function (st) { var a = ''; try { a = journalSection(); } catch (e) { console.error('school journal', e); } return a + r(st); } };
+        }
+        return addTab.call(G, tab);
+      };
+    }
   }
   boot();
 })();

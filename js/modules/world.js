@@ -22,7 +22,7 @@
                      desc: 'Notice boards, a humming vending machine, and the shared bathroom at the end of the hall.' },
     quad:          { name: 'Main Quad', district: 'Campus', indoor: false, open: null,
                      desc: 'An oak-shaded lawn ringed by red-brick buildings. Students cut across it at every hour.' },
-    lecture_hall:  { name: 'Calloway Lecture Building', district: 'Campus', indoor: true, open: [7, 21], restroom: true,
+    lecture_hall:  { name: 'Lecture Rooms (Calloway Main Building)', district: 'Campus', indoor: true, open: [7, 21], restroom: true,
                      desc: 'Tiered seating, flickering projectors, and the smell of old radiators.' },
     library:       { name: 'Whitlock Library', district: 'Campus', indoor: true, open: [8, 23], restroom: true,
                      desc: 'Three quiet floors of stacks. The top floor carrels are always taken during exams.' },
@@ -953,7 +953,8 @@
     LOCATIONS: LOCATIONS,
     WEATHER: WEATHER,
     WEEKDAYS: WEEKDAYS,
-    here: function () { return loc(); },            // location object: {id, name, district, indoor, tags, ...}
+    here: function () { return loc(); },
+    onCampus: function (id) { var l = LOCATIONS[resolve(id || W().location)]; return !!l && (l.district === 'Campus' || l.district === 'Campus Edge'); },   // grounds, main building, dorm, library, dining, gym, farm            // location object: {id, name, district, indoor, tags, ...}
     hereId: function () { return W().location; },
     is: function (id) { return W().location === resolve(id); },
     resolve: resolve,

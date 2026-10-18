@@ -141,7 +141,7 @@
     harness: { label: 'Small-pet harness', price: 9, once: true },
     medicine: { label: 'Pet medicine', price: 15, qty: 1 }
   };
-  var NAMES = ['Biscuit', 'Pepper', 'Maple', 'Juniper', 'Pickle', 'Mochi', 'Bean', 'Clementine', 'Sprout', 'Waffles', 'Fig', 'Pip', 'Nutmeg', 'Olive', 'Toast', 'Moss', 'Bramble', 'Ziggy', 'Pumpkin', 'Wren'];
+  var NAMES = ['Biscuit', 'Pepper', 'Maple', 'Juniper', 'Pickle', 'Mochi', 'Bean', 'Clementine', 'Sprout', 'Waffles', 'Fig', 'Pip', 'Nutmeg', 'Olive', 'Toast', 'Moss', 'Bramble', 'Ziggy', 'Pumpkin', 'Juniper'];
   var WORDS = ['hello', 'good morning', 'pretty bird', 'snack time', 'what\'s that', 'oh no', 'I love you', 'bye bye', 'Hollowbrook', 'study'];
   // places pets may not go
   var NO_PETS = ['lecture_hall', 'library', 'cafeteria', 'deans_office', 'cafe', 'market', 'bar', 'gym', 'church', 'town_hall', 'clothing_store', 'furniture_store'];
@@ -505,6 +505,44 @@
   }
 
   // ---------- strays & runaways ----------
+  // ---------- Hollowbrook Dog Pound: rescue adoptions, lost pets ----------
+  function poundOptions(out) {
+    var st = P(); if (hereId() !== 'dog_pound') return;
+    var wk = Math.floor(day() / 7);
+    if (!st.pound || st.pound.week !== wk) {
+      st.pound = { week: wk, list: [0, 1, 2].map(function () { var k = chance(0.65) ? 'dog' : 'cat'; return { species: k, breed: (function (b) { return /\bold\b/.test(b) ? b : 'older ' + b; })(pick(SPECIES[k].breeds)), name: pick(NAMES) }; }) };
+    }
+    st.list.filter(function (p) { return p.status === 'runaway' && day() - (p.runawayDay || day()) >= 2; }).forEach(function (p) {
+      out.actions.push(opt('Ask whether anyone has handed in ' + p.name + ' ($15 release fee)', function () {
+        if (!chance(0.6)) return { text: '<p>The volunteer checks the book and the kennels. No ' + sp(p).label.toLowerCase() + ' matching ' + p.name + '. She takes your number in case one turns up.</p>', minutes: 15 };
+        if (G.state.money < 15) return { text: '<p>' + p.name + ' is here! But the release fee is $15, and you don\'t have it. The volunteer says they will hold ' + pron(p).o + ' until tomorrow.</p>', minutes: 15 };
+        if (G.change) G.change('money', -15);
+        p.status = 'home'; p.neglect = 0; p.sick = false; p.health = Math.max(p.health, 600); p.happiness = 450; p.hunger = 700; p.thirst = 700; bond(p, -30);
+        memo(p, 'You found ' + p.name + ' safe at the Hollowbrook Dog Pound after ' + pron(p).s + ' ran away.');
+        if (G.emit) G.emit('petReturned', { pet: p.id });
+        return { text: '<p>A volunteer leads you to the back kennels, and there is ' + p.name + ', clean and fed. ' + pron(p).S + ' spots you and goes still, then bolts into your arms.</p>', minutes: 20 };
+      }));
+    });
+    out.actions.push(opt('Volunteer walking the kennel dogs (1 hour)', function () {
+      stress(-30); trainTending(3); if (G.stats && G.stats.fame) G.stats.fame('kindness', 4);
+      return { text: '<p>You take three very excited dogs around the block, one at a time. By the end your arms ache and your coat is covered in fur, and you feel good.</p>', minutes: 60 };
+    }));
+    st.pound.list.forEach(function (r, i) {
+      if (!r) return;
+      var full = activePets().length >= capacity();
+      out.actions.push(opt('Adopt ' + r.name + ', ' + (/^[aeiou]/i.test(r.breed) ? 'an ' : 'a ') + r.breed + ' ($20 rescue fee)', function () {
+        if (full) return { text: '<p>Your dorm can\'t take another pet right now.</p>', minutes: 1 };
+        if (G.state.money < 20) return { text: '<p>The rescue fee is $20, which you don\'t have right now.</p>', minutes: 2 };
+        if (G.change) G.change('money', -20);
+        var p = newPet(r.species, { stray: true, breed: r.breed, name: r.name }); p.vaccinated = true; p.bond = 100; st.list.push(p);
+        memo(p, 'You adopted ' + p.name + ' from the Hollowbrook Dog Pound. Nobody else had wanted ' + pron(p).o + '.');
+        st.pound.list[i] = null;
+        if (G.stats && G.stats.fame) G.stats.fame('kindness', 10);
+        return { text: '<p>You sign the forms, and the volunteer hands over ' + p.name + ' with a vaccination card and a worn blanket. ' + pron(p).S + ' sniffs your hand, then leans against your leg.</p>', minutes: 30 };
+      }, full ? { disabled: true, hint: 'Your dorm is at its pet limit.' } : null));
+    });
+  }
+
   function strayOptions(out) {
     var st = P();
     if (st.stray && st.stray.where === hereId()) {
@@ -585,7 +623,7 @@
   function getOptions() {
     var out = { dialogue: [], actions: [], travel: [], other: [] };
     if (!P()) return out;
-    careOptions(out); shopOptions(out); strayOptions(out); showOptions(out);
+    careOptions(out); shopOptions(out); strayOptions(out); showOptions(out); poundOptions(out);
     return out;
   }
 

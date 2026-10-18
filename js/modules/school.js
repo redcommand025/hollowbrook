@@ -231,7 +231,7 @@
   var TARGETS = {
     quad: { name: 'an unattended bag on the quad', loot: [5, 25], risk: 0.25, witnesses: 'students' },
     library: { name: 'the library\'s lost-property box', loot: [2, 15], risk: 0.15, witnesses: 'a librarian' },
-    main_street: { name: 'a distracted shopper on Main Street', loot: [10, 45], risk: 0.35, witnesses: 'the stallholder' }
+    main_street: { name: 'a distracted shopper on the busy street', loot: [10, 45], risk: 0.35, witnesses: 'the stallholder' }
   };
   function pickpocket() {
     var t = TARGETS[loc()]; if (!t) return { text: 'Nothing worth taking here.', minutes: 1 };
@@ -993,6 +993,23 @@
     if (s.suspendedUntil && s.suspendedUntil <= t.day) { s.suspendedUntil = 0; s.delinquency = 450; G.notify('Suspension over; delinquency reset to 450', 'info'); }
   }
 
+  /* Sneaking onto campus from an alleyway (back fence or side gate). */
+  function fenceClimb() {
+    var st = G.state, h = (G.time && G.time.hour) || 12, late = h >= 22 || h < 6;
+    if (G.stats && G.stats.train) G.stats.train('physique', 2);
+    if (G.stats && G.stats.trainSkill) G.stats.trainSkill('skulduggery', late ? 4 : 2);
+    var phys = (G.stats && G.stats.effective) ? G.stats.effective('physique') : 300;
+    if (Math.random() < Math.max(0.05, 0.35 - phys / 3000) && st.stats && st.stats.clothing) {
+      st.stats.clothing.lowerIntegrity = Math.max(0, (st.stats.clothing.lowerIntegrity || 0) - 4);
+      G.notify('You snag your clothes getting through', 'down');
+    }
+    if (!late) return;
+    if (G.stats && G.stats.crime) G.stats.crime(5);
+    if (Math.random() < 0.15) {
+      delinq(40, 'campus security saw you come over the fence after hours');
+    }
+  }
+
   function boot() {
     if (!window.G || !G.register) return setTimeout(boot, 50);
     G.register(mod);
@@ -1002,6 +1019,8 @@
     }, [['quad', 2]]);
     if (G.on) G.on('newDay', newDay);
     if (G.on) G.on('arrive', function (d) {
+      var prev = S().lastLoc; S().lastLoc = d && d.location;
+      if ((prev === 'industrial_alley' || prev === 'alley') && d && d.location === 'quad') fenceClimb();
       var l = d && d.location; if (['main_street', 'town_square', 'alley', 'market', 'shopping_centre'].indexOf(l) < 0) return;
       var line = policeStop(); if (line) { S().pendingStop = true; G.notify('Officer Dunn wants a word', 'info'); }
     });

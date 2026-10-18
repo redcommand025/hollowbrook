@@ -32,8 +32,8 @@
                      desc: 'Squeaking sneakers, a weight room, and an indoor track on the mezzanine.' },
     campus_farm:   { name: 'College Teaching Farm', district: 'Campus Edge', indoor: false, open: [6, 19],
                      desc: 'Raised beds, a polytunnel, two goats, and a few hens kept by the agriculture department.' },
-    main_street:   { name: 'Main Street', district: 'Town', indoor: false, open: null,
-                     desc: 'The heart of Hollowbrook: bunting between lampposts, a bakery, a pharmacy, and a bus shelter.' },
+    main_street:   { name: 'Main Street', district: 'Town', indoor: false, open: null, street: true,
+                     desc: 'The heart of Hollowbrook: bunting between lampposts, a bakery, a pharmacy, the Copper Kettle, the grocer and the florist.' },
     cafe:          { name: 'The Copper Kettle Café', district: 'Town', indoor: true, open: [7, 19], restroom: true,
                      desc: 'Mismatched armchairs, a chalkboard menu, and a cat who sleeps on the windowsill.' },
     market:        { name: 'Hollowbrook Grocer', district: 'Town', indoor: true, open: [8, 21], restroom: true,
@@ -42,17 +42,17 @@
                      desc: 'Buckets of cut flowers spill onto the pavement. It always smells like rain inside.' },
     park:          { name: 'Millpond Park', district: 'Town', indoor: false, open: null,
                      desc: 'A duck pond, a bandstand, and benches carved with decades of initials.' },
-    residential:   { name: 'Elm Row', district: 'Residential', indoor: false, open: null,
-                     desc: 'Terraced houses with tidy gardens, wind chimes, and a neighbourhood watch sign.' },
-    alley:         { name: 'Back Alley', district: 'Town', indoor: false, open: null,
-                     desc: 'Bins, fire escapes, and a shortcut most people avoid after dark.' },
+    residential:   { name: 'Elm Row', district: 'Residential', indoor: false, open: null, street: true,
+                     desc: 'A residential street of terraced houses with tidy gardens, wind chimes, and a neighbourhood watch sign. Most of your neighbours live here.' },
+    alley:         { name: 'Back Alley', district: 'Town', indoor: false, open: null, alleyway: true,
+                     desc: 'Bins behind the shops, fire escapes, and a shortcut most people avoid after dark. It threads behind Main Street, the square and the High Street, with a side gate onto the college grounds.' },
     bar:           { name: 'The Lantern Pub', district: 'Town', indoor: true, open: [12, 24], restroom: true,
                      desc: 'Low beams, a darts board, and open-mic night every Thursday.' },
     old_mill:      { name: 'The Old Mill', district: 'Outskirts', indoor: false, open: null,
                      desc: 'A derelict water mill by the river where outcasts and dreamers tend to drift.' },
     deans_office:   { name: "Dean's Office", district: 'Campus', indoor: true, open: [8, 17], restroom: true,
                      desc: 'Wood panelling, a ticking clock, and a secretary who has seen every excuse twice.' },
-    town_square:   { name: 'Town Square', district: 'Town', indoor: false, open: null,
+    town_square:   { name: 'Market Square', district: 'Town', indoor: false, open: null, street: true,
                      desc: 'A cobbled square with a war memorial, a drinking fountain, and pigeons that fear no one.' },
     town_hall:     { name: 'Hollowbrook Town Hall', district: 'Town', indoor: true, open: [8, 18], restroom: true,
                      desc: 'A stone civic building with creaking floors, council notices, and a portrait of every past mayor.' },
@@ -76,19 +76,52 @@
                      desc: 'Birch and bracken, a muddy footpath, and stories about lights between the trees.' }
   };
 
+  var NIGHT_EXTRA = {};
+
+  /* ---------------- Street grid (polish pass): every street has places to go into and streets to travel to ---------------- */
+  function S(name, district, desc, night) { return { name: name, district: district, indoor: false, open: null, street: true, tags: ['public'], desc: desc, night: night }; }
+  function B(name, district, indoor, open, desc, night, extra) { var o = { name: name, district: district, indoor: indoor, open: open, desc: desc, night: night }; for (var k in (extra || {})) o[k] = extra[k]; return o; }
+  var GRID_LOCS = {
+    college_road:  S('College Road', 'Town', 'A tree-lined road outside the college\'s iron gates, with a bus shelter, a row of bike racks and a sandwich van at lunchtime.', 'The college gates stand open under two lamps. A few students drift home in twos and threes.'),
+    high_street:   S('High Street', 'Town', 'The newer end of town: chain shops, a bank, and the glass front of Brookside Shopping Centre.', 'The shopping centre\'s glass front is dark, and a kebab shop glows on the corner.'),
+    river_lane:    S('River Lane', 'Outskirts', 'A lane running down to the river past the Lantern pub, with the docks below and a track out to the old mill and the woods.', 'The Lantern\'s windows glow. Beyond them the lane runs on into dark fields and the sound of the river.'),
+    dog_pound:     B('Hollowbrook Dog Pound', 'Residential', true, [9, 17], 'A low brick rescue centre at the end of Elm Row: rows of kennels, a smell of disinfectant and a volunteer rota on the wall. Every dog wants your attention.', 'The kennels are locked for the night. You can hear the dogs settling.', { tags: ['water'] }),
+    main_building: B('Calloway Main Building', 'Campus', true, [7, 22], 'The red-brick heart of the college: a tiled entrance hall with corridors to the lecture rooms and the dean\'s office.', 'The entrance hall is half lit and echoing. A cleaner\'s trolley squeaks somewhere down a corridor.', { restroom: true, tags: ['public', 'water'] })
+  };
+  Object.keys(GRID_LOCS).forEach(function (id) { var o = GRID_LOCS[id], n = o.night; delete o.night; LOCATIONS[id] = o; NIGHT_EXTRA[id] = n; });
+
   var LINKS = [
-    ['dorm_room', 'dorm_hall', 1], ['dorm_hall', 'quad', 3],
-    ['quad', 'lecture_hall', 3], ['quad', 'library', 4], ['quad', 'cafeteria', 3], ['quad', 'gym', 5],
-    ['quad', 'campus_farm', 10], ['quad', 'main_street', 12],
-    ['main_street', 'cafe', 2], ['main_street', 'market', 2], ['main_street', 'florist', 3],
-    ['main_street', 'park', 6], ['main_street', 'alley', 2], ['main_street', 'bar', 4],
-    ['main_street', 'residential', 8], ['park', 'residential', 5], ['alley', 'bar', 2],
-    ['quad', 'deans_office', 2], ['main_street', 'town_square', 2], ['town_square', 'town_hall', 1],
-    ['town_square', 'church', 3], ['town_square', 'park', 5], ['old_mill', 'docks', 6], ['alley', 'docks', 12],
-    ['main_street', 'shopping_centre', 5], ['shopping_centre', 'clothing_store', 1],
-    ['shopping_centre', 'furniture_store', 1], ['shopping_centre', 'pet_store', 2], ['pet_store', 'vet_clinic', 1], ['shopping_centre', 'hair_salon', 1], ['main_street', 'vet_clinic', 6],
-    ['park', 'old_mill', 15], ['old_mill', 'woods', 10], ['campus_farm', 'woods', 12]
+    // Campus: the grounds lead into the main building (lectures, dean) and to Ashford Hall, the dorm, a separate building.
+    ['dorm_room', 'dorm_hall', 1], ['dorm_hall', 'quad', 3], ['quad', 'main_building', 2],
+    ['main_building', 'lecture_hall', 1], ['main_building', 'deans_office', 1],
+    ['quad', 'library', 3], ['quad', 'cafeteria', 3], ['quad', 'gym', 4], ['quad', 'campus_farm', 10],
+    ['quad', 'college_road', 2],
+    // Go-to places off each street
+    ['main_street', 'cafe', 1], ['main_street', 'market', 1], ['main_street', 'florist', 1],
+    ['town_square', 'town_hall', 1], ['town_square', 'church', 2],
+    ['high_street', 'shopping_centre', 1], ['residential', 'dog_pound', 2],
+    ['river_lane', 'docks', 2], ['river_lane', 'bar', 2], ['river_lane', 'old_mill', 4], ['river_lane', 'woods', 10],
+    ['alley', 'quad', 4],
+    // Streets to streets
+    ['college_road', 'main_street', 5], ['college_road', 'residential', 5], ['college_road', 'park', 5], ['college_road', 'alley', 4],
+    ['main_street', 'town_square', 3], ['main_street', 'high_street', 3], ['main_street', 'alley', 2],
+    ['town_square', 'alley', 2], ['town_square', 'park', 5], ['town_square', 'river_lane', 6],
+    ['high_street', 'alley', 3], ['residential', 'park', 4], ['residential', 'alley', 4],
+    ['river_lane', 'alley', 4], ['river_lane', 'park', 6],
+    // Places that hang off other places
+    ['old_mill', 'docks', 4], ['old_mill', 'woods', 10], ['campus_farm', 'woods', 12],
+    ['shopping_centre', 'clothing_store', 1], ['shopping_centre', 'furniture_store', 1], ['shopping_centre', 'pet_store', 1],
+    ['shopping_centre', 'hair_salon', 1], ['shopping_centre', 'vet_clinic', 2], ['pet_store', 'vet_clinic', 1]
   ];
+  // Special wording for some links, keyed 'from>to'.
+  var LINK_LABEL = {
+    'college_road>quad': 'Go through the campus gates', 'quad>college_road': 'Out through the campus gates to College Road',
+    'quad>main_building': 'Go into Calloway Main Building', 'quad>dorm_hall': 'Go to Ashford Hall (dorm)',
+    'alley>quad': 'Slip through the side gate onto the campus grounds', 'quad>alley': 'Slip out through the side gate into the Back Alley',
+    'shopping_centre>clothing_store': 'Ground floor: Threadbare & Co.', 'shopping_centre>hair_salon': 'Ground floor: Snip & Curl Salon',
+    'shopping_centre>furniture_store': 'First floor: Hearth & Home Furnishings', 'shopping_centre>pet_store': 'Second floor: Paws & Whiskers Pet Shop',
+    'shopping_centre>vet_clinic': 'Second floor: Brookside Veterinary Clinic'
+  };
   // Tags read by stats.js (hereHas) and anyone else: outdoors, restroom, water, food, home, gym, quiet, mirror, public.
   var EXTRA_TAGS = {
     dorm_room: ['home', 'quiet', 'mirror', 'water'], dorm_hall: ['water', 'mirror', 'food'],
@@ -107,7 +140,7 @@
   }
   // Aliases so other modules' shorthand ids resolve to real map ids (G.world.is / G.world.resolve).
   var ALIASES = {
-    home: 'dorm_room', dorms: 'dorm_hall', campus: 'quad', classroom: 'lecture_hall', farm: 'campus_farm',
+    school: 'quad', college: 'quad', campus_grounds: 'quad', campus_gates: 'college_road', market_square: 'town_square', pub: 'bar', shop: 'market', forest: 'woods', back_alley: 'alley', home: 'dorm_room', dorms: 'dorm_hall', campus: 'quad', classroom: 'lecture_hall', farm: 'campus_farm',
     office: 'deans_office', street: 'main_street',
     college_classroom: 'lecture_hall', college_library: 'library', college_quad: 'quad', college_office: 'deans_office',
     meadow_farm: 'campus_farm', town_market: 'market'
@@ -204,7 +237,7 @@
     cafeteria: 'Chairs are upturned on half the tables, and the last tray trolley rattles back to the kitchen.',
     gym: 'Fluorescent lights buzz over a near-empty weight room. One runner circles the mezzanine track.',
     campus_farm: 'The polytunnel glows faintly under the moon. The goats shuffle in their shed.',
-    main_street: 'Shop shutters are down. The bakery\'s window is dark, but the pub at the end glows warm.',
+    main_street: 'Shop shutters are down. The bakery\'s window is dark, but the Copper Kettle\'s sign still glows.',
     cafe: 'Chairs stacked, chalkboard wiped clean. The cat watches you through the glass.',
     market: 'Strip lights over half-empty shelves and a basket of yellow-stickered bread by the till.',
     florist: 'Buckets brought in for the night. Through the window, petals glow pale in the dark.',
@@ -226,6 +259,8 @@
     church: 'Candles gutter by the door. The stained glass is dark from inside.',
     docks: 'Narrowboat windows glow warm along the jetty, and woodsmoke drifts over the water.'
   };
+  Object.keys(NIGHT_EXTRA).forEach(function (id) { if (!NIGHT[id]) NIGHT[id] = NIGHT_EXTRA[id]; });
+
 
   /* ---------------- Seasonal festivals ----------------
    * One per season on a fixed day. On the day: a notice at dawn, changed descriptions,
@@ -441,8 +476,8 @@
 
 
   /* ---------------- Phase three: forecast, buses, bikes, weekly market, crowds, moon, seasons ---------------- */
-  var BUS_STOPS = ['quad', 'main_street', 'town_square', 'shopping_centre', 'residential', 'docks', 'old_mill', 'woods'];
-  var OUTSKIRTS_STOPS = ['docks', 'old_mill', 'woods'];   // the 12 runs 7:00 to 19:00 only
+  var BUS_STOPS = ['college_road', 'main_street', 'town_square', 'high_street', 'residential', 'river_lane'];
+  var OUTSKIRTS_STOPS = ['river_lane'];   // the 12 serves the industrial edge, 7:00 to 19:00 only
   var BUS_FARE = 2, BIKE_PRICE = 55;
   function busRunning() { return G.time.hour >= 6 && G.time.hour < 23; }
   function busTo(dest) {
@@ -450,27 +485,33 @@
       var w = W(), wait = 2 + Math.floor(Math.random() * (G.time.isWeekend ? 14 : 8)), ride = 4 + Math.floor(Math.random() * 4);
       if (num(G.state, 'money') < BUS_FARE) return { text: '<p>You pat your pockets at the bus stop. Not even $' + BUS_FARE + ' for the fare.</p>', minutes: 1 };
       G.change('money', -BUS_FARE);
-      var from = w.location;
+      var from = w.location; w.busOpen = null;
       w.location = dest; w.visited[dest] = true;
       var a = onArrive(); if (G.emit) G.emit('arrive', { location: dest });
       var crowd = G.time.hour >= 8 && G.time.hour < 9 || G.time.hour >= 17 && G.time.hour < 18 ? ' It is rush hour, and you stand the whole way, wedged against a rucksack.' : ' You get a window seat and watch Hollowbrook slide past.';
-      var line = (OUTSKIRTS_STOPS.indexOf(dest) >= 0 && dest !== 'docks') || (OUTSKIRTS_STOPS.indexOf(from) >= 0 && from !== 'docks') ? '12' : '7';
+      var line = OUTSKIRTS_STOPS.indexOf(dest) >= 0 || OUTSKIRTS_STOPS.indexOf(from) >= 0 ? '12' : '7';
       return { text: '<p>The number ' + line + ' bus arrives after ' + wait + ' minutes.' + crowd + ' (' + (wait + ride) + ' min, $' + BUS_FARE + ')</p>' + a.html, minutes: wait + ride + a.minutes };
     };
   }
   function outskirtsRunning() { return G.time.hour >= 7 && G.time.hour < 19 && W().weather !== 'storm' && W().weather !== 'snow'; }
-  function busOptions() {
-    var here = W().location; if (BUS_STOPS.indexOf(here) < 0 || !busRunning()) return [];
-    if (W().weather === 'snow' && G.time.hour >= 20) return [];
-    var hereOut = OUTSKIRTS_STOPS.indexOf(here) >= 0;
-    if (hereOut && here !== 'docks' && !outskirtsRunning()) return [];
-    return BUS_STOPS.filter(function (id) {
-      if (id === here || (ADJ[here] && ADJ[here][id] && ADJ[here][id] <= 3)) return false;
-      var out = OUTSKIRTS_STOPS.indexOf(id) >= 0 && id !== 'docks';
-      return !(out || (hereOut && here !== 'docks')) || outskirtsRunning();
-    }).map(function (id) { var out = OUTSKIRTS_STOPS.indexOf(id) >= 0 && id !== 'docks';
-      return { label: (out ? 'Number 12 bus to ' : 'Bus to ') + LOCATIONS[id].name + ' ($' + BUS_FARE + ')', run: busTo(id), locationId: id }; });
+  function busStopUsable() {
+    var here = W().location;
+    if (!busRunning() || (W().weather === 'snow' && G.time.hour >= 20)) return false;
+    return !(OUTSKIRTS_STOPS.indexOf(here) >= 0 && !outskirtsRunning());
   }
+  // The bus stop is a small menu: pick a street, or step away.
+  function busOptions() {
+    var here = W().location, hereOut = OUTSKIRTS_STOPS.indexOf(here) >= 0, out = [];
+    if (busStopUsable()) BUS_STOPS.forEach(function (id) {
+      if (id === here) return;
+      var twelve = hereOut || OUTSKIRTS_STOPS.indexOf(id) >= 0;
+      if (twelve && !outskirtsRunning()) return;
+      out.push({ label: (twelve ? 'Number 12 bus to ' : 'Bus to ') + LOCATIONS[id].name + ' ($' + BUS_FARE + ')', run: busTo(id), locationId: id });
+    });
+    out.push({ label: 'Leave the bus stop', run: function () { W().busOpen = null; return { text: '<p>You step away from the bus shelter.</p>' + locationBlurb(), minutes: 0 }; } });
+    return out;
+  }
+
 
   var MARKET_DAY = { where: 'town_square', weekdayIndex: 5, from: 8, to: 13, name: 'Saturday farmers\' market',
     desc: 'Striped awnings fill the square: local honey, muddy carrots, cheese wheels, and a man who sells only mushrooms.',
@@ -649,7 +690,8 @@
   function tryEvent(trigger) {
     var w = W(), here = w.location, l = loc();
     var pool = EVENTS.filter(function (e) {
-      var ok = e.where.some(function (x) { return x === '*' || x === here || x === l.district || (x === '*outdoor' && !l.indoor); });
+      var ok = e.where.some(function (x) { return x === '*' || x === here || x === l.district || (x === '*outdoor' && !l.indoor) ||
+        (x === 'main_street' && l.street) || (x === 'residential' && l.district === 'Residential' && (l.street || l.alleyway)) || (x === 'alley' && l.alleyway); });
       if (!ok) return false;
       if (e.when && !e.when(G.state)) return false;
       var last = w.eventsSeen[e.id]; if (last != null && w.minutes - last < 1440) return false; // once per day max
@@ -691,16 +733,52 @@
     };
   }
 
+  function fmtT(m) { return '(' + Math.floor(m / 60) + ':' + pad(m % 60) + ')'; }
+  function isRoad(id) { var l = LOCATIONS[id]; return !!(l && (l.street || l.alleyway)); }
   function travelOptions() {
-    var here = W().location, out = [];
-    Object.keys(ADJ[here]).sort(function (a, b) { return ADJ[here][a] - ADJ[here][b]; }).forEach(function (id) {
-      var l = LOCATIONS[id], closed = weatherClosure(id) ? ' (closed: weather)' : !isOpen(id) ? ' (closed)' : '';
-      var m = ADJ[here][id], w = W();
+    var here = W().location, w = W(), roadHere = isRoad(here), goTo = [], travel = [];
+    Object.keys(ADJ[here] || {}).forEach(function (id) {
+      var l = LOCATIONS[id]; if (!l) return;
+      var closed = weatherClosure(id) ? ' (closed: weather)' : !isOpen(id) ? ' (closed)' : '';
+      var m = ADJ[here][id];
       if (w.bike && !w.bikeFlat && m >= 4 && w.weather !== 'storm' && w.weather !== 'snow' && (!LOCATIONS[here].indoor || !l.indoor)) m = Math.max(2, Math.ceil(m * 0.5));
-      out.push({ label: l.name + ' · ' + m + ' min' + closed, run: travelTo(id), locationId: id });
+      var special = LINK_LABEL[here + '>' + id], road = isRoad(id) || id === 'park';
+      var label = special || (road ? 'Travel to ' : 'Go to ') + l.name;
+      (roadHere && road ? travel : goTo).push({ label: label + ' ' + fmtT(m) + closed, run: travelTo(id), locationId: id, mins: m, sub: roadHere ? (road ? 'Travel to' : 'Go to') : null });
     });
+    goTo.sort(function (a, b) { return a.mins - b.mins || (a.label < b.label ? -1 : 1); });
+    travel.sort(function (a, b) { var ap = a.locationId === 'park' || LOCATIONS[a.locationId].alleyway, bp = b.locationId === 'park' || LOCATIONS[b.locationId].alleyway; return ap - bp || a.mins - b.mins; });
+    var out = goTo.concat(travel);
+    if (BUS_STOPS.indexOf(here) >= 0) out.push({ label: 'Bus stop (0:02)', sub: 'Travel to', run: function () {
+      w.busOpen = here;
+      var msg = busStopUsable() ? 'You wait at the bus shelter. The timetable says a bus comes every ten minutes or so.' + (OUTSKIRTS_STOPS.indexOf(here) >= 0 ? ' Only the Number 12 stops out here.' : '') : 'The timetable is taped over: no more buses tonight' + (W().weather === 'snow' ? ' because of the snow' : '') + '.';
+      return { text: '<p>' + msg + '</p>', minutes: 2 };
+    } });
+    if (roadHere) out.push({ label: 'Loiter (0:15)', sub: 'Travel to', run: loiter });
     return out;
   }
+  function knockDoor() {
+    var h = G.time.hour;
+    if (h >= 21 || h < 8) { G.change('stats.needs.stress', 15); return { text: '<p>You knock. A light comes on upstairs, a curtain twitches, and a voice tells you through the letterbox that it is far too late for callers. You leave quickly.</p>', minutes: 2 }; }
+    var r = Math.random();
+    if (r < 0.4) return { text: '<p>Nobody answers. A security camera above the door blinks at you.</p>', minutes: 2 };
+    if (r < 0.7) { G.change('stats.needs.stress', -5); return { text: '<p>A woman in gardening gloves opens the door, listens politely, says she is not buying anything and wishes you a nice day.</p>', minutes: 2 }; }
+    if (r < 0.9) { G.change('money', 8); G.change('stats.needs.fatigue', 60); return { text: '<p>An older man asks if you would carry some boxes from his car to the garage. Twenty minutes later he presses $8 into your hand.</p>', minutes: 22 }; }
+    G.change('stats.needs.thirst', 120); G.change('stats.needs.stress', -15);
+    return { text: '<p>A cheerful retired couple invite you in for a glass of lemonade and show you photos of their grandchildren. It is oddly nice.</p>', minutes: 20 };
+  }
+  var LOITER = {
+    Town: ['You hang around outside the shops, people-watching. Everyone seems to be in a hurry except you.', 'You window-shop slowly and listen in on the conversations drifting out of doorways.', 'You sit on a low wall and watch the traffic, the dog walkers and the bus come and go.'],
+    Residential: ['You lean on a garden wall and watch the street. A man washes his car; a kid kicks a ball against a garage door.', 'You dawdle along the pavement, reading the names on doorbells and the notices in windows.'],
+    Outskirts: ['You lean on the river wall and watch a narrowboat chug past. A heron ignores you completely.', 'You kick a stone along the lane. The town feels far away out here.']
+  };
+  function loiter() {
+    var l = loc(), ev = tryEvent('arrive'); aware(1);
+    var line = l.alleyway ? 'You hang about in the alleyway, listening to the town on the other side of the walls. Nobody comes this way much.' : pick(LOITER[l.district] || LOITER.Town);
+    if (isDark(G.time.hour)) line += ' It is dark, and you are more aware than usual of who else is about.';
+    return { text: '<p>' + line + '</p>' + (ev ? '<p>' + ev.text + '</p>' : ''), minutes: 15 + ((ev && ev.minutes) || 0) };
+  }
+
 
   function seasonOffset(state) {
     var c = state.creation && state.creation.world, want = c && c.startSeason ? String(c.startSeason).toLowerCase() : 'autumn';
@@ -758,7 +836,9 @@
     },
 
     getOptions: function (state) {
-      var w = state.world, l = loc(), opts = { dialogue: [], actions: [], travel: travelOptions().concat(busOptions()), other: [] };
+      var w = state.world, l = loc();
+      if (w.busOpen && w.busOpen !== w.location) w.busOpen = null;
+      var opts = { dialogue: [], actions: [], travel: w.busOpen ? busOptions() : travelOptions(), other: [] };
       if (w.menuOpen && (w.menuOpen !== w.location || !isOpen(w.location))) w.menuOpen = null;
       if (w.menuOpen) { opts.actions = menuOptions(w.menuOpen); return opts; }
       if (MENUS[w.location] && isOpen(w.location)) {
@@ -779,6 +859,7 @@
         });
       }
 
+      if (w.location === 'residential') opts.actions.push({ label: 'Knock on one of the houses (0:02)', run: knockDoor });
       opts.actions.push({ label: 'Look around', run: function () {
         var ev = tryEvent('idle');
         return { text: locationBlurb() + (ev ? '<p>' + ev.text + '</p>' : ''), minutes: 2 + ((ev && ev.minutes) || 0) };

@@ -1011,10 +1011,13 @@
   }
 
   /* ---------- Next-class reminder (campus only) and Journal timetable ---------- */
+  var ROOMS = { lit: 'Room 2B', math: 'Room 1A', sci: 'Lab 3', art: 'Studio 4', pe: 'Room G1', agri: 'Room 1C' };
+  function roomOf(k) { return (ROOMS[k] || 'a lecture room') + ', ' + placeName(LOC.classroom); }
   var DAYN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   function pad(n) { return (n < 10 ? '0' : '') + n; }
   function placeName(id) { var l = G.world && G.world.location && G.world.location(id); return (l && l.name) || 'the lecture building'; }
   function onCampus() {
+    if (G.world && G.world.onCampus) return G.world.onCampus();
     var l = G.world && G.world.location && G.world.location(loc());
     return !!(l && (l.district === 'Campus' || l.district === 'Campus Edge'));
   }
@@ -1032,8 +1035,8 @@
     var cur = currentClass();
     if (cur) {
       var sj = SUBJECTS[cur.subj];
-      return { html: '<b>Class now:</b> ' + sj.name + ' with ' + sj.teacher + ' in ' + room + ', until ' + pad(cur.start + 2) + ':00' + (cur.late ? ' (you\'re late)' : '') + '.',
-        plain: sj.name + ' is on now in ' + room + ', until ' + pad(cur.start + 2) + ':00.' };
+      return { html: '<b>' + sj.name + '</b> is in session now in ' + roomOf(cur.subj) + ', with ' + sj.teacher + ', until ' + pad(cur.start + 2) + ':00' + (cur.late ? ' (you\'re late)' : '') + '.',
+        plain: sj.name + ' is in session now, ' + roomOf(cur.subj) + ', until ' + pad(cur.start + 2) + ':00.' };
     }
     var nowM = t.hour * 60 + t.minute;
     for (var off = 0; off <= 7; off++) {
@@ -1042,8 +1045,9 @@
         var startM = BLOCKS[i] * 60 + off * 1440; if (startM <= nowM) continue;
         var sj2 = SUBJECTS[list[i]], hw = s.homework && s.homework[list[i]] ? ' Homework is due.' : '';
         var when = whenLabel(off, wd) + ' at ' + pad(BLOCKS[i]) + ':00';
-        return { html: '<b>Next class:</b> ' + sj2.name + ' with ' + sj2.teacher + ', ' + when + (off === 0 ? ' (in ' + inLabel(startM - nowM) + ')' : '') + ', in ' + room + '.' + hw,
-          plain: sj2.name + ', ' + when + ', ' + room + '.' + hw };
+        var none = off > 0 && TIMETABLE[t.weekday] ? 'No more classes today. ' : '';
+        return { html: none + '<b>Next class:</b> ' + sj2.name + ', ' + roomOf(list[i]) + ', ' + when + (startM - nowM <= 180 ? ' (in ' + inLabel(startM - nowM) + ')' : '') + ', with ' + sj2.teacher + '.' + hw,
+          plain: sj2.name + ', ' + when + ', ' + roomOf(list[i]) + '.' + hw };
       }
     }
     return null;
@@ -1065,11 +1069,12 @@
     if (!G.state || !G.state.school) return '';
     var info = nextClassInfo(), s = S(), room = placeName(LOC.classroom);
     var rows = [1, 2, 3, 4, 5].map(function (wd) {
-      return '<tr><td>' + DAYN[wd] + '</td>' + TIMETABLE[wd].map(function (k, i) { return '<td>' + pad(BLOCKS[i]) + ':00 ' + SUBJECTS[k].name + '</td>'; }).join('') + '</tr>';
+      var today = wd === time().weekday;
+      return '<tr' + (today ? ' style="color:var(--accent,#c9a96e)"' : '') + '><td>' + (today ? '<b>Today</b> (' + DAYN[wd] + ')' : DAYN[wd]) + '</td>' + TIMETABLE[wd].map(function (k, i) { return '<td>' + pad(BLOCKS[i]) + ':00 ' + SUBJECTS[k].name + ', ' + (ROOMS[k] || '') + '</td>'; }).join('') + '</tr>';
     }).join('');
     var hw = Object.keys(s.homework || {}).map(function (k) { return '<li>' + SUBJECTS[k].name + ' homework, due day ' + s.homework[k] + '</li>'; }).join('');
     return '<h3>Classes</h3>' + (info ? '<p>' + info.html + '</p>' : '') +
-      '<p class="flavor">All classes are two hours long, in ' + room + ' inside Calloway Main Building. Midterms are on day 15 and finals on day 26 of each term, and summer is a break.</p>' +
+      '<p class="flavor">All classes are two hours long and held in Calloway Main Building, off the quad. Midterms are on day 15 and finals on day 26 of each term, and summer is a break.</p>' +
       '<table class="jtable">' + rows + '</table>' + (hw ? '<p><b>Homework due</b></p><ul>' + hw + '</ul>' : '');
   }
 
@@ -1090,14 +1095,15 @@
     G.school = mod.api;
     G.school.nextClass = nextClassInfo;
     // Banner: refresh whenever the story text changes or time moves.
-    if (G.on) { G.on('action', refreshClassBanner); G.on('tick', refreshClassBanner); G.on('start', function () { setTimeout(refreshClassBanner, 0); }); G.on('arrive', function () { setTimeout(refreshClassBanner, 0); }); }
+    if (G.addBanner) G.addBanner(function () { var i = G.state && G.state.school && onCampus() ? nextClassInfo() : null; return i ? i.html : null; });
+    else if (G.on) { G.on('action', refreshClassBanner); G.on('tick', refreshClassBanner); G.on('start', function () { setTimeout(refreshClassBanner, 0); }); G.on('arrive', function () { setTimeout(refreshClassBanner, 0); }); }
     var hookStory = function () {
       var st = typeof document !== 'undefined' && document.getElementById('story');
       if (!st) return setTimeout(hookStory, 200);
       if (typeof MutationObserver !== 'undefined') new MutationObserver(function () { refreshClassBanner(); }).observe(st, { childList: true });
       refreshClassBanner();
     };
-    hookStory();
+    if (!G.addBanner) hookStory();
     // Journal: prepend the class section to whichever module owns the Journal tab.
     if (G.addTab && !G._schoolJournalHooked) {
       G._schoolJournalHooked = true;

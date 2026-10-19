@@ -568,10 +568,114 @@
   // study: 3 x 30 min; homework: 2 x 30 min with saved progress
   function studyStep(pre) {
     var s = S(), sc = s.scene, sj = SUBJECTS[sc.subj], out = pre || '<p>' + pick(['You work through another section of ' + sj.name + ' notes.', 'You test yourself on the last chapter, then check the answers.', 'You rewrite a messy page of ' + sj.name + ' notes into something readable.']) + '</p>';
-    sc.step++; if (chance(0.67)) { grade(sc.subj, 1); sc.gained++; }
-    need('stats.needs.fatigue', 17); need('stats.needs.stress', 7);
+    sc.step++; sc.gained += studyGain(sc.subj, 1);
     if (sc.step >= 3) { clearScene(); out += '<p>You close the books. That\'s a solid session of ' + sj.name + '.</p>'; }
     return { text: out, minutes: 30 };
+  }
+  // one 30-minute block of study = 1 step: 0.67 chance of +1 grade, fatigue 17, stress 7. Fractional steps scale both.
+  function studyGain(subj, steps) {
+    var got = 0, left = steps;
+    while (left > 0) { var f = Math.min(1, left); if (chance(0.67 * f)) { grade(subj, 1); got++; } left -= 1; }
+    need('stats.needs.fatigue', Math.round(17 * steps)); need('stats.needs.stress', Math.round(7 * steps));
+    return got;
+  }
+  // ---------- study until class + class scene (v26.10.19.5) ----------
+  function noClassesNow() {
+    var s = S(); if (!s || s.expelled || s.graduated || (G.time && G.time.season === 'Summer')) return true;
+    return s.suspendedUntil > time().day;
+  }
+  // the next block today that hasn't started yet: { subj, block, start, mins } or null
+  function nextClassToday() {
+    if (noClassesNow()) return null;
+    var t = time(), list = TIMETABLE[t.weekday]; if (!list) return null;
+    var now = t.hour * 60 + t.minute;
+    for (var i = 0; i < BLOCKS.length; i++) if (BLOCKS[i] * 60 > now) return { subj: list[i], block: i, start: BLOCKS[i], mins: BLOCKS[i] * 60 - now };
+    return null;
+  }
+  function classPending(c) { var s = S(); if (!c) return false; var k = classKey(c); return !s.attendedKeys[k] && !(s.skippedKeys || {})[k]; }
+  function classLeft() { var c = currentClass(); if (!c) return 0; return Math.max(10, (c.start + 2) * 60 - (time().hour * 60 + time().minute)); }
+  function studyUntilClass() {
+    var s = S(), nc = nextClassToday();
+    if (!nc) return { text: '<p>There\'s no class left to wait for today.</p>', minutes: 1 };
+    if (s.studiedToday >= 3) return { text: '<p>The words have started swimming. You\'ve done all the studying your brain will take today.</p>', minutes: 5 };
+    var mins = Math.min(60, nc.mins), sj = SUBJECTS[nc.subj];
+    s.studiedToday++; s.studiedTerm = (s.studiedTerm || 0) + 1;
+    var got = studyGain(nc.subj, mins / 30);
+    var out = '<p>You take a seat near the front of the empty room, spread out your ' + sj.name + ' notes and go over last week\'s material.</p>';
+    if (got) out += '<p>Some of it finally sticks.</p>';
+    out += mins >= nc.mins ? '<p>Chairs scrape as other students file in around you, and ' + teacherName(nc.subj) + ' arrives to start the lecture.</p>'
+      : '<p>You look up at the clock. ' + sj.name + ' starts at ' + pad(nc.start) + ':00.</p>';
+    return { text: out, minutes: mins };
+  }
+  // should a class scene start right now? (classroom, class in session, not attended/skipped, nothing else holding the screen)
+  function classSceneWanted() {
+    var s = S(); if (!s || s.scene || G.state.lock || !at('classroom') || noClassesNow()) return null;
+    var fl = (G.state.stats && G.state.stats.flags) || {}; if (fl.collapse || fl.sleeping) return null;
+    if (isExamDay()) return null;
+    var c = currentClass(); return classPending(c) ? c : null;
+  }
+  function maybeStartClass() {
+    var c = classSceneWanted(); if (!c) return false;
+    setScene({ kind: 'class', subj: c.subj, block: c.block, key: classKey(c), start: c.start, loc: loc(), day: time().day, asked: false });
+    try { G.notify(SUBJECTS[c.subj].name + ' is starting' + (c.late ? ' (you\'re late)' : '') + '. Class runs until ' + pad(c.start + 2) + ':00.', 'info'); } catch (e) {}
+    return true;
+  }
+  function markAttended(c) { var s = S(), k = classKey(c); if (s.attendedKeys[k]) return false; s.attendedKeys[k] = true; s.attended++; return true; }
+  function classChoice(kind) {
+    var c = currentClass(), s = S(), r;
+    if (!c) { clearScene(); return { text: '<p>The lecture has already finished.</p>', minutes: 1 }; }
+    try {
+      if (kind === 'hard' || kind === 'learn') r = attend(G.state, kind === 'hard');
+      else {
+        var sj = SUBJECTS[c.subj], mins = classLeft(), t = teacherName(c.subj);
+        if (!markAttended(c)) { clearScene(); return { text: '<p>You\'ve already sat through this one.</p>', minutes: 1 }; }
+        if (c.late) delinq(10, 'late to class');
+        var out = '<p><b>' + sj.name + '</b> with ' + t + '.</p><p>' + pick(CLASS_FLAVOR[c.subj]) + '</p>';
+        if (kind === 'social') {
+          studentRep(rnd(5, 8), 'chatting in class');
+          if (chance(0.35)) grade(c.subj, 1);
+          if (sj.npc && chance(0.3)) rep(sj.npc, -1);
+          need('stats.needs.stress', -20); need('stats.needs.fatigue', 15);
+          out += pick(['<p>You spend most of the lecture whispering with the people around you, swapping notes on everything except ' + sj.name + '.</p>',
+            '<p>You pass notes, trade snacks and plan the weekend with the row behind you. You catch about one point in three from the front.</p>']);
+        } else {
+          need('stats.needs.stress', -rnd(50, 80)); need('stats.needs.fatigue', -30); mood('happy', 60);
+          out += pick(['<p>You rest your chin on your hand and let your thoughts drift out of the window: the weekend, the river, what you\'ll have for dinner.</p>',
+            '<p>You doodle in the margin of your notebook while the lecture washes over you. None of it goes in, but you feel calmer.</p>']);
+          if (chance(0.2)) { delinq(10, 'daydreaming in class'); if (sj.npc) rep(sj.npc, -1); out += '<p>"Are we keeping you up?" ' + t + ' asks. A few people snigger.</p>'; }
+        }
+        out += assignHomework(c.subj);
+        r = { text: out, minutes: mins };
+      }
+    } finally { clearScene(); }
+    return r;
+  }
+  function classAsk() {
+    var sc = S().scene, c = currentClass(); if (sc) sc.asked = true; if (!c) return { text: '', minutes: 1 };
+    grade(c.subj, 1); return { text: '<p>You raise your hand. ' + teacherName(c.subj) + ' looks pleased someone was listening.</p>', minutes: 5 };
+  }
+  function classSkip() {
+    var sc = S().scene, s = S(), c = currentClass(); clearScene();
+    if (c && classPending(c)) {
+      var k = classKey(c); s.skippedKeys = s.skippedKeys || {}; s.skippedKeys[k] = true; s.skipped++;
+      delinq(15, 'skipped ' + SUBJECTS[c.subj].name); if (SUBJECTS[c.subj].npc) rep(SUBJECTS[c.subj].npc, -1);
+    }
+    return { text: '<p>You gather your things and slip out of the back while ' + (c ? teacherName(c.subj) : 'the lecturer') + ' is facing the board.</p>', minutes: 2 };
+  }
+  function classSceneOptions(o, sc) {
+    var c = currentClass(), sj = SUBJECTS[sc.subj], left = classLeft(), late = c && c.late ? ' (late)' : '';
+    var tired = nd('fatigue') >= 900;
+    function add(label, mins, eff, pr, icon, run, dis, why) {
+      var x = { label: label, mins: mins, effects: eff, section: 'now', sub: 'Class', priority: pr, pin: true, always: true, icon: icon, run: run };
+      if (dis) { x.disabled = true; x.reason = why; }
+      o.actions.push(x);
+    }
+    add('Learn hard' + late, left, ['^++Grade', '!+Fatigue', '!+Stress'], 95, '📖', function () { return classChoice('hard'); }, tired, 'Too exhausted to focus');
+    add('Learn' + late, left, ['^+Grade', '!+Fatigue'], 95, '🎓', function () { return classChoice('learn'); });
+    add('Socialize' + late, left, ['^+Student rep', '^−Stress', '!Little learning'], 94, '💬', function () { return classChoice('social'); });
+    add('Daydream' + late, left, ['^−Stress', '!No learning'], 94, '💭', function () { return classChoice('dream'); });
+    add('Ask ' + teacherName(sc.subj) + ' a question', 5, ['^+Grade'], 94, '✋', classAsk, sc.asked, 'Already asked one this lesson');
+    add('Slip out of ' + sj.name, 2, ['!Counts as skipped', '!+Delinquency'], 93, '🚪', classSkip);
   }
   function hwStep(pre) {
     var s = S(), sc = s.scene, k = sc.subj; s.hwProg = s.hwProg || {};
@@ -591,9 +695,14 @@
       else clearScene();
       return null;
     }
+    if (sc.kind === 'class') {
+      var cc = currentClass();
+      if (!cc || classKey(cc) !== sc.key || !classPending(cc)) { clearScene(); return null; }
+    }
     var o = { actions: [], other: [], dialogue: [] }, ic = sc.kind === 'shift' ? '💼' : '📚';
     function add(label, mins, eff, pr, run) { o.actions.push({ label: label, mins: mins, effects: eff, section: 'now', priority: pr, pin: true, always: true, icon: pr === 93 ? '🚪' : ic, run: run }); }
-    if (sc.kind === 'shift') {
+    if (sc.kind === 'class') classSceneOptions(o, sc);
+    else if (sc.kind === 'shift') {
       var j = JOBS[sc.id], m = s.jobs[sc.id], rate = j.pay + (m ? m.raise : 0);
       add('Keep working (' + sc.left + 'h left)', 60, ['^+$' + rate, '!+Fatigue'], 95, function () { return shiftHour(); });
       if (!sc.rested) add('Take a short break', 10, ['^−Stress', '^−Fatigue'], 94, shiftBreak);
@@ -1146,7 +1255,7 @@
   function untilHour(h) { var t = time(); return Math.max(1, h * 60 - (t.hour * 60 + t.minute)); }
   var MINS = [
     [/^Attend |^Focus hard in /, function () { var c = currentClass(); return c ? untilHour(c.start + 2) : 0; }],
-    [/^Nap at the back/, 110], [/^Ask .* a question$/, 5], [/^Stay behind to talk/, 15],
+    [/^Nap at the back/, 110], [/^Take your seat for /, 1], [/^Ask .* a question$/, 5], [/^Stay behind to talk/, 15],
     [/^Sit your /, 180], [/^Skip the exam/, 1], [/extra credit$/, 75], [/ homework \(due/, 60],
     [/^Study /, 90], [/^Browse the club fair/, 5], [/^Join (?!in)/, 5], [/^Leave /, 2],
     [/^Join in with /, function (o) { for (var k in CLUBS) if (o.label.indexOf(CLUBS[k].name) >= 0) return untilHour(CLUBS[k].to); return 0; }],
@@ -1164,7 +1273,7 @@
   ];
   // engine sections (CONTRACT.md: now|needs|here|people|shop|self|travel)
   var SECT = [
-    [/^(Attend |Focus hard in |Sit (the|your) |(Work|Start) a \d-hour|Join in with |Take part in |Work off community service|Run a farmers|Run .*stall)/, 'now'],
+    [/^(Attend |Focus hard in |Take your seat for |Study until class|Sit (the|your) |(Work|Start) a \d-hour|Join in with |Take part in |Work off community service|Run a farmers|Run .*stall)/, 'now'],
     [/^(Join |Leave |Browse the club fair board)/, 'here', 'Clubs'],
     [/^Quit your job/, 'self'],
     [/^Sell your produce|^Sell .* to /, 'shop']
@@ -1189,6 +1298,7 @@
     [/^Sit your /, 'Exam', examP], [/^(Work|Start) a \d-hour/, 'Shift', shiftP]
   ];
   var ICONS = [
+    [/^Study until class/, '⏰'], [/^Take your seat for /, '🎓'], [/^Learn hard/, '📖'], [/^Learn\b/, '🎓'], [/^Socialize/, '💬'], [/^Daydream/, '💭'], [/^Slip out of /, '🚪'],
     [/^Attend /, '🎓'], [/^Focus/, '📖'], [/^Sit your /, '📝'], [/homework|^Study/i, '📚'], [/extra credit/i, '✏️'],
     [/^(Work|Start) a \d-hour/, '💼'], [/^Ask about work/, '💼'], [/^Quit your job/, '🚪'],
     [/^Join in with|^Take part in/, '🎭'], [/^Join |^Leave /, '🎭'], [/club fair/i, '📌'], [/noticeboard/i, '📌'],
@@ -1197,6 +1307,8 @@
   ];
   // engine `effects:` (shown under the label); '^' good, '!' bad
   var EFFECTS = [
+    [/^Study until class/, ['^+Study', '!+Fatigue']], [/^Learn hard/, ['^++Grade', '!+Fatigue', '!+Stress']], [/^Learn\b/, ['^+Grade', '!+Fatigue']],
+    [/^Socialize/, ['^+Student rep', '^−Stress', '!Little learning']], [/^Daydream/, ['^−Stress', '!No learning']], [/^Slip out of /, ['!Counts as skipped', '!+Delinquency']],
     [/^Attend /, ['^+Grade', '!+Fatigue']], [/^Focus hard in /, ['^++Grade', '!+Fatigue', '!+Stress']],
     [/^Nap at the back/, ['^−Fatigue', '!Might get caught']], [/^Sit your /, ['!+Stress', '!+Fatigue']],
     [/^Skip the exam/, ['!−6 all grades', '!+Delinquency', '!Probation']], [/extra credit$/, ['^+Grade', '!+Fatigue', '!+Stress']],
@@ -1284,16 +1396,21 @@
         if (isExamDay() && !suspended) {
           o.actions.push({ label: 'Sit your ' + (s.examType === 'finals' ? 'finals' : 'midterms'), run: function (st) { return sitExam(st); } });
           o.actions.push({ label: 'Skip the exam', run: function (st) { return skipExam(st); } });
-        } else if (c && !suspended && !s.attendedKeys[classKey(c)]) {
-          o.actions.unshift({ section: 'now', pin: true, label: 'Attend ' + SUBJECTS[c.subj].name + (c.late ? ' (late)' : ''), run: function (st) { return attend(st, false); } });
-          o.actions.splice(1, 0, { section: 'now', pin: true, label: 'Focus hard in ' + SUBJECTS[c.subj].name, run: function (st) { return attend(st, true); } });
-          o.actions.push({ label: 'Nap at the back', run: sleepInClass });
-          o.dialogue.push({ label: 'Ask ' + teacherName(c.subj) + ' a question', run: function () {
-            grade(c.subj, 1); return { text: '<p>You raise your hand. ' + teacherName(c.subj) + ' looks pleased someone was listening.</p>', minutes: 5 };
+        } else if (c && !suspended && classPending(c)) {
+          // normally the class scene starts on its own (tick/arrive hooks); this is a fallback if it couldn't
+          o.actions.unshift({ section: 'now', pin: true, label: 'Take your seat for ' + SUBJECTS[c.subj].name + (c.late ? ' (late)' : ''), mins: 1, run: function () {
+            var ok = maybeStartClass();
+            return { text: ok ? '<p>You find a seat as ' + teacherName(c.subj) + ' starts the lecture.</p>' : '<p>You can\'t settle in right now.</p>', minutes: 0 };
           } });
         } else if (suspended) {
           o.other.push({ label: 'Read the suspension notice', run: function () { return { text: '<p>The notice says you may return on day ' + s.suspendedUntil + '. It is signed with unnecessary flourish.</p>', minutes: 2 }; } });
         }
+      }
+      if (at('classroom') && !suspended && !isExamDay() && !classPending(c)) {
+        var nc = nextClassToday();
+        if (nc) o.actions.push(s.studiedToday >= 3
+          ? { label: 'Study until class', section: 'now', icon: '⏰', disabled: true, reason: 'Studied enough for today', run: function () {} }
+          : { label: 'Study until class', section: 'now', icon: '⏰', mins: Math.min(60, nc.mins), effects: ['^+Study', '!+Fatigue'], hint: SUBJECTS[nc.subj].name + ' starts at ' + pad(nc.start) + ':00', run: studyUntilClass });
       }
       if (at('library')) {
         o.actions.push(s.studiedToday >= 3 ? { label: 'Study in a carrel', disabled: true, reason: 'Studied enough for today', run: function () {} } : { label: 'Study in a carrel', mins: 30, run: function () { return study('library'); } });
@@ -1460,7 +1577,12 @@
 
   function boot() {
     if (!window.G || !G.register) return setTimeout(boot, 50);
-    var _go = mod.getOptions; mod.getOptions = function (st) { try { applyBackground(); } catch (e) {} var so = null; try { so = sceneOptions(); } catch (e) { clearScene(); } if (so) return tagSections(so); return tagSections(addMins(_go.call(mod, st) || {})); };
+    var _go = mod.getOptions; mod.getOptions = function (st) { try { applyBackground(); } catch (e) {} var so = null, started = false; try { started = maybeStartClass(); } catch (e) {} try { so = sceneOptions(); } catch (e) { clearScene(); } if (started) deferRender(); if (so) return tagSections(so); return tagSections(addMins(_go.call(mod, st) || {})); };
+    // a class scene started from inside getOptions: other modules (stats.js restroom) already built their options without seeing the lock,
+    // so re-render once on the next turn of the event loop so their `always` tagging applies
+    var _rendering = false;
+    function deferRender() { if (_rendering || typeof setTimeout !== 'function' || !G.render) return; _rendering = true; setTimeout(function () { _rendering = false; try { G.render(); } catch (e) {} }, 0); }
+    if (G.on) { var _cls = function () { try { maybeStartClass(); } catch (e) {} }; G.on('tick', _cls); G.on('arrive', _cls); G.on('action', _cls); }
     G.register(mod);
     if (G.world && G.world.addLocation && !(G.world.location && G.world.location('deans_office'))) G.world.addLocation('deans_office', {
       name: "Dean's Office", district: 'Campus', indoor: true, open: [8, 17], restroom: false,

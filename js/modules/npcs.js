@@ -4,7 +4,9 @@ function _unsupportedIterableToArray(r, a) { if (r) { if ("string" == typeof r) 
 function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length); for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e]; return n; }
 /* npcs.js: named NPCs, schedules, dialogue trees, reputation, romance, quests, journal.
    Owner: Roy. Plugs into window.G per CONTRACT.md.
-   Every character is an adult (18+). Romance is PG-13: flirting, dates, kissing, fade-to-black.
+   Every character is an adult (18+); it's a college. Romance runs wholesome-to-sexual between adults: flirting, dates,
+   kissing, and intimacy that is always asked for and agreed in the moment, written suggestively and faded out (never explicit).
+   Players can pick 'Wholesome only' in the Relationships tab. Romance never touches bladder/bowel/accident mechanics.
 
    Integration assumptions (shout if these change):
    - Player location: G.state.world.location; ids match world.js. Weekday: G.time.weekdayIndex (0=Mon).
@@ -897,6 +899,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     var t = time();
     var n = BY_ID[id];
     var st = S();
+    if (st && st.npcs && st.npcs.together && st.npcs.together.id === id && nowMin() <= st.npcs.together.until) return st.npcs.together.loc;
     if (st && ns(st).dates[id] && ns(st).dates[id].active) return ns(st).dates[id].loc;
     try {
       if (grocerRun(id)) return 'market';
@@ -2958,7 +2961,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     (N.rumors || []).forEach(function (rm) {
       var r = rel(state, rm.partner);
       if (!r || r.romance < 3) return;
-      window.G.notify(BY_ID[rm.partner].name + " heard you were flirting with " + BY_ID[rm.with].name + ".", 'down');
+      window.G.notify(rm.kind === 'close' ? BY_ID[rm.partner].name + " heard you've been getting close to " + BY_ID[rm.with].name + "." : BY_ID[rm.partner].name + " heard you were flirting with " + BY_ID[rm.with].name + ".", 'down');
       _changeRep(state, rm.partner, -6);
       r.aff = clamp(r.aff - 12, 0, 100);
       window.G.notify(BY_ID[rm.partner].name + ": Affection -12", 'down');
@@ -3237,6 +3240,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
   function sceneOptions(state) {
     var sc = sceneValid(state);
     if (!sc) return null;
+    if (sc.kind === 'intimate') return intimSceneOptions(state, sc);
     var id = sc.id,
       out = [],
       done = sc.step >= sc.max;
@@ -3344,6 +3348,930 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       });
     }
     return out;
+  }
+
+  // ---------- Romance 2: intimacy track, consent, nights together (CONTRACT: wholesome-to-sexual, adults only) ----------
+  // Everyone is 18+. Every step is asked first and the NPC can say no; the player can always slow down or stop, free.
+  // Writing stays suggestive and fades out. Romance never reads bladder/bowel/accident/soiled states.
+  // State (all optional, old saves read as defaults):
+  //   rel.intimacy 0..4 (0 none, 1 held hands, 2 kissed, 3 made out, 4 spent the night)
+  //   rel.intimLast {m: minute}, rel.intimCool (minute: no asking until), rel.paced {m: true}, rel.nights, rel.nightAt
+  //   ns.romancePref 'full'|'wholesome' (default full), ns.together {id, loc, until}, ns.morning {id, loc, day}, ns.nightSleep
+  var INTIM = [{
+    lvl: 1,
+    m: 'hands',
+    phrase: 'hold hands',
+    romance: 2,
+    aff: 50,
+    cool: 30,
+    place: 'any',
+    mins: 5,
+    coolWhy: 'Not again so soon'
+  }, {
+    lvl: 2,
+    m: 'kiss',
+    phrase: 'kiss',
+    romance: 3,
+    aff: 60,
+    cool: 60,
+    place: 'any',
+    mins: 5,
+    coolWhy: 'Not again so soon'
+  }, {
+    lvl: 3,
+    m: 'makeout',
+    phrase: 'make out',
+    romance: 3,
+    aff: 75,
+    cool: 'day',
+    place: 'quiet',
+    mins: 5,
+    coolWhy: 'Once a day',
+    full: true
+  }, {
+    lvl: 4,
+    m: 'night',
+    phrase: 'spend the night',
+    romance: 3,
+    aff: 85,
+    cool: 'day',
+    place: 'private',
+    mins: 5,
+    coolWhy: 'Once a day',
+    full: true,
+    evening: true
+  }];
+  var IM_BY = {};
+  INTIM.forEach(function (M) {
+    return IM_BY[M.m] = M;
+  });
+  var IM_GENTLE = {
+    kiss: 'hands',
+    makeout: 'kiss',
+    night: 'kiss'
+  }; // what "slower please" offers instead
+  // Pace preference: slow NPCs want to wait the first time a bigger step comes up; eager ones say yes more readily.
+  var PACE = {
+    eleanor: 'medium',
+    marcus: 'medium',
+    hart: 'slow',
+    okafor: 'eager',
+    sam: 'medium',
+    theo: 'eager',
+    rosa: 'slow',
+    jules: 'medium',
+    wren: 'slow',
+    silas: 'medium',
+    kit: 'slow',
+    morrow: 'slow',
+    hazel: 'slow',
+    dee: 'eager',
+    raman: 'medium',
+    ollie: 'slow',
+    mina: 'medium',
+    benny: 'slow',
+    nell: 'slow',
+    dot: 'medium',
+    dunn: 'medium',
+    fen: 'slow'
+  };
+  var paceOf = function paceOf(id) {
+    return PACE[id] || (BY_ID[id] && BY_ID[id].group === 'Non-Human' ? 'slow' : 'medium');
+  };
+  var romancePref = function romancePref(state) {
+    return state && state.npcs && state.npcs.romancePref === 'wholesome' ? 'wholesome' : 'full';
+  };
+  var v3 = function v3(id, base, third) {
+    return pronouns(id).be === 'are' ? base : third || base + 's';
+  };
+  var isEvening = function isEvening() {
+    var h = time().hour;
+    return h >= 19 || h < 2;
+  };
+  var inviteHours = function inviteHours() {
+    var h = time().hour;
+    return h >= 18 || h < 1;
+  };
+  var fmtLeft = function fmtLeft(m) {
+    m = Math.max(1, Math.ceil(m));
+    return Math.floor(m / 60) + ':' + ('0' + m % 60).slice(-2);
+  };
+  // Private: your dorm room, or the NPC's own home if they ever have one on the map (home_<id>).
+  function privateFor(state, id) {
+    var here = loc(state);
+    return here === 'dorm_room' || here === 'home_' + id;
+  }
+  function quietFor(state, id) {
+    if (privateFor(state, id)) return true;
+    try {
+      var W_ = window.G.world;
+      if (W_ && typeof W_.isSecluded === 'function' && W_.isSecluded()) return true;
+    } catch (e) {}
+    return false;
+  }
+  function intimCoolLeft(state, id, M) {
+    var r = rel(state, id),
+      now = nowMin();
+    if (typeof r.intimCool === 'number' && r.intimCool > now) return {
+      left: r.intimCool - now,
+      why: 'asked'
+    };
+    var last = r.intimLast && r.intimLast[M.m];
+    if (typeof last !== 'number') return null;
+    if (M.cool === 'day') {
+      if (Math.floor(last / 1440) === time().day || now - last < 960) return {
+        left: 960 - (now - last),
+        why: M.coolWhy
+      };
+      return null;
+    }
+    return now - last < M.cool ? {
+      left: M.cool - (now - last),
+      why: M.coolWhy
+    } : null;
+  }
+  function busyNow(state) {
+    return !!(ns(state).scene || window.G.state.lock && window.G.state.lock.reason !== SCENE_LOCK);
+  }
+  // null when the step can be asked for now, else a short reason for the locked option.
+  function intimLock(state, id, M) {
+    var r = rel(state, id);
+    if ((r.romance || 0) < M.romance) return "Needs " + ROMANCE[M.romance];
+    if ((r.aff || 0) < M.aff) return 'Needs more affection';
+    if (busyNow(state)) return 'Already busy';
+    if (M.place === 'private' && !privateFor(state, id)) return 'Only somewhere private';
+    if (M.place === 'quiet' && !quietFor(state, id)) return 'Not in public';
+    if (M.evening && !isEvening()) return 'Evenings only';
+    var c = intimCoolLeft(state, id, M);
+    if (c) return c.why === 'asked' ? "Ask again later (" + fmtLeft(c.left) + ")" : c.why;
+    return null;
+  }
+  // The next milestone, plus the two most recent ones you have already reached (repeatable, still asked each time).
+  function intimVisible(state, id) {
+    var r = rel(state, id),
+      lvl = r.intimacy || 0,
+      full = romancePref(state) === 'full';
+    if ((r.romance || 0) < 2) return [];
+    return INTIM.filter(function (M) {
+      return (full || !M.full) && M.lvl <= lvl + 1;
+    }).slice(-3);
+  }
+  // A light daily mood per NPC (stable for the day), so a no sometimes just means "long day".
+  function npcMood(state, id) {
+    var t = time();
+    if (isBirthday(id)) return 'bright';
+    var seed = ((t.day || 0) * 31 + id.charCodeAt(0) * 7 + id.length * 13) % 9;
+    return seed === 0 ? 'tired' : seed === 1 ? 'bright' : 'fine';
+  }
+  function playerStress(state) {
+    try {
+      var v = state.stats && state.stats.needs && state.stats.needs.stress;
+      return typeof v === 'number' ? v : 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+  // Consent: { ans: 'yes' | 'not' | 'slow', why }. Uses affection, the NPC's mood, recent hurt, the hour and their pace.
+  function intimConsent(state, id, M) {
+    var r = rel(state, id),
+      t = time(),
+      pace = paceOf(id),
+      mood = npcMood(state, id),
+      ahead = (r.intimacy || 0) < M.lvl;
+    r.paced = r.paced || {};
+    if (r.hurt !== undefined && t.day - r.hurt <= 1) return {
+      ans: 'not',
+      why: 'hurt'
+    };
+    if (M.lvl >= 3 && t.hour >= 1 && t.hour < 6) return {
+      ans: 'not',
+      why: 'late'
+    };
+    if (M.lvl >= 2 && ahead && pace === 'slow' && !r.paced[M.m]) {
+      r.paced[M.m] = true;
+      return {
+        ans: 'slow',
+        why: 'pace'
+      };
+    }
+    if (M.lvl >= 3 && playerStress(state) >= 750) return {
+      ans: 'slow',
+      why: 'stress'
+    };
+    var p = 0.62 + clamp(((r.aff || 0) - M.aff) / 40, 0, 0.5) * 0.5;
+    p += pace === 'eager' ? 0.12 : pace === 'slow' ? -0.06 * (M.lvl - 1) : 0;
+    p += mood === 'tired' ? -0.25 : mood === 'bright' ? 0.1 : 0;
+    if (ahead) p -= 0.08;
+    if (M.lvl === 1) p += 0.15;
+    p = clamp(p, 0.1, 0.95);
+    var pSlow = M.lvl === 1 ? 0 : Math.max(0, Math.min(pace === 'slow' ? 0.22 : 0.12, 0.97 - p)); // a plain no always stays possible
+    var x = Math.random();
+    if (x < p) return {
+      ans: 'yes',
+      p: p
+    };
+    if (x < p + pSlow) return {
+      ans: 'slow',
+      why: 'pace'
+    };
+    return {
+      ans: 'not',
+      why: mood === 'tired' ? 'tired' : 'mood'
+    };
+  }
+  var NO_HARM = '<p><i>No harm done. You can ask again a little later.</i></p>';
+  var INTIM_NOT = {
+    hurt: [function (id) {
+      return nm(id) + " " + verb(id, 'hesitate') + ". \"Not today. I'm still a bit sore about what I heard. Ask me again soon?\"";
+    }],
+    late: [function (id) {
+      return nm(id) + " " + verb(id, 'yawn') + " hugely. \"Not tonight. I'm half asleep already. But ask me again, okay?\"";
+    }],
+    tired: [function (id) {
+      return nm(id) + " " + verb(id, 'smile') + " and " + v3(id, 'squeeze') + " your hand. \"Not tonight. It's been a long day. I'm really glad you asked, though.\"";
+    }],
+    mood: [function (id) {
+      return "\"Not right now,\" " + nm(id) + " " + verb(id, 'say') + " gently. \"It's not you. I'd just rather not today.\" " + pronouns(id).Sub + " " + v3(id, 'squeeze') + " your arm.";
+    }, function (id) {
+      return nm(id) + " " + verb(id, 'shake') + " " + pronouns(id).pos + " head with a small, warm smile. \"Not this time. Thank you for asking me first.\"";
+    }]
+  };
+  var INTIM_SLOW = {
+    pace: [function (id, G2) {
+      return "\"Slower, maybe?\" " + nm(id) + " " + verb(id, 'say') + ", smiling. \"Can we just " + G2.phrase + " for now? I want this to go at our pace.\"";
+    }, function (id, G2) {
+      return nm(id) + " " + v3(id, 'go', 'goes') + " a little shy. \"I do want to. Just... not yet. Can we " + G2.phrase + " instead?\"";
+    }],
+    stress: [function (id, G2) {
+      return nm(id) + " " + verb(id, 'look') + " at you closely. \"You seem wound up. Can we just " + G2.phrase + " tonight, and see how you feel?\"";
+    }]
+  };
+  var INTIM_YES = {
+    hands: [function (id) {
+      return nm(id) + "'s fingers find yours and lace through them. Neither of you says anything about it, and neither of you lets go.";
+    }, function (id) {
+      return "\"I thought you'd never ask.\" " + nm(id) + " " + verb(id, 'take') + " your hand and " + verb(id, 'swing') + " it, just slightly.";
+    }],
+    kiss: [function (id) {
+      return nm(id) + " " + verb(id, 'smile') + ", then " + verb(id, 'close') + " the distance. The kiss is soft and certain.";
+    }, function (id) {
+      return "\"Yes,\" " + nm(id) + " " + verb(id, 'say') + ", already leaning in. It's a short kiss, and then a much less short one.";
+    }],
+    makeout: [function (id) {
+      return nm(id) + " " + verb(id, 'glance') + " round to make sure you're alone, then " + verb(id, 'pull') + " you close. \"Yes,\" " + pronouns(id).sub + " " + verb(id, 'murmur') + ". \"Come here.\"";
+    }, function (id) {
+      return nm(id) + " " + verb(id, 'laugh') + " under " + pronouns(id).pos + " breath. \"I was hoping you'd ask.\" " + pronouns(id).Sub + " " + verb(id, 'wind') + " " + pronouns(id).pos + " arms around you.";
+    }],
+    night: [function (id) {
+      return nm(id) + " " + verb(id, 'look') + " at you for a long moment, then " + verb(id, 'smile') + ". \"Yes. I'd like that. I'd really like that.\"";
+    }, function (id) {
+      return "\"I was hoping you'd ask,\" " + nm(id) + " " + v3(id, 'admit') + ", cheeks warm. \"Yes. Stay with me.\"";
+    }]
+  };
+  // Scene steps by milestone: [ { label, slow, mins, fx, text(id, slow) } ]
+  var INTIM_STEPS = {
+    hands: [{
+      label: 'Walk a while, hand in hand',
+      slow: 'Walk a while, hand in hand',
+      mins: 20,
+      fx: ['^+Affection', '^−Stress'],
+      text: function text(id) {
+        return "You take the long way round with " + nm(id) + ", fingers linked, a thumb tracing small circles. It's a very small thing, and it feels enormous.";
+      }
+    }],
+    kiss: [{
+      label: 'Kiss again, slowly',
+      slow: 'Just stay close a moment',
+      mins: 10,
+      fx: ['^+Affection', '^−Stress'],
+      text: function text(id, slow) {
+        return slow ? "You stand close with " + nm(id) + ", foreheads almost touching, and just breathe for a bit. It's lovely." : "The second kiss is slower than the first. " + nm(id) + " " + verb(id, 'laugh') + " softly into it, and you both forget whatever you were talking about.";
+      }
+    }],
+    makeout: [{
+      label: 'Stay close',
+      slow: 'Just hold each other',
+      mins: 20,
+      fx: ['^+Affection', '^−Stress'],
+      text: function text(id, slow) {
+        return slow ? "You slow right down and just hold each other. " + nm(id) + " " + verb(id, 'smile') + ". \"This is nice too. This is really nice.\"" : "Kisses that start sweet and get a good deal less polite. " + nm(id) + "'s arms tighten around you, and the world shrinks to the two of you.";
+      }
+    }, {
+      label: 'Lose track of time',
+      slow: 'Talk quietly a while',
+      mins: 20,
+      fx: ['^+Affection', '^−Stress'],
+      text: function text(id, slow) {
+        return slow ? "You talk in low voices about nothing much. " + nm(id) + " " + verb(id, 'keep') + " hold of your hand the whole time." : "Time goes soft at the edges. When you finally come up for air, " + nm(id) + " is flushed and grinning, and you both look thoroughly kissed.";
+      }
+    }],
+    night: [{
+      label: 'Get comfortable together',
+      slow: 'Curl up and talk',
+      mins: 30,
+      fx: ['^+Affection', '^−Stress'],
+      text: function text(id, slow) {
+        return slow ? "You end up wrapped in one blanket, talking about nothing much. " + nm(id) + "'s head finds your shoulder and stays there." : pick(["The door clicks shut and the room goes quiet. " + nm(id) + " " + verb(id, 'sit') + " beside you, close enough that your shoulders touch, and the conversation slows into something softer.", "Lamp low, music lower. " + nm(id) + " " + verb(id, 'lean') + " in for a long, unhurried kiss, then " + verb(id, 'pull') + " back just enough to smile. \"Still okay?\" You nod, and mean it."]);
+      }
+    }, {
+      label: 'Let the night carry you',
+      slow: 'Fall asleep together',
+      mins: 0,
+      fx: ['^+Affection', '^Sleep till morning'],
+      fade: true
+    }]
+  };
+  // Bespoke first-night and morning lines for everyone with a ROMANCE_PLUS quest. Pronouns go through the helpers.
+  var NIGHT_FLAVOR = {
+    dee: {
+      first: function first(id, P) {
+        return "\"I talk for a living,\" " + nm(id) + " whispers, \"and I've got nothing.\" " + P.Sub + " " + v3(id, 'kiss', 'kisses') + " you instead, and the rest of the night is nobody's gossip.";
+      },
+      morning: function morning(id, P) {
+        return nm(id) + " is already up, borrowing your comb. \"Don't move. Bed hair is a look, and on you it's working.\" " + P.Sub + " " + verb(id, 'steal') + " a bite of your toast.";
+      }
+    },
+    hazel: {
+      first: function first(id, P) {
+        return nm(id) + " goes pink, then laughs. \"Pip would be scandalised.\" " + P.Sub + " " + verb(id, 'pull') + " you close, and the lamp goes out.";
+      },
+      morning: function morning(id, P) {
+        return nm(id) + " wakes at six out of habit, panics about the animals, then remembers the morning feed is covered. \"Okay. Ten more minutes.\" It turns into forty.";
+      }
+    },
+    eleanor: {
+      first: function first(id, P) {
+        return "\"No press, no minutes, no council,\" " + nm(id) + " murmurs against your shoulder. \"Just this.\" The evening softens and slips away.";
+      },
+      morning: function morning(id, P) {
+        return nm(id) + " reads the town paper over your shoulder at breakfast. \"Nothing about us. Good.\" " + P.Sub + " " + v3(id, 'kiss', 'kisses') + " your temple. \"Our little secret. For now.\"";
+      }
+    },
+    marcus: {
+      first: function first(id, P) {
+        return nm(id) + " switches off " + P.pos + " phone, which you have never once seen " + P.obj + " do. \"No stock take tonight,\" " + P.sub + " " + verb(id, 'say') + ", and the night is yours.";
+      },
+      morning: function morning(id, P) {
+        return nm(id) + " makes breakfast like a stock take: everything counted, nothing wasted, slightly burnt. \"I'll get better at this,\" " + P.sub + " " + verb(id, 'promise') + ". \"I've got time.\"";
+      }
+    },
+    hart: {
+      first: function first(id, P) {
+        return "\"I've written this moment a hundred times,\" " + nm(id) + " whispers, \"and never once got it right.\" " + P.Sub + " " + verb(id, 'stop') + " looking for the words, and the page goes quiet.";
+      },
+      morning: function morning(id, P) {
+        return "There's a note on the pillow in " + nm(id) + "'s neat hand: four lines of verse, slightly smudged. " + P.Sub + " " + P.be + " making tea and pretending not to watch you read it.";
+      }
+    },
+    okafor: {
+      first: function first(id, P) {
+        return "\"No whistle, no laps,\" " + nm(id) + " says, laughing low. \"Just you.\" " + P.Sub + " " + verb(id, 'pull') + " you down beside " + P.obj + ", and the night slows right down.";
+      },
+      morning: function morning(id, P) {
+        return nm(id) + " is up at six, obviously, and back with two coffees before you've opened your eyes. \"Rest day,\" " + P.sub + " " + verb(id, 'decide') + ", climbing back in. \"Coach's orders.\"";
+      }
+    },
+    rosa: {
+      first: function first(id, P) {
+        return "\"Forty years,\" " + nm(id) + " says softly, \"and I'd forgotten how it feels to be nervous.\" " + P.Sub + " " + verb(id, 'take') + " your hand, and the lamp clicks off.";
+      },
+      morning: function morning(id, P) {
+        return nm(id) + " has found your kettle and judged it. \"Eat,\" " + P.sub + " " + verb(id, 'say') + ", setting down toast you didn't know you had bread for. \"Then kiss me. In that order.\"";
+      }
+    },
+    jules: {
+      first: function first(id, P) {
+        return "\"I'm usually at the ovens by now,\" " + nm(id) + " murmurs. \"This is better. Don't tell the bread.\" The night goes warm and quiet.";
+      },
+      morning: function morning(id, P) {
+        return nm(id) + " sleeps straight through to nine, which " + P.sub + " " + verb(id, 'swear') + " has never happened. " + P.Sub + " " + verb(id, 'make') + " you toast with the air of a professional slumming it.";
+      }
+    },
+    silas: {
+      first: function first(id, P) {
+        return nm(id) + " hums something under " + P.pos + " breath, a melody you've never heard. \"That's this,\" " + P.sub + " " + verb(id, 'say') + ". \"I'll finish it later.\" The rest of the night has no words.";
+      },
+      morning: function morning(id, P) {
+        return nm(id) + " plays you a sleepy two-chord song on an imaginary guitar. \"Working title: Breakfast.\" " + P.Sub + " " + verb(id, 'steal') + " your coffee.";
+      }
+    },
+    morrow: {
+      first: function first(id, P) {
+        return nm(id) + "'s eyes glow faintly in the dark, like embers banked for the night. \"I have waited a long while to be this unhurried,\" " + P.sub + " " + verb(id, 'say') + ". The night folds gently around you both.";
+      },
+      morning: function morning(id, P) {
+        return nm(id) + " is at the window, watching the frost go. \"The hens will be cross with me,\" " + P.sub + " " + verb(id, 'say') + ", not sounding sorry at all. There is warm bread on your desk that you don't remember buying.";
+      }
+    },
+    raman: {
+      first: function first(id, P) {
+        return nm(id) + " takes off " + P.pos + " glasses and sets them down with great care. \"No notes,\" " + P.sub + " " + verb(id, 'say') + ". \"For once I just want to be here.\" Nothing needs writing down after that.";
+      },
+      morning: function morning(id, P) {
+        return nm(id) + " waters the sad plant on your windowsill before saying good morning. \"Priorities,\" " + P.sub + " " + verb(id, 'explain') + ", and then " + v3(id, 'kiss', 'kisses') + " you properly.";
+      }
+    },
+    ollie: {
+      first: function first(id, P) {
+        return nm(id) + " is shaking a little. \"Is this okay? Are you okay?\" You tell " + P.obj + " yes, and mean it, and " + P.sub + " " + verb(id, 'laugh') + ", and the shaking stops.";
+      },
+      morning: function morning(id, P) {
+        return nm(id) + " wakes, sees you, and goes red right up to " + P.pos + " hairline. Then " + P.sub + " " + verb(id, 'grin') + ". \"Four notes,\" " + P.sub + " " + verb(id, 'whisper') + ". \"I've got the next four now.\"";
+      }
+    },
+    mina: {
+      first: function first(id, P) {
+        return nm(id) + " puts " + P.pos + " planner face down on your desk, which feels like a declaration. \"Unscheduled,\" " + P.sub + " " + verb(id, 'say') + ", and for once " + P.sub + " " + verb(id, 'mean') + " it.";
+      },
+      morning: function morning(id, P) {
+        return nm(id) + " has already written you into today's planner. In pen. \"Breakfast: you. Lunch: also you, if you're free.\" " + P.Sub + " " + verb(id, 'look') + " very pleased with the handwriting.";
+      }
+    },
+    benny: {
+      first: function first(id, P) {
+        return "\"Been a long time,\" " + nm(id) + " says, voice rough. \"Bear with me.\" You do, and " + P.pos + " big surprised laugh softens into something quieter.";
+      },
+      morning: function morning(id, P) {
+        return nm(id) + " is up before the light, out of habit, but " + P.sub + " " + verb(id, 'come') + " back to bed instead of heading for the docks. \"River'll keep,\" " + P.sub + " " + verb(id, 'mutter') + ".";
+      }
+    },
+    nell: {
+      first: function first(id, P) {
+        return nm(id) + " opens your window a crack. \"So the night can come in,\" " + P.sub + " " + verb(id, 'say') + ", as if that is perfectly ordinary. It smells of rain and rosemary, and the dark is very kind.";
+      },
+      morning: function morning(id, P) {
+        return "There is a sprig of rosemary on your pillow and the kettle is already singing. " + nm(id) + " hands you a cup of something green. \"For remembering,\" " + P.sub + " " + verb(id, 'say') + ". \"Not that you'll need it.\"";
+      }
+    },
+    fen: {
+      first: function first(id, P) {
+        return nm(id) + "'s hands are cool as river water and then, slowly, they aren't. \"I don't usually stay on this bank past dark,\" " + P.sub + " " + v3(id, 'admit') + ". Tonight is different.";
+      },
+      morning: function morning(id, P) {
+        return nm(id) + " is watching the rain on your window as if reading it. \"It says good morning,\" " + P.sub + " " + verb(id, 'say') + ". \"So do I.\"";
+      }
+    },
+    dot: {
+      first: function first(id, P) {
+        return nm(id) + " laughs into the dark. \"At my age! Don't you dare tell Rosa.\" Then the laughing goes soft, and the evening is just yours.";
+      },
+      morning: function morning(id, P) {
+        return nm(id) + " has made a proper breakfast out of the three things in your fridge, and judged every one of them. \"Eggs, love. Buy eggs.\" " + P.Sub + " " + v3(id, 'kiss', 'kisses') + " your cheek.";
+      }
+    }
+  };
+  var NIGHT_GENERIC = {
+    first: function first(id, P) {
+      return nm(id) + " " + verb(id, 'laugh') + " softly, a little nervous and a lot happy. \"Hi,\" " + P.sub + " " + verb(id, 'whisper') + ", as if you've only just met. Then the lamp goes out, and the rest of the night is yours.";
+    },
+    again: [function (id) {
+      return "The lamp goes out. What follows is warm, and slow, and nobody else's business.";
+    }, function (id) {
+      return nm(id) + " pulls the blanket over you both, laughing, and the night closes softly around you.";
+    }],
+    slow: [function (id) {
+      return "You fall asleep talking, " + nm(id) + "'s hand in yours, before either of you notices.";
+    }, function (id) {
+      return "Somewhere in the middle of a sentence, " + nm(id) + " drifts off against your shoulder. You follow soon after.";
+    }],
+    morning: function morning(id, P) {
+      return nm(id) + " " + verb(id, 'steal') + " most of the duvet and all of the toast, and " + verb(id, 'look') + " entirely unrepentant about both.";
+    }
+  };
+  function nightLine(id, which) {
+    var P = pronouns(id),
+      F = NIGHT_FLAVOR[id];
+    return (F && F[which] ? F[which] : NIGHT_GENERIC[which])(id, P);
+  }
+  var GREET_PARTNER = [function (id) {
+    return nm(id) + " wraps you up in a hug before you can even say hello. \"Hi, you.\"";
+  }, function (id) {
+    return nm(id) + " " + verb(id, 'greet') + " you with a quick kiss on the cheek, easy as anything.";
+  }, function (id) {
+    return nm(id) + "'s face goes soft and unguarded the moment " + pronouns(id).sub + " " + verb(id, 'see') + " you.";
+  }];
+  var firstName = function firstName(id) {
+    var p = BY_ID[id].name.split(' ');
+    return /^(Professor|Coach|Dr\.|Officer)$/.test(p[0]) ? p.slice(1).join(' ') : p[0];
+  };
+  // Minutes from now until about 07:30 tomorrow (4..12 hours).
+  function nightMins() {
+    var t = time(),
+      cur = (t.hour || 0) * 60 + (t.minute || 0),
+      wake = 450;
+    return clamp(cur >= 720 ? 1440 - cur + wake : wake - cur, 240, 720);
+  }
+  function intimJealousy(state, id, M) {
+    var ps = partners(state).filter(function (p) {
+      return p !== id;
+    });
+    if (!ps.length || M.lvl < 2) return '';
+    var jl = flirtJealousy(state, id);
+    if (jl) return jl;
+    var N = ns(state);
+    N.rumors = N.rumors || [];
+    ps.forEach(function (p) {
+      if (!N.rumors.some(function (x) {
+        return x.partner === p && x.with === id;
+      }) && Math.random() < 0.12 * M.lvl) N.rumors.push({
+        partner: p,
+        with: id,
+        day: time().day,
+        kind: 'close'
+      });
+    });
+    return '';
+  }
+  function markIntim(state, id, m) {
+    var r = rel(state, id);
+    r.intimLast = r.intimLast || {};
+    r.intimLast[m] = nowMin();
+  }
+  function intimAsk(state, id, M) {
+    var r = rel(state, id),
+      here = loc(state);
+    var why = intimLock(state, id, M);
+    if (why) return {
+      text: why + '.',
+      minutes: 0
+    };
+    var c = intimConsent(state, id, M);
+    if (c.ans === 'not') {
+      r.intimCool = nowMin() + 120;
+      return {
+        text: "<p>" + pick(INTIM_NOT[c.why] || INTIM_NOT.mood)(id) + "</p>" + NO_HARM,
+        minutes: M.mins
+      };
+    }
+    if (c.ans === 'slow') {
+      r.intimCool = nowMin() + 60;
+      var G2 = IM_BY[IM_GENTLE[M.m] || 'hands'];
+      var line = pick(INTIM_SLOW[c.why] || INTIM_SLOW.pace)(id, G2);
+      if (!openScene(state, {
+        kind: 'intimate',
+        id: id,
+        m: G2.m,
+        step: 0,
+        max: INTIM_STEPS[G2.m].length,
+        loc: here,
+        slow: false,
+        gentle: true
+      })) return {
+        text: "<p>" + line + "</p>",
+        minutes: M.mins
+      };
+      markIntim(state, id, G2.m);
+      blush(M.mins + 30);
+      return {
+        text: "<p>" + line + "</p>",
+        minutes: M.mins
+      };
+    }
+    if (!openScene(state, {
+      kind: 'intimate',
+      id: id,
+      m: M.m,
+      step: 0,
+      max: INTIM_STEPS[M.m].length,
+      loc: here
+    })) return {
+      text: 'Not right now.',
+      minutes: 0
+    };
+    if (M.m !== 'night') {
+      r.intimacy = Math.max(r.intimacy || 0, M.lvl);
+      markIntim(state, id, M.m);
+    }
+    var jl = intimJealousy(state, id, M);
+    blush(M.mins + 40);
+    return {
+      text: jl + ("<p>" + pick(INTIM_YES[M.m])(id) + "</p>"),
+      minutes: M.mins
+    };
+  }
+  // Options shown while talking to someone you're Smitten with or dating (people section).
+  function intimOptions(state, id) {
+    var out = [],
+      r = rel(state, id),
+      P = pronouns(id),
+      N = ns(state),
+      full = romancePref(state) === 'full';
+    var want = P.be === 'are' ? 'want' : 'wants';
+    intimVisible(state, id).forEach(function (M) {
+      var why = intimLock(state, id, M);
+      var o = {
+        label: "Ask if " + P.sub + " " + want + " to " + M.phrase,
+        icon: '❤️',
+        time: M.mins,
+        intim: M.m,
+        effects: M.m === 'night' ? ['^+Affection if yes', '^Stay till morning'] : ['^+Affection if yes']
+      };
+      if (why) {
+        o.disabled = true;
+        o.reason = why;
+        o.run = function () {
+          return {
+            text: why + '.',
+            minutes: 0
+          };
+        };
+      } else o.run = function (s) {
+        return intimAsk(s, id, M);
+      };
+      out.push(o);
+    });
+    var tg = N.together;
+    if (full && (r.romance || 0) >= 3 && (r.intimacy || 0) >= 2 && !privateFor(state, id) && !(tg && tg.id === id)) {
+      var why = null;
+      if ((r.aff || 0) < 70) why = 'Needs more affection';else if (!inviteHours()) why = 'Evenings only';else if (busyNow(state)) why = 'Already busy';else if (typeof r.inviteCool === 'number' && r.inviteCool > nowMin()) why = "Ask again later (" + fmtLeft(r.inviteCool - nowMin()) + ")";
+      var o = {
+        label: "Ask if " + P.sub + " " + want + " to come back to your room",
+        icon: '❤️',
+        time: 20,
+        effects: ['^+Affection if yes'],
+        intim: 'invite'
+      };
+      if (why) {
+        o.disabled = true;
+        o.reason = why;
+        o.run = function () {
+          return {
+            text: why + '.',
+            minutes: 0
+          };
+        };
+      } else o.run = function (s) {
+        return inviteBack(s, id);
+      };
+      out.push(o);
+    }
+    if (tg && tg.id === id && !N.morning && loc(state) === tg.loc) out.push({
+      label: "Walk " + P.obj + " to the door",
+      icon: '👋',
+      time: 5,
+      effects: ['^+Affection'],
+      intim: 'door',
+      run: function run(s) {
+        ns(s).together = null;
+        ns(s).talking = null;
+        changeAff(s, id, 1);
+        return {
+          text: "You walk " + nm(id) + " to the door. The goodbye takes a lot longer than it needs to.",
+          minutes: 5
+        };
+      }
+    });
+    return out;
+  }
+  function inviteBack(state, id) {
+    var r = rel(state, id),
+      t = time(),
+      P = pronouns(id);
+    var yes;
+    if (r.hurt !== undefined && t.day - r.hurt <= 1) yes = false;else if (t.hour >= 1 && t.hour < 6) yes = false;else {
+      var mood = npcMood(state, id);
+      yes = Math.random() < clamp(0.55 + ((r.aff || 0) - 70) / 60 + (paceOf(id) === 'eager' ? 0.1 : paceOf(id) === 'slow' ? -0.1 : 0) + (mood === 'tired' ? -0.25 : 0), 0.1, 0.95);
+    }
+    if (!yes) {
+      r.inviteCool = nowMin() + 120;
+      return {
+        text: "<p>\"Not tonight,\" " + nm(id) + " " + verb(id, 'say') + " kindly. \"Walk me partway instead?\" You do. It's still nice.</p>" + NO_HARM,
+        minutes: 20
+      };
+    }
+    var moved = false;
+    try {
+      if (window.G.world && typeof window.G.world.teleport === 'function') {
+        window.G.world.teleport('dorm_room');
+        moved = loc(state) === 'dorm_room';
+      }
+    } catch (e) {}
+    if (!moved) return {
+      text: nm(id) + " " + verb(id, 'smile') + ". \"Another night, maybe.\"",
+      minutes: 5
+    };
+    ns(state).together = {
+      id: id,
+      loc: 'dorm_room',
+      until: nowMin() + 20 + 240
+    };
+    ns(state).talking = {
+      id: id,
+      node: 'root'
+    };
+    changeAff(state, id, 1);
+    blush(60);
+    return {
+      text: nm(id) + " " + verb(id, 'smile') + ". \"I'd like that.\" You walk back to campus together the long way, and " + P.sub + " " + verb(id, 'keep') + " hold of your hand the whole time.",
+      minutes: 20
+    };
+  }
+  // Scene: ns.scene = { kind: 'intimate', id, m, step, max, loc, slow, checked, gentle }
+  function intimSceneOptions(state, sc) {
+    var id = sc.id,
+      M = IM_BY[sc.m],
+      P = pronouns(id),
+      out = [];
+    if (!M || M.full && romancePref(state) === 'wholesome') {
+      endScene(state);
+      return null;
+    }
+    var base = {
+      section: 'now',
+      always: true,
+      sub: 'Together'
+    };
+    var steps = INTIM_STEPS[sc.m],
+      done = sc.step >= sc.max,
+      def = steps[Math.min(sc.step, steps.length - 1)];
+    var fade = !!def.fade && !done,
+      mins = fade ? nightMins() : def.mins;
+    var o = Object.assign({
+      label: sc.slow ? def.slow : def.label,
+      icon: fade ? '🌙' : '❤️',
+      time: mins,
+      effects: def.fx
+    }, base);
+    if (done) {
+      o.disabled = true;
+      o.reason = 'You\'re both content where you are';
+    }
+    o.run = function (s) {
+      var c = ns(s).scene;
+      if (!c || o.disabled) return {
+        text: o.reason || 'Nothing happens.',
+        minutes: 0
+      };
+      if (fade) return nightFade(s, c, mins);
+      c.step++;
+      changeAff(s, id, 2);
+      safeChange('stats.needs.stress', -20);
+      blush(mins + 30);
+      return {
+        text: "<p>" + def.text(id, !!c.slow) + "</p>",
+        minutes: mins
+      };
+    };
+    out.push(o);
+    out.push(Object.assign({
+      label: 'Slow down',
+      icon: '🤍',
+      time: 5,
+      effects: sc.checked ? ['^−Stress'] : ['^+Affection', '^−Stress'],
+      run: function run(s) {
+        var c = ns(s).scene;
+        if (!c) return {
+          text: 'Nothing happens.',
+          minutes: 0
+        };
+        c.slow = true;
+        if (!c.checked) {
+          c.checked = true;
+          changeAff(s, id, 1);
+        }
+        safeChange('stats.needs.stress', -10);
+        return {
+          text: pick(["You ease back a little and ask how " + P.sub + " " + (P.be === 'are' ? 'are' : 'is') + " doing. " + nm(id) + " " + verb(id, 'look') + " touched. \"Good. Really good. Thank you for asking.\"", "\"Slower?\" " + nm(id) + " " + verb(id, 'smile') + " and " + verb(id, 'settle') + " against you. \"Slower's perfect.\""]),
+          minutes: 5
+        };
+      }
+    }, base));
+    out.push(Object.assign({
+      label: 'Stop here',
+      icon: '✋',
+      time: 2,
+      effects: ['No penalty'],
+      run: function run(s) {
+        var c = ns(s).scene;
+        endScene(s);
+        if (c && !c.checked) changeAff(s, id, 1);
+        return {
+          text: pick(["You say you'd like to stop here for now. " + nm(id) + " " + verb(id, 'nod') + " at once and " + v3(id, 'squeeze') + " your hand. \"Of course. I'm really glad you said.\"", "\"Course,\" " + nm(id) + " " + verb(id, 'say') + ", without a flicker of hesitation. " + P.Sub + " " + verb(id, 'stay') + " close, and it's easy and warm."]),
+          minutes: 2
+        };
+      }
+    }, base));
+    return out;
+  }
+  function nightFade(state, sc, mins) {
+    var id = sc.id,
+      r = rel(state, id),
+      N = ns(state),
+      here = sc.loc,
+      first = !(r.nights > 0);
+    endScene(state);
+    r.intimacy = Math.max(r.intimacy || 0, 4);
+    r.nights = (r.nights || 0) + 1;
+    r.nightAt = nowMin();
+    markIntim(state, id, 'night');
+    changeAff(state, id, 3);
+    _changeRep(state, id, 2, true);
+    safeChange('stats.needs.stress', -40);
+    var wake = nowMin() + mins;
+    N.together = {
+      id: id,
+      loc: here,
+      until: wake + 300
+    };
+    N.morning = {
+      id: id,
+      loc: here,
+      day: Math.floor(wake / 1440)
+    };
+    try {
+      var st = window.G.state.stats;
+      if (st && st.flags) {
+        st.flags.sleeping = true;
+        st.flags.sleptFull = mins >= 420;
+        N.nightSleep = true;
+      }
+    } catch (e) {}
+    var line = first ? nightLine(id, 'first') : sc.slow ? pick(NIGHT_GENERIC.slow)(id) : pick(NIGHT_GENERIC.again)(id);
+    return {
+      text: "<p class=\"scene\">" + line + "</p><p><i>The night slips by.</i></p><p>Morning light finds its way round the curtains. " + nm(id) + " is still here.</p>",
+      minutes: mins
+    };
+  }
+  // Morning after: shown in Right now the next morning while you're both still there.
+  function morningOptions(state) {
+    var Mo = ns(state).morning;
+    if (!Mo) return [];
+    var t = time();
+    if (loc(state) !== Mo.loc || t.day !== Mo.day || t.hour >= 12) return [];
+    var id = Mo.id,
+      P = pronouns(id);
+    var clear = function clear(s) {
+      ns(s).morning = null;
+      ns(s).together = null;
+      ns(s).talking = null;
+    };
+    var kettle = false;
+    try {
+      kettle = !!(window.G.dorm && window.G.dorm.has && window.G.dorm.has('kettle'));
+    } catch (e) {}
+    return [{
+      label: "Have breakfast with " + firstName(id),
+      icon: '☀️',
+      time: 30,
+      section: 'now',
+      always: true,
+      priority: 95,
+      sub: 'Morning',
+      effects: ['^−Stress', '^+Affection', '^Less hungry'],
+      run: function run(s) {
+        clear(s);
+        changeAff(s, id, 3);
+        safeChange('stats.needs.stress', -60);
+        safeChange('stats.needs.hunger', 150);
+        blush(70);
+        return {
+          text: "<p>" + (kettle ? 'The kettle clicks off. ' : '') + nightLine(id, 'morning') + "</p><p>" + nm(id) + " " + verb(id, 'head') + " off with a last, lingering look from the doorway.</p>",
+          minutes: 30
+        };
+      }
+    }, {
+      label: "Say good morning and see " + P.obj + " off",
+      icon: '👋',
+      time: 10,
+      section: 'now',
+      always: true,
+      priority: 94,
+      sub: 'Morning',
+      effects: ['^+Affection'],
+      run: function run(s) {
+        clear(s);
+        changeAff(s, id, 1);
+        blush(40);
+        return {
+          text: nm(id) + " " + v3(id, 'kiss', 'kisses') + " you goodbye at the door. \"Text me,\" " + P.sub + " " + verb(id, 'say') + ". \"Today. Soon. Now, ideally.\"",
+          minutes: 10
+        };
+      }
+    }];
+  }
+  function romanceTick(state) {
+    var N = ns(state),
+      t = time();
+    if (N.morning && (loc(state) !== N.morning.loc || t.day > N.morning.day || t.day === N.morning.day && t.hour >= 12)) {
+      N.morning = null;
+      N.together = null;
+    }
+    var tg = N.together;
+    if (tg && !N.morning && (loc(state) !== tg.loc || nowMin() > tg.until)) N.together = null;
+  }
+  function hookRomance() {
+    var G_ = window.G;
+    if (!G_ || !G_.on || G_.__npcRomHook) return;
+    G_.__npcRomHook = true;
+    // The night's sleep ends with the action: clear the flag we set so it never lingers.
+    G_.on('action', function () {
+      try {
+        var s = G_.state;
+        if (!s || !s.npcs || !s.npcs.nightSleep) return;
+        s.npcs.nightSleep = false;
+        if (s.stats && s.stats.flags) s.stats.flags.sleeping = false;
+      } catch (e) {}
+    });
   }
   var TOPICS = [{
     label: 'Chat',
@@ -4587,7 +5515,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         if (FIRST_MEET[id] && Math.random() < 0.75) return "You introduce yourself. " + n.blurb + " " + FIRST_MEET[id];
         return "You introduce yourself. " + n.blurb + " \"" + n.name + ",\" " + P.sub + " say" + (P.be === 'are' ? '' : 's') + ". " + pick(['"Nice to meet you."', '"Good to meet you."', '"Pleased to meet you."']);
       }
-      var out = (rel(state, id).romance >= 3 ? pick(GREET_DATING) : pick(GREET_STAGE[st] || GREET_STAGE.neutral))(id);
+      var out = (rel(state, id).romance >= 4 && Math.random() < 0.4 ? pick(GREET_PARTNER) : rel(state, id).romance >= 3 ? pick(GREET_DATING) : pick(GREET_STAGE[st] || GREET_STAGE.neutral))(id);
       var c = ctxNow(state);
       if (st !== 'hostile' && st !== 'cold' && c.t && GREET_TOD[c.t] && Math.random() < 0.3 && !/"/.test(out)) out += ' ' + pick(GREET_TOD[c.t]);
       return out;
@@ -6285,6 +7213,21 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         opts.push(o);
       }
     });
+    // Intimacy steps (asked first) sit just before "Say goodbye".
+    var io = [];
+    try {
+      io = intimOptions(state, id);
+    } catch (e) {
+      io = [];
+    }
+    if (io.length) {
+      var bye = opts.findIndex(function (o) {
+        return o.label === 'Say goodbye';
+      });
+      if (bye >= 0) opts.splice.apply(opts, [bye, 0].concat(io));else io.forEach(function (o) {
+        return opts.push(o);
+      });
+    }
     return opts;
   }
 
@@ -6577,9 +7520,17 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         aff: 0,
         romance: 0,
         met: false,
-        known: false
+        known: false,
+        intimacy: 0
       };
+      var r = N.rel[n.id];
+      if (typeof r.intimacy !== 'number' || !isFinite(r.intimacy)) r.intimacy = 0;
+      if ((r.romance || 0) < 2 && r.intimacy) {
+        r.intimacy = 0;
+        r.paced = {};
+      } // a breakup starts the pace over
     });
+    if (N.romancePref !== 'full' && N.romancePref !== 'wholesome') N.romancePref = 'full';
     if (!N.notes || !Array.isArray(N.notes.pages) || !N.notes.pages.length) ensureNotes(state);
   }
   function marketGreet(state, id) {
@@ -7039,6 +7990,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     id: 'npcs',
     init: function init(state) {
       hookSightings();
+      hookRomance();
       if (state.npcs) {
         ensureRels(state);
         ensureNotes(state);
@@ -7051,7 +8003,8 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
           aff: 0,
           romance: 0,
           met: false,
-          known: false
+          known: false,
+          intimacy: 0
         };
       });
       rels.rosa.rep = 15;
@@ -7065,6 +8018,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         items: {},
         dates: {},
         talking: null,
+        romancePref: 'full',
         notes: {
           pages: [{
             title: '',
@@ -7077,6 +8031,10 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     onTick: function onTick(minutes, state) {
       ensureRels(state);
       hookSightings();
+      hookRomance();
+      try {
+        romanceTick(state);
+      } catch (e) {}
       try {
         sceneValid(state);
       } catch (e) {}
@@ -7125,6 +8083,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         };
         if (tm) w.time = tm;
         w.section = o.section || 'people';
+        if (typeof o.priority === 'number') w.priority = o.priority;
         if (o.sub) w.sub = o.sub;
         if (o.icon) w.icon = o.icon;
         if (o.check) w.check = o.check;
@@ -7141,10 +8100,17 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         res.dialogue = sc.map(wrap);
         return res;
       }
+      var mo = [];
+      try {
+        mo = morningOptions(state).map(wrap);
+      } catch (e) {
+        mo = [];
+      }
       if (ns(state).talking) {
         var t = talkingOptions(state);
         if (t) {
           res.dialogue = t.map(wrap);
+          res.actions = mo;
           return res;
         }
       }
@@ -7177,7 +8143,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
           }
         }));
       });
-      res.actions = locationActions(state).concat(dateOptions(state), inviteActions(state)).map(wrap);
+      res.actions = mo.concat(locationActions(state).concat(dateOptions(state), inviteActions(state)).map(wrap));
       // Who's around (flavor), shown under Other
       var here = present(state);
       if (here.length) res.other.push({
@@ -7259,6 +8225,11 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     });
     if (r.romance >= 4) bits.push("You and " + BY_ID[id].name + " are partners");else if (r.romance === 3) bits.push("You're seeing each other");
     if (helped.length) bits.push(helped.length === 1 ? "you helped with \"" + QUESTS[helped[0]].title + "\"" : "you've helped " + p.obj + " " + helped.length + " times");
+    if ((r.romance || 0) >= 2) {
+      var lv = r.intimacy || 0,
+        full = romancePref(state) === 'full';
+      if (full && lv >= 4 && r.nights > 0) bits.push(r.nights > 1 ? 'you\'ve spent nights together' : 'you\'ve spent the night together');else if (full && lv >= 3) bits.push('you\'ve grown very close');else if (lv >= 2) bits.push('you\'ve shared kisses');else if (lv >= 1) bits.push('you\'ve held hands');
+    }
     if (r.heart) bits.push(r.heart === 1 ? 'you\'ve had one real heart-to-heart' : "you've had " + r.heart + " heart-to-hearts");
     if (!bits.length) return r.rep >= 15 ? 'You get on well, though you don\'t know each other deeply yet.' : r.rep < -10 ? 'Things between you are frosty.' : 'You\'ve only just met.';
     var s = bits.join(', and ');
@@ -7285,8 +8256,17 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     return "<div class=\"rel-card\" style=\"display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid rgba(128,128,128,.2)\">" + ("<div class=\"rel-ava\" aria-hidden=\"true\" style=\"flex:0 0 36px;height:36px;border-radius:50%;background:" + (REL_TINT[n.group] || '#888') + ";color:#fff;display:flex;align-items:center;justify-content:center;font-weight:bold\">" + relEsc(init) + "</div>") + ("<div style=\"flex:1;min-width:0\"><b>" + relEsc(n.name) + "</b> " + tags.join(' ') + "<br><small>" + relEsc(n.role) + ". Usually at " + relEsc(relUsualPlace(id)) + ".</small>") + ("<div style=\"margin:3px 0\"><span style=\"color:" + col + ";font-weight:bold\">" + relEsc(st.label) + "</span>") + ("<span class=\"rel-bar\" style=\"display:inline-block;vertical-align:middle;margin-left:8px;width:120px;height:7px;border-radius:4px;background:rgba(128,128,128,.25);overflow:hidden\"><span style=\"display:block;height:100%;width:" + pct + "%;background:" + col + "\"></span></span></div>") + ("<small>Last met: " + relEsc(lm.txt) + ". " + relEsc(relHistory(state, id)) + "</small></div></div>");
   }
   var REL_FILTERS = [['all', 'All'], ['friends', 'Friends'], ['dating', 'Dating'], ['recent', 'Recent']];
+  function relPrefBar(state) {
+    var p = romancePref(state);
+    return "<div class=\"rel-pref\" id=\"npc-relpref\" style=\"margin-top:12px;padding-top:8px;border-top:1px solid rgba(128,128,128,.2)\">Romance content: " + [['wholesome', 'Wholesome only'], ['full', 'Full']].map(function (x) {
+      return "<button type=\"button\" data-rel-pref=\"" + x[0] + "\" class=\"" + (x[0] === p ? 'on' : '') + "\" aria-pressed=\"" + (x[0] === p) + "\">" + x[1] + "</button>";
+    }).join(' ') + "<br><small>Wholesome only hides making out and spending the night. Full stays tasteful and fades out. Everything is always asked first.</small></div>";
+  }
   function relationshipsHTML(state) {
     if (!state || !state.npcs) return '<p>Nothing yet.</p>';
+    return relationshipsBody(state) + relPrefBar(state);
+  }
+  function relationshipsBody(state) {
     var N = ns(state),
       f = N.relFilter || 'all';
     var ids = ROSTER.filter(function (n) {
@@ -7330,6 +8310,16 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     if (typeof document === 'undefined' || window.G._npcRelHooked) return;
     window.G._npcRelHooked = true;
     document.addEventListener('click', function (e) {
+      var pb = e.target && e.target.closest && e.target.closest('#npc-relpref [data-rel-pref]');
+      if (pb && window.G.state && window.G.state.npcs) {
+        e.preventDefault();
+        ns(window.G.state).romancePref = pb.getAttribute('data-rel-pref') === 'wholesome' ? 'wholesome' : 'full';
+        try {
+          if (window.G.save) window.G.save(true);
+        } catch (err) {}
+        if (window.G.openCharMenu) window.G.openCharMenu('relationships');
+        return;
+      }
       var b = e.target && e.target.closest && e.target.closest('#npc-rel [data-rel-filter]');
       if (!b || !window.G.state || !window.G.state.npcs) return;
       e.preventDefault();
@@ -7430,6 +8420,26 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     pronouns: pronouns,
     whereIs: whereIs,
     stage: _stage,
+    romance: {
+      MILESTONES: INTIM,
+      PACE: PACE,
+      pace: paceOf,
+      flavorIds: Object.keys(NIGHT_FLAVOR),
+      plusIds: function plusIds() {
+        return Object.keys(ROMANCE_PLUS);
+      },
+      consent: function consent(state, id, m) {
+        return intimConsent(state || S(), id, IM_BY[m]);
+      },
+      lock: function lock(state, id, m) {
+        return intimLock(state || S(), id, IM_BY[m]);
+      },
+      pref: function pref(state) {
+        return romancePref(state || S());
+      },
+      nightMins: nightMins,
+      nightLine: nightLine
+    },
     flavor: {
       context: function context() {
         return ctxNow(S());

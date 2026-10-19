@@ -142,3 +142,6 @@ Within a section, a numeric `priority` sorts higher first; `pin: true` or `prior
 
 ## Tips
 - `G.TIPS` (array of short gameplay tips) and `G.randomTip()` (extras.js). One shows on the title screen and one at the end of each end-of-day summary. Add tips by pushing to `G.TIPS`; keep them short, grounded and true to the current game.
+
+## Versioning
+`G.version` in engine.js uses the format `vYY.MM.DD.#`, where # is the hotfix number for that day (starting at 0), e.g. `v26.10.19.0`. It shows on the title screen and in the error bar. The `?v=` cache-bust in index.html uses the same string without the leading v (`?v=26.10.19.0`). Bump both on every deploy.

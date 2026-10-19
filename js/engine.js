@@ -22,7 +22,7 @@
       if (!f || f.indexOf('/js/') < 0 || /onSsModeChange/.test(e.message || '')) return;
       var bar = document.getElementById('errbar');
       if (!bar) { bar = document.createElement('div'); bar.id = 'errbar'; bar.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:5000;background:#5a1d1d;color:#fff;font:12px system-ui;padding:6px 10px;white-space:pre-wrap'; document.body.appendChild(bar); }
-      bar.textContent = 'Something broke: ' + e.message + ' (' + String(e.filename || '').split('/').pop().split('?')[0] + ':' + e.lineno + ':' + (e.colno || 0) + ') [build 20261019p]. Please tell the developers.';
+      bar.textContent = 'Something broke: ' + e.message + ' (' + String(e.filename || '').split('/').pop().split('?')[0] + ':' + e.lineno + ':' + (e.colno || 0) + ') [' + G.version + ']. Please tell the developers.';
     } catch (x) {}
   });
   var memStore = {};
@@ -38,7 +38,7 @@
 
   var G = window.G = {
     store: store,
-    version: '0.1',
+    version: 'v26.10.19.0',
     state: {},
     time: { day: 1, hour: 7, minute: 30, weekday: 'Monday', clock: '07:30' },
     limits: {},          // path -> [min, max]; modules may add their own
@@ -606,7 +606,7 @@
       (hasAuto ? '<button data-ov="continue">Continue <span class="flavor">(' + saveSummary(auto) + ')</span></button>' : '') +
       '<button data-ov="begin">New game</button><button data-ov="saves">Load a save</button><button data-ov="help">How to play</button>' +
       titleTip() +
-      '<p class="flavor small">All characters are adults (18+). Version ' + G.version + '</p></div>');
+      '<p class="flavor small">All characters are adults (18+). ' + G.version + '</p></div>');
     el('overlay').classList.add('titlemode');
   }
 

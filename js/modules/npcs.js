@@ -5423,21 +5423,36 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
   function briefShows(state, id) {
     var c = state.stats && state.stats.clothing;
     if (!c || !c.diaper) return '';
-    var lo = bagOf('lower'),
-      ja = bagOf('jacket'),
+    var Wd = window.G.wardrobe || window.Wardrobe;
+    var vis = null,
+      noise = 0;
+    try {
+      if (Wd && typeof Wd.briefVisible === 'function') vis = !!Wd.briefVisible();
+    } catch (e) {}
+    try {
+      if (Wd && typeof Wd.briefNoise === 'function') noise = Number(Wd.briefNoise()) || 0;
+    } catch (e) {}
+    var cover = 0;
+    if (vis === null) {
+      var lo = bagOf('lower'),
+        ja = bagOf('jacket');
       cover = Math.max(lo == null ? 2 : lo, ja == null ? 0 : ja);
-    if (cover >= 2) return '';
+      vis = cover < 2;
+    }
+    var heard = noise >= 2 && Math.random() < (noise - 1) * 0.04 * coverScale(state);
+    if (!vis && !heard) return '';
     var N = ns(state);
     N.briefSeen = N.briefSeen || {};
     var t = time();
     if (N.briefSeen[id] != null && t.day - N.briefSeen[id] < 7) return '';
-    if (Math.random() >= (cover === 0 ? 0.08 : 0.04)) return '';
+    if (vis && !heard && Math.random() >= (cover === 0 ? 0.08 : 0.04) * coverScale(state)) return '';
     N.briefSeen[id] = t.day;
     var sk = _stage(state, id).key;
     if (sk === 'hostile' || sk === 'cold') {
       _changeRep(state, id, -1, true);
       return "<p>" + nm(id) + "'s eyes drop to your waistband for a second. " + pronouns(id).Sub + " " + (pronouns(id).be === 'are' ? 'don\'t' : 'doesn\'t') + " say anything, which is somehow worse.</p>";
     }
+    if (heard && !vis) return "<p>" + nm(id) + " glances round at a rustle, then politely carries on. Nothing is said.</p>";
     return "<p>" + nm(id) + "'s glance catches your waistband, then moves politely on. Nothing is said.</p>";
   }
   function sightGreet(state, id) {

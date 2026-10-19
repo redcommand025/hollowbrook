@@ -82,3 +82,21 @@ Every option should declare `minutes` (aliases `mins`, `time`; a number or a fun
 - Undressing (Lucy): any slot can be taken off at home or in the fitting room ("Get undressed" removes all). G.wardrobe.exposure() -> {upper, lower} each null | 'under' | 'bare'; isNaked(); exposedInPublic() (false at home, in the fitting room, or while hiding).
 - In public while exposed: stress, and every 30 min a crowd-weighted chance of `spotted {kind:'exposed', by:'students'|'public', src:'wardrobe', severity}` plus an `exposed` event. "Find somewhere out of sight to hide" stops it until you move.
 - Paperdoll: tears/holes by integrity fraction, darker when soaked, stain when soiled, underwear shown when bottoms are off, black censor bars when bare.
+
+### Brief types (wardrobe.js, Lucy)
+- One pee = 400 ml (`Wardrobe.BLADDER_ML`), one poo = 0.5 lb (`Wardrobe.POO_LB`). `absorb(kind, amount)` returns true (all held), a number (only that much held, the rest overflows), or false (none held).
+- Types, with what each holds before leaking, plus bulk and noise (0–4):
+
+  | id | Name | Holds | Bulk | Noise | Pack |
+  |---|---|---|---|---|---|
+  | `inc_brief` | Regular plastic-backed | 1400 ml / 4 lb | 2 | 2 | 10 for $16 |
+  | `brief_large` | Large plastic-backed | 2200 ml / 6 lb | 3 | 3 | 10 for $22 |
+  | `brief_ultra` | Ultra plastic-backed | 4000 ml / 9.3 lb | 4 | 3 | 6 for $28 |
+  | `brief_hyper` | Hyper plastic-backed | 6000 ml / 12.9 lb | 4 | 4 | 4 for $30 |
+  | `pullup` | Pull-up | 800 ml / 1.5 lb | 1 | 1 | 12 for $15 |
+  | `cloth_brief` | Cloth | 600 ml / 1 lb | 0 | 0 | $9 each, reusable |
+
+- Cloth briefs are reusable: they go through laundry, which empties them.
+- Bulk grows as a brief fills: +1 at 50%, +1 more at 85%, and cloth grows by 1 at most. Plastic gets one step louder at 50%.
+- Hooks: `briefFill()` (0..1), `briefBulk()`, `briefNoise()`, `briefWeight()` (lb), `briefVisible()` (bulk is greater than `conceal('lower')`), and `briefs(id?)` for stock.
+- `stats.clothing.diaperFill` is the fill as a percentage.

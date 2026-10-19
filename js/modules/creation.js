@@ -125,7 +125,7 @@
     if (skirtRows) for (var sr = 0; sr < skirtRows; sr++) span(ly + sr, Math.min(lhw + 1 + (sr >> 1), lhw + 3), sr === skirtRows - 1 ? shade(botC, 0.85) : botC, true);
     // underwear when there are no bottoms over it
     if (!o.bottom && uB) {
-      var bRows = uB.kind === 'brief' ? 4 : 3, bW = lhw + (uB.kind === 'brief' ? 1 : 0);
+      var bb = uB.kind === 'brief' ? (uB.bulk || 1) : 0, bRows = 3 + (bb >= 2 ? 1 : 0) + (bb >= 4 ? 1 : 0), bW = lhw + (bb >= 1 ? 1 : 0) + (bb >= 3 ? 1 : 0);
       for (var ub = 0; ub < bRows; ub++) span(ly + ub, bW, ub === bRows - 1 ? shade(uB.color, 0.85) : uB.color, true);
       if (uB.wet > 40) { px(12, ly + 1, shade(uB.color, 0.75)); px(13, ly + 1, shade(uB.color, 0.75)); px(12, ly + 2, shade(uB.color, 0.75)); px(13, ly + 2, shade(uB.color, 0.75)); }
     }

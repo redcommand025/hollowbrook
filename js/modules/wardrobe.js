@@ -1,6 +1,6 @@
 /* wardrobe.js - clothing store, owned clothes, outfits on the pixel sprite (owner: Lucy)
  * Owns G.state.wardrobe:
- *   { items: [{uid, id, wet, integ, clean, days, soiled, loads}], worn: {under_top, under_bottom, top, bottom, shoes, outer, head, face, ears, neck}, nextUid, mode, starter, briefs }
+ *   { items: [{uid, id, wet, integ, clean, days, soiled, ml, lb}], worn: {under_top, under_bottom, top, bottom, shoes, outer, head, face, ears, neck}, nextUid, mode, starter, briefs }
  * Underlayers + jacket keep wet/integ on the item and are mirrored into stats.clothing.underUpper*, underLower*, jacket* (and .diaper).
  * Integrity 0 = ruined: can't be washed or mended, only thrown away. Wardrobe.absorb(kind) lets a worn incontinence brief catch an accident.
  * The WORN top's wetness/integrity live in stats.clothing.upper*, the worn bottom's in stats.clothing.lower*
@@ -75,8 +75,20 @@
     briefs:      { slot: 'under_bottom', name: 'cotton underwear', kind: 'under', color: '#e6e2d6', price: 5, style: 0, vibe: 'n', under: true, desc: 'Plain, comfortable, and sold in sensible colours.' },
     boxers:      { slot: 'under_bottom', name: 'boxer shorts', kind: 'under', color: '#5a6f8f', price: 6, style: 0, vibe: 'm', under: true, desc: 'Loose cotton boxers with a faded check.' },
     briefs_lace: { slot: 'under_bottom', name: 'seamless underwear', kind: 'under', color: '#d9b8b8', price: 9, style: 0, vibe: 'f', under: true, desc: 'Smooth and seamless, so nothing shows through.' },
-    inc_brief:   { slot: 'under_bottom', name: 'incontinence brief', kind: 'under', color: '#f2f2f2', price: 14, style: 0, vibe: 'n', under: true, disposable: true, pack: 10, absorb: { bladder: 2, bowels: 1 },
-                   desc: 'A discreet, disposable brief sold for bladder and bowel leaks. It holds a couple of accidents before it has to be changed.' }
+    // incontinence briefs. absorb = what it holds before it leaks (ml of urine, lb of stool). bulk / noise 0-4 (grow as it fills).
+    // cat: plastic (best protection, bulky, crinkly), pullup (average, fairly discreet), cloth (low protection, looks like thick underwear, washable)
+    inc_brief:   { slot: 'under_bottom', name: 'Regular plastic-backed brief', kind: 'under', color: '#f2f2f2', price: 16, style: 0, vibe: 'n', under: true, disposable: true, pack: 10, cat: 'plastic', absorb: { ml: 1400, lb: 4 }, bulk: 2, noise: 2,
+                   desc: 'The everyday plastic-backed brief. Bulky but low enough to hide under looser clothes. Four tapes, single leg cuffs.' },
+    brief_large: { slot: 'under_bottom', name: 'Large plastic-backed brief', kind: 'under', color: '#f4f4f4', price: 22, style: 0, vibe: 'n', under: true, disposable: true, pack: 10, cat: 'plastic', absorb: { ml: 2200, lb: 6 }, bulk: 3, noise: 3,
+                   desc: 'The workhorse. Thick padding and double leg cuffs, good for a school day or a work shift with a change or two. Clear crinkle when you move.' },
+    brief_ultra: { slot: 'under_bottom', name: 'Ultra plastic-backed brief', kind: 'under', color: '#f6f6f6', price: 28, style: 0, vibe: 'n', under: true, disposable: true, pack: 6, cat: 'plastic', absorb: { ml: 4000, lb: 9.3 }, bulk: 4, noise: 3,
+                   desc: 'Made to last a full day without a change. Six tapes and double cuffs. Very bulky, so it forces a wider stance and is hard to hide.' },
+    brief_hyper: { slot: 'under_bottom', name: 'Hyper plastic-backed brief', kind: 'under', color: '#eef2f6', price: 30, style: 0, vibe: 'n', under: true, disposable: true, pack: 4, cat: 'plastic', absorb: { ml: 6000, lb: 12.9 }, bulk: 4, noise: 4,
+                   desc: 'The largest brief made, for two-day stretches, camping, or when changing just isn\'t possible. Eight tapes and triple cuffs. Enormous, loud, and impossible to hide.' },
+    pullup:      { slot: 'under_bottom', name: 'pull-up brief', kind: 'under', color: '#ecebf2', price: 15, style: 0, vibe: 'n', under: true, disposable: true, pack: 12, cat: 'pullup', absorb: { ml: 800, lb: 1.5 }, bulk: 1, noise: 1,
+                   desc: 'Pulls on like underwear, with tear-away sides. Average protection, and fairly discreet under most clothes.' },
+    cloth_brief: { slot: 'under_bottom', name: 'cloth brief', kind: 'under', color: '#e8e4da', price: 9, style: 0, vibe: 'n', under: true, cat: 'cloth', absorb: { ml: 600, lb: 1 }, bulk: 0, noise: 0,
+                   desc: 'Looks like thick cotton underwear, so nobody can tell. Holds less than a disposable, but it goes in the laundry and gets worn again.' }
   };
   /* Clothing stats. maxI = integrity a brand-new piece starts at (cheap, thin things are lower).
    * warm / bag are levels 0-4 (none, low, normal, high, maximum). warmth scales down with integrity.
@@ -95,11 +107,11 @@
     beanie: [80, 2, 0, 80], cap: [85, 0, 0, 40], sunhat: [75, 0, 0, 40], glasses: [90, 0, 0, 0], sunglasses: [80, 0, 0, 0],
     studs: [100, 0, 0, 0], hoops: [100, 0, 0, 0], scarf_wool: [85, 2, 0, 150], scarf_plaid: [80, 1, 0, 150],
     undershirt: [60, 1, 0, 150], camisole: [55, 0, 0, 80], thermal_vest: [75, 2, 0, 200],
-    briefs: [60, 0, 0, 100], boxers: [65, 0, 0, 120], briefs_lace: [55, 0, 0, 80], inc_brief: [30, 1, 0, 800]
+    briefs: [60, 0, 0, 100], boxers: [65, 0, 0, 120], briefs_lace: [55, 0, 0, 80], inc_brief: [30, 1, 0, 1400], brief_large: [30, 1, 0, 2200], brief_ultra: [30, 2, 0, 4000], brief_hyper: [30, 2, 0, 6000], pullup: [30, 0, 0, 800], cloth_brief: [80, 0, 0, 600]
   };
   Object.keys(CSTATS).forEach(function (id) { var v = CSTATS[id], d = CATALOG[id]; if (!d) return; d.maxI = v[0]; d.warm = v[1]; d.bag = v[2]; d.abs = v[3]; });
-  var BLADDER_ML = 350;   // one full bladder accident, for absorption maths
-  CATALOG.inc_brief.absorb = { bladder: Math.floor(CATALOG.inc_brief.abs / BLADDER_ML), bowels: 1 };
+  var BLADDER_ML = 400;   // one full bladder accident, for absorption maths
+  var POO_LB = 0.5;
   var CLOTH = ['under_top', 'under_bottom', 'top', 'bottom', 'shoes', 'outer'], ACC = ['head', 'face', 'ears', 'neck'], UNDER = ['under_top', 'under_bottom'];
   var SLOTS = CLOTH.concat(ACC);
   var SLOT_LABEL = { under_top: 'undershirts', under_bottom: 'underwear', top: 'tops', bottom: 'bottoms', shoes: 'shoes', outer: 'outerwear', head: 'hats', face: 'glasses', ears: 'earrings', neck: 'scarves' };
@@ -150,7 +162,7 @@
     if (area === 'chest') return Math.max(t ? t.bag || 0 : 0, od ? od.bag || 0 : 0);
     return Math.max(t ? t.bag || 0 : 0, od ? od.bag || 0 : 0, b ? (b.bag || 0) - 1 : 0);
   }
-  function briefVisible() { var u = wornItem('under_bottom'); return !!(u && def(u).absorb && conceal('lower') < 2); }
+  function briefVisible() { var u = wornItem('under_bottom'); return !!(u && def(u).absorb && briefBulk() > conceal('lower')); }
   /* soak a worn layer with ml of liquid; returns the ml it couldn't hold */
   function soak(slot, ml) {
     var it = wornItem(slot), d = def(it); if (!it || !ml) return ml || 0;
@@ -242,27 +254,44 @@
     return true;
   }
 
-  /* Disposable briefs: call absorb(kind) before an accident wets anything. true = the brief caught it (no wetness, nothing to see). */
-  function absorb(kind) {
+  /* Briefs: call absorb(kind) before an accident wets anything. One pee = BLADDER_ML ml, one poo = POO_LB lb.
+     true = the brief caught it (no wetness, nothing to see). false = nothing to catch it, or it's full and leaks. */
+  function bfill(b) { var d = def(b); if (!b || !d || !d.absorb) return 0; return Math.min(1, Math.max((b.ml || 0) / d.absorb.ml, (b.lb || 0) / d.absorb.lb)); }
+  function absorb(kind, amount) {
     var w = W(); if (!w || !w.starter) return false;
+    LAST = null;
     var b = wornItem('under_bottom'), d = def(b); if (!b || !d || !d.absorb) return false;
     var k = (kind === 'poo' || kind === 'soiled') ? 'bowels' : kind === 'pee' ? 'bladder' : kind;
     if (k !== 'bladder' && k !== 'bowels') return false;
-    b.loads = b.loads || { bladder: 0, bowels: 0 };
-    if (b.loads[k] >= d.absorb[k]) return false;          // full: it leaks, normal accident
-    b.loads[k]++; b.clean = false;
-    if (k === 'bladder') b.wet = Math.min(100, b.wet + 50);
-    else { if (!b.soiled) b.soiledAt = absMin(); b.soiled = true; var sf = G_().state.stats && G_().state.stats.flags; if (sf) sf.dirty = true; }
-    if (G_().notify) G_().notify(k === 'bladder' ? 'Your brief holds. Nobody would know.' : 'Your brief holds, but you\'ll want to change it soon before anyone smells it.', 'info', 'brief');
+    b.ml = b.ml || 0; b.lb = b.lb || 0;
+    var amt = amount > 0 ? amount : (k === 'bladder' ? BLADDER_ML : POO_LB), cap = k === 'bladder' ? d.absorb.ml : d.absorb.lb, cur = k === 'bladder' ? b.ml : b.lb;
+    var held = Math.max(0, Math.min(amt, cap - cur));
+    if (held <= 0) { if (k === 'bladder') b.wet = 100; syncLayers(); LAST = { kind: k, category: d.cat, size: d.cat === 'plastic' ? d.name.split(' ')[0] : null, label: briefLabel(d), fill: 100, grew: false, held: 0, leaked: amt, text: 'Your ' + briefLabel(d) + ' diaper is already full and overflows.', growText: '' }; return false; }   // full: it all leaks
+    b.clean = false;
+    if (k === 'bladder') { b.ml += held; b.wet = Math.min(100, b.ml / d.absorb.ml * 100); }
+    else { b.lb += held; if (!b.soiled) b.soiledAt = absMin(); b.soiled = true; var sf = G_().state.stats && G_().state.stats.flags; if (sf) sf.dirty = true; }
+    var big = (b.ml >= GROW_ML || b.lb >= GROW_LB), grewNow = big && !b.grew; if (big) b.grew = true;
+    var pct = Math.round(bfill(b) * 100), grewMsg = grewNow && d.cat !== 'cloth';
+    LAST = { kind: k, category: d.cat, size: d.cat === 'plastic' ? d.name.split(' ')[0] : null, label: briefLabel(d), fill: pct, grew: grewMsg, held: held, leaked: amt - held,
+             text: 'You used your ' + briefLabel(d) + ' diaper, filling it to ' + pct + '%.', growText: grewMsg ? 'Your diaper grows larger; it\'s getting harder to hide.' : '' };
     syncLayers();
-    if (G_().emit) G_().emit('briefUsed', { kind: k, loads: b.loads });
-    return true;
+    if (G_().emit) G_().emit('briefUsed', LAST);
+    return held >= amt ? true : held;   // a number = only part of it held, the rest overflows
   }
-  function briefFull() { var b = wornItem('under_bottom'), d = def(b); return !!(b && d && d.absorb && b.loads && (b.loads.bladder >= d.absorb.bladder || b.loads.bowels >= d.absorb.bowels)); }
-  function supplies() { var w = W(); return (w && w.briefs) || 0; }
-  function freshBrief() {
-    var w = W(); if (!w.briefs) return null;
-    w.briefs--; var it = newItem('inc_brief'); var note = wear(it.uid); return note;
+  var LAST = null;   // details of the last absorb() for the accident text
+  var GROW_ML = 1200, GROW_LB = 1;   // past either, a disposable swells a size
+  function briefLabel(d) { return d.cat === 'plastic' ? 'plastic-backed ' + d.name.split(' ')[0] : d.cat === 'pullup' ? 'pull-up' : 'cloth'; }
+  function fillWord(f) { return f <= 0 ? 'dry' : f < 0.25 ? 'barely used' : f < 0.5 ? 'partly used' : f < 0.75 ? 'about half full' : f < 1 ? 'mostly full' : 'full'; }
+  function briefFull() { var b = wornItem('under_bottom'), d = def(b); return !!(b && d && d.absorb && ((b.ml || 0) + BLADDER_ML > d.absorb.ml || (b.lb || 0) + POO_LB > d.absorb.lb)); }
+  function briefBulk() { var b = wornItem('under_bottom'), d = def(b); if (!b || !d || !d.absorb) return 0; var f = bfill(b), grow = ((b.ml || 0) >= GROW_ML || (b.lb || 0) >= GROW_LB ? 1 : 0) + (f >= 0.85 ? 1 : 0); if (d.cat === 'cloth') grow = Math.min(grow, 1); return Math.min(4, (d.bulk || 0) + grow); }
+  function briefNoise() { var b = wornItem('under_bottom'), d = def(b); if (!b || !d || !d.absorb) return 0; return Math.min(4, (d.noise || 0) + (d.cat === 'plastic' && bfill(b) >= 0.5 ? 1 : 0)); }
+  function briefWeight() { var b = wornItem('under_bottom'), d = def(b); if (!b || !d || !d.absorb) return 0; return Math.round(((b.ml || 0) / 453.6 + (b.lb || 0)) * 10) / 10; }
+  function stock() { var w = W(); if (!w) return {}; if (!w.stock) w.stock = {}; if (w.briefs) { w.stock.inc_brief = (w.stock.inc_brief || 0) + w.briefs; w.briefs = 0; } return w.stock; }
+  function supplies(id) { var st = stock(); if (id) return st[id] || 0; var n = 0; for (var k in st) n += st[k]; return n; }
+  function freshBrief(id) {
+    var st = stock(); if (!id) { var best = null; var cur = def(wornItem('under_bottom')); if (cur && st[wornItem('under_bottom').id]) best = wornItem('under_bottom').id; for (var k in st) if (!best && st[k] > 0) best = k; id = best; }
+    if (!id || !st[id]) return null;
+    st[id]--; var it = newItem(id); var note = wear(it.uid); return note;
   }
   /* mirror the underlayers and jacket into stats.clothing so the Clothing tab can show them */
   function syncLayers() {
@@ -271,7 +300,7 @@
     put('under_top', 'underUpperWetness', 'underUpperIntegrity');
     put('under_bottom', 'underLowerWetness', 'underLowerIntegrity');
     put('outer', 'jacketWetness', 'jacketIntegrity');
-    var b = wornItem('under_bottom'); c.diaper = !!(b && def(b).absorb);
+    var b = wornItem('under_bottom'); c.diaper = !!(b && def(b).absorb); c.diaperFill = c.diaper ? Math.round(bfill(b) * 100) : null;
   }
   /* what's covered: 'bare' = nothing at all, 'under' = only underwear/undershirt, null = dressed */
   function exposure() {
@@ -295,6 +324,13 @@
     return n;
   }
 
+  function briefLine() {
+    var b = wornItem('under_bottom'), d = def(b), f = bfill(b), t = ' Your ' + d.name + ' is ' + fillWord(f);
+    if (briefVisible()) t += ', and the shape shows under what you\'re wearing'; 
+    if (briefNoise() >= 3) t += '. It crinkles loudly when you move'; else if (briefNoise() >= 2) t += '. It crinkles in quiet rooms';
+    if (briefWeight() >= 5) t += '. The weight slows you down';
+    return t + (briefFull() ? '. It won\'t hold another accident.' : '.');
+  }
   function describeOutfit() {
     var parts = [], exd = exposure();
     if (exd.upper === 'bare' && exd.lower === 'bare') return 'You aren\'t wearing anything.' + (wornItem('shoes') ? ' Just your ' + def(wornItem('shoes')).name + '.' : '');
@@ -310,7 +346,7 @@
     var jk = wornItem('outer'); if (jk && jk.wet >= 100) txt += ' Your ' + def(jk).name + ' is soaked through.';
     if (exd.lower === 'under') txt += ' You\'re in your underwear from the waist down.'; else if (exd.lower === 'bare') txt += ' You have nothing on below the waist.';
     if (exd.upper === 'under') txt += ' Your top half is just your ' + def(wornItem('under_top')).name + '.'; else if (exd.upper === 'bare') txt += ' You have nothing on up top.';
-    var ub = wornItem('under_bottom'); if (!ub && !exd.lower) txt += ' You aren\'t wearing any underwear.'; else if ((def(ub) || {}).absorb && briefFull()) txt += ' Your brief is full and won\'t hold another accident.';
+    var ub = wornItem('under_bottom'); if (!ub && !exd.lower) txt += ' You aren\'t wearing any underwear.'; else if ((def(ub) || {}).absorb) txt += briefLine(); else if (false) txt += ' Your brief is full and won\'t hold another accident.';
     activeSets().forEach(function (st2) { txt += ' Full ' + st2.name + ' look.'; });
     return txt;
   }
@@ -334,7 +370,7 @@
       var it = wornItem(s); o[s] = it ? look(it.id) : null;
       if (it) o.deg[s] = { f: it.integ / maxOf(it), wet: it.wet, soiled: !!it.soiled, days: it.days || 0 };
     });
-    if (o.under_bottom) { o.under_bottom.kind = def(wornItem('under_bottom')).absorb ? 'brief' : 'under'; o.under_bottom.wet = wornItem('under_bottom').wet; }
+    if (o.under_bottom) { var ubd = def(wornItem('under_bottom')); o.under_bottom.kind = ubd.absorb && ubd.bulk ? 'brief' : 'under'; o.under_bottom.bulk = briefBulk(); o.under_bottom.wet = wornItem('under_bottom').wet; }
     var ex = exposure(); o.bareUpper = ex.upper === 'bare'; o.bareLower = ex.lower === 'bare';
     return o;
   }
@@ -370,7 +406,6 @@
     var a = newItem(uid); newItem(uid); newItem(uid);
     var t = newItem(app === 'female' ? 'camisole' : 'undershirt'); newItem('undershirt');
     w.worn.under_bottom = a.uid; w.worn.under_top = t.uid;
-    w.briefs = w.briefs || 0;
     syncLayers();
   }
 
@@ -432,23 +467,29 @@
   }
 
   function briefPackOption(out, where, sub) {
-    var w = W(), d = CATALOG.inc_brief, price = priceOf('inc_brief');
-    out.actions.push(opt('Buy a pack of ' + d.pack + ' incontinence briefs ($' + price + ')' + (w.briefs ? ' (have ' + w.briefs + ')' : ''), function () {
-      if (money() < price) return { text: '<p>Not enough cash for a pack today.</p>', minutes: 1 };
-      G_().change('money', -price); w.briefs = (w.briefs || 0) + d.pack;
-      return { text: '<p>A plain, discreet pack. The cashier rings it up without a second glance. You can change into one at home, in a restroom, or in the fitting room.</p>', minutes: 2 };
-    }, { time: 2, disabled: money() < price, hint: d.desc, sub: sub }));
+    var w = W();
+    Object.keys(CATALOG).forEach(function (id) {
+      var d = CATALOG[id]; if (!d.pack || !d.absorb) return;
+      var price = priceOf(id), have = supplies(id);
+      out.actions.push(opt('Buy ' + d.pack + ' ' + d.name + 's ($' + price + ')' + (have ? ' (have ' + have + ')' : ''), function () {
+        if (money() < price) return { text: '<p>Not enough cash for a pack today.</p>', minutes: 1 };
+        G_().change('money', -price); stock()[id] = have + d.pack;
+        return { text: '<p>A plain, discreet pack. The cashier rings it up without comment. You can change into one at home, in a restroom, or in the fitting room.</p>', minutes: 2 };
+      }, { time: 2, disabled: money() < price, hint: d.desc + ' Holds about ' + Math.floor(d.absorb.ml / BLADDER_ML) + ' pees (' + d.absorb.ml + ' ml) or ' + d.absorb.lb + ' lb.', sub: sub }));
+    });
   }
-  function changeBriefOption(out, label) {
-    var w = W(); if (!w.briefs) return;
-    var cur = wornItem('under_bottom'), used = cur && def(cur).disposable && (cur.loads && (cur.loads.bladder || cur.loads.bowels) || cur.soiled);
-    out.actions.push(opt(label || ((used ? 'Change into a fresh incontinence brief' : 'Put on an incontinence brief') + ' (' + w.briefs + ' left)'), function () {
-      var wasSoiled = cur && cur.soiled;
-      var note = freshBrief();
-      var sf = G_().state.stats && G_().state.stats.flags;
-      if (wasSoiled && sf && !soiled()) sf.dirty = false;   // wipes come with the change
-      return { text: '<p>You slip into a stall and change.' + esc(note || '') + ' Fresh, dry, and nobody the wiser.</p>', minutes: 4 };
-    }, { time: 4, hint: 'Holds about two bladder accidents or one bowel accident without anyone noticing. A soiled brief still smells until you change it.' }));
+  function changeBriefOption(out) {
+    var st = stock(), cur = wornItem('under_bottom'), used = cur && def(cur).absorb && ((cur.ml || cur.lb) || cur.soiled);
+    Object.keys(st).forEach(function (id) {
+      if (!st[id]) return; var d = CATALOG[id];
+      out.actions.push(opt((used ? 'Change into a fresh ' : 'Put on a ') + d.name + ' (' + st[id] + ' left)', function () {
+        var wasSoiled = cur && cur.soiled;
+        var note = freshBrief(id);
+        var sf = G_().state.stats && G_().state.stats.flags;
+        if (wasSoiled && sf && !soiled()) sf.dirty = false;   // wipes come with the change
+        return { text: '<p>You find somewhere private and change.' + esc(note || '') + '</p>', minutes: 4 };
+      }, { time: 4, hint: d.desc }));
+    });
   }
 
   function wardrobeOptions(out, where) {
@@ -484,13 +525,13 @@
     if (home && dirty.length) out.actions.push(opt('Do laundry: ' + dirty.length + ' item' + (dirty.length > 1 ? 's' : '') + ' ($3)', function () {
       if (money() < 3) return { text: '<p>The machines want quarters you don\'t have.</p>', minutes: 1 };
       G_().change('money', -3);
-      dirty.forEach(function (it) { it.clean = true; it.wet = 0; it.days = 0; it.soiled = false; it.soiledAt = null; });
+      dirty.forEach(function (it) { it.clean = true; it.wet = 0; it.days = 0; it.soiled = false; it.soiledAt = null; it.ml = 0; it.lb = 0; it.grew = false; });
       if (G_().stats && G_().stats.trainSkill) G_().stats.trainSkill('housekeeping', 6);
       syncSpare();
       return { text: '<p>You haul the laundry bag down to the basement machines and wait out the spin cycle with a textbook. Everything comes out warm and smelling of cheap detergent.</p>', minutes: 90 };
     }, { time: 90 }));
     if (w.mode === 'wardrobe:acc' || w.mode === 'wardrobe:under') out.actions.push(opt('Back to your clothes', function () { w.mode = 'wardrobe'; return { text: '<p>You close the drawer.</p>', minutes: 0 }; }));
-    else out.actions.push(opt('Open the underwear drawer', function () { w.mode = 'wardrobe:under'; return { text: '<p>Underwear and undershirts, folded more neatly than anything else you own.' + (w.briefs ? ' The pack of briefs sits at the back (' + w.briefs + ' left).' : '') + '</p>', minutes: 1 }; }));
+    else out.actions.push(opt('Open the underwear drawer', function () { w.mode = 'wardrobe:under'; return { text: '<p>Underwear and undershirts, folded more neatly than anything else you own.' + (supplies() ? ' Your briefs are at the back (' + supplies() + ' left).' : '') + '</p>', minutes: 1 }; }));
     if (w.mode !== 'wardrobe:acc' && w.mode !== 'wardrobe:under' && w.items.some(function (it) { return ACC.indexOf(def(it).slot) >= 0; })) out.actions.push(opt('Open the accessories drawer', function () { w.mode = 'wardrobe:acc'; return { text: '<p>Hats, glasses, earrings and scarves, in a tangle that is almost organised.</p>', minutes: 1 }; }));
     pullLive();
     var mend = w.items.filter(function (it) { return it.integ < maxOf(it) * 0.8 && !ruined(it) && !def(it).disposable && CLOTH.indexOf(def(it).slot) >= 0; }).sort(function (a, b) { return a.integ - b.integ; }).slice(0, 3);
@@ -598,7 +639,7 @@
         return { text: '<p>You duck behind the nearest thing big enough to hide behind and stay very still. Nobody can see you here, but you can\'t stay forever. You need clothes, or to get home.</p>', minutes: 5 };
       }, { time: 5 }));
       var hr = G_().world && G_().world.here ? G_().world.here() : null;
-      if (hr && hr.restroom && !home && w.briefs) changeBriefOption(out);
+      if (hr && hr.restroom && !home && supplies()) changeBriefOption(out);
       if (hid === 'market' && isOpen('market')) briefPackOption(out, 'market', 'Groceries');
       if (home) out.other.push(opt('Open your wardrobe', function () {
         w.mode = 'wardrobe';
@@ -624,7 +665,7 @@
       g.on('accident', function (e) {
         if (!W() || !W().starter || (e && (e.absorbed || e.contained))) return;
         var k = e && (e.kind || e.type), ub = wornItem('under_bottom');
-        if (ub) { soak('under_bottom', k === 'bladder' || k === 'pee' ? BLADDER_ML : 60); ub.clean = false; if (def(ub).absorb) { ub.loads = ub.loads || { bladder: 0, bowels: 0 }; ub.loads.bladder = def(ub).absorb.bladder; } }
+        if (ub) { soak('under_bottom', k === 'bladder' || k === 'pee' ? BLADDER_ML : 60); ub.clean = false; if (def(ub).absorb) { ub.ml = def(ub).absorb.ml; ub.wet = 100; } }
         syncLayers();
         if (k !== 'bowels' && k !== 'poo' && k !== 'soiled') return;
         if (markSoiled() && g.notify) g.notify('Your ' + (wornItem('bottom') ? def(wornItem('bottom')).name : 'underwear') + ' are soiled. Change and wash them before people notice the smell.', 'down', 'soiled');
@@ -711,7 +752,7 @@
             var d = def(it), on = w.worn[slot] === it.uid;
             var fr = it.integ / maxOf(it), cond = it.integ <= 0 ? 'ruined, throw it away' : fr >= 0.8 ? 'like new' : fr >= 0.5 ? 'worn' : fr >= 0.2 ? 'fraying' : 'falling apart';
             var wet = it.wet >= 100 ? ', soaked' : it.wet >= 50 ? ', wet' : it.wet >= 20 ? ', damp' : '';
-            var load = d.absorb && it.loads ? (briefFull() && on ? ', full' : (it.loads.bladder || it.loads.bowels) ? ', used' : '') : '';
+            var load = d.absorb && (it.ml || it.lb) ? ', ' + fillWord(bfill(it)) : '';
             return '<li>' + (on ? '<b>' + esc(d.name) + '</b> (wearing)' : esc(d.name)) + ', ' + cond + (it.soiled ? ', soiled' : it.clean ? '' : ', needs washing') + wet + load + '<br><small class="flavor">' + esc(statLine(it)) + '</small></li>';
           }).join('');
           return '<div class="char-row"><b>' + SLOT_LABEL[slot].charAt(0).toUpperCase() + SLOT_LABEL[slot].slice(1) + '</b><ul style="margin:4px 0 0 18px;padding:0">' + (list || '<li><i>none</i></li>') + '</ul></div>';
@@ -724,7 +765,7 @@
             var have = Object.keys(st.pieces).every(function (sl) { return st.pieces[sl].some(function (id) { return w.items.some(function (it) { return it.id === id; }); }); });
             return '<li>' + (setDone(st) ? '<b>' + esc(st.name) + '</b> (wearing)' : esc(st.name) + (have ? ' (you own the pieces)' : '')) + ': ' +
               esc(Object.keys(st.pieces).map(function (sl) { return st.pieces[sl].map(function (id) { return CATALOG[id].name; }).join(' or '); }).join(' + ')) + '. <i>' + esc(st.bonus) + '</i></li>';
-          }).join('') + '</ul>' + (w.briefs ? '<p class="flavor">Incontinence briefs in the drawer: ' + w.briefs + '.</p>' : '') + (w.sewingKit ? '<p class="flavor">You have a sewing kit for mending at home.</p>' : '');
+          }).join('') + '</ul>' + (supplies() ? '<p class="flavor">Briefs in the drawer: ' + Object.keys(stock()).filter(function (k) { return stock()[k]; }).map(function (k) { return stock()[k] + ' ' + CATALOG[k].name + (stock()[k] > 1 ? 's' : ''); }).join(', ') + '.</p>' : '') + (w.sewingKit ? '<p class="flavor">You have a sewing kit for mending at home.</p>' : '');
       }
     });
   }
@@ -736,8 +777,8 @@
     SETS: SETS, activeSets: function () { return activeSets().map(function (s) { return s.id; }); },
     accessory: function (slot) { var it = W() && wornItem(slot); return it ? it.id : null; },
     soiled: soiled, isSoiled: soiled, soiledHours: soiledHours, markSoiled: markSoiled,
-    absorb: absorb, wearingBrief: function () { var b = W() && wornItem('under_bottom'); return !!(b && def(b).absorb); }, briefFull: briefFull, briefs: supplies,
-    layer: function (name) { var sl = { jacket: 'outer', outer: 'outer', upper: 'top', lower: 'bottom', underUpper: 'under_top', underLower: 'under_bottom', under_top: 'under_top', under_bottom: 'under_bottom', top: 'top', bottom: 'bottom' }[name]; if (!sl || !W()) return null; pullLive(); var it = wornItem(sl); return it ? { id: it.id, name: def(it).name, wetness: Math.round(it.wet), integrity: Math.round(it.integ), soiled: !!it.soiled, warmth: warmOf(it), warmthLevel: lvl(warmOf(it)), maxIntegrity: maxOf(it), bagginess: def(it).bag || 0, absorption: def(it).abs || 0 } : null; },
+    absorb: absorb, wearingBrief: function () { var b = W() && wornItem('under_bottom'); return !!(b && def(b).absorb); }, briefFull: briefFull, briefs: supplies, lastUse: function () { return LAST; }, briefFill: function () { return bfill(wornItem('under_bottom')); }, briefBulk: briefBulk, briefNoise: briefNoise, briefWeight: briefWeight, BLADDER_ML: BLADDER_ML, POO_LB: POO_LB,
+    layer: function (name) { var sl = { jacket: 'outer', outer: 'outer', upper: 'top', lower: 'bottom', underUpper: 'under_top', underLower: 'under_bottom', under_top: 'under_top', under_bottom: 'under_bottom', top: 'top', bottom: 'bottom' }[name]; if (!sl || !W()) return null; pullLive(); var it = wornItem(sl); return it ? { id: it.id, name: def(it).name, wetness: Math.round(it.wet), integrity: Math.round(it.integ), soiled: !!it.soiled, warmth: warmOf(it), warmthLevel: lvl(warmOf(it)), maxIntegrity: maxOf(it), bagginess: def(it).bag || 0, absorption: def(it).abs || 0, bulk: sl === 'under_bottom' ? briefBulk() : 0, noise: sl === 'under_bottom' ? briefNoise() : 0, fill: def(it).absorb ? bfill(it) : null, status: def(it).absorb ? fillWord(bfill(it)) : null } : null; },
     exposed: function () { var e = exposure(); if (!(e.lower || e.upper === 'bare') || !inPublic()) return false; return { upper: e.upper, lower: e.lower, naked: e.upper === 'bare' && e.lower === 'bare' }; },
     exposure: exposure, isNaked: isNaked, exposedInPublic: function () { var e = exposure(); return !!((e.lower || e.upper === 'bare') && inPublic()); },
     conceal: conceal, briefVisible: briefVisible, soak: soak, stats: function (id) { var d = CATALOG[id]; return d ? { maxIntegrity: maxOf(id), warmth: d.warm || 0, bagginess: d.bag || 0, absorption: d.abs || 0 } : null; }, LEVEL: LEVEL,

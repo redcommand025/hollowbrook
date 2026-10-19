@@ -942,7 +942,8 @@
     // an accident absorbed by an under-layer (e.g. adult briefs) is not seen; any smell arrives later as a 'spotted' smell event
     if (d && (d.contained || d.hidden || d.absorbed || d.visible === false)) return;
     var t = time(); s._classAccidentAt = t.day * 1440 + t.hour * 60 + t.minute;
-    studentRep(-REP_HIT.accident[0], 'an accident in class');
+    var share = d && typeof d.leaked === 'number' && d.leaked < 1 ? Math.max(0.3, d.leaked) : 1; // a small leak past a brief is less obvious
+    studentRep(-Math.ceil(REP_HIT.accident[0] * share), 'an accident in class');
     s.repIncidents = (s.repIncidents || 0) + 1;
   }
   // undressed somewhere public on campus: unnamed students notice, every 30 minutes until covered
@@ -963,6 +964,23 @@
     studentRep(-hit, 'students saw you undressed on campus');
     s.repIncidents = (s.repIncidents || 0) + 1;
     if (G.notify && hit >= 5) G.notify('People are looking away. Cover up or get somewhere private.', 'info');
+  }
+  // a noisy or bulky brief can be noticed in class (wardrobe layer('underLower').noise / .bulk, as a name or 0-4)
+  function lv(v) { return typeof v === 'number' ? clamp(v, 0, 4) : (BAG_LV[String(v || '').toLowerCase()] || 0); }
+  function briefNoticeTick() {
+    var s = S(); if (!s || !inClassNow()) return;
+    var l = null; try { l = G.wardrobe && G.wardrobe.layer && G.wardrobe.layer('underLower'); } catch (e) {}
+    var brief = (G.state.stats && G.state.stats.clothing && G.state.stats.clothing.diaper) || (l && (l.brief || l.diaper));
+    if (!brief || !l) return;
+    var t = time(), stamp = t.day * 1440 + t.hour * 60 + t.minute;
+    if (s._lastBriefAt && stamp - s._lastBriefAt < 60) return;
+    s._lastBriefAt = stamp;
+    var p = (lv(l.noise) + lv(l.bulk)) / 8 * (1 - baggyLevel() * 0.15);
+    try { if (G.stats && G.stats.noticeMult) p *= G.stats.noticeMult(); } catch (e) {}
+    if (!chance(clamp(p, 0, 0.6))) return;
+    studentRep(-8, 'a classmate noticed your brief');
+    s.repIncidents = (s.repIncidents || 0) + 1;
+    if (G.notify) G.notify('The student next to you glances over at a rustle, then back at the board.', 'info');
   }
   function repNewDay() { var r = srep(); if (r < 500) studentRep(r < 250 ? 3 : 5); }
   var WHISPERS = [
@@ -1228,7 +1246,7 @@
       name: "Dean's Office", district: 'Campus', indoor: true, open: [8, 17], restroom: false,
       desc: 'A wood-panelled waiting room in the admin wing: a ticking clock, a potted fern, and a secretary who sees everything.'
     }, [['quad', 2]]);
-    if (G.on) { G.on('newDay', newDay); G.on('newDay', repNewDay); G.on('spotted', onSpotted); G.on('accident', onAccident); G.on('arrive', repArrive); G.on('tick', exposedTick); G.on('action', exposedTick); }
+    if (G.on) { G.on('newDay', newDay); G.on('newDay', repNewDay); G.on('spotted', onSpotted); G.on('accident', onAccident); G.on('arrive', repArrive); G.on('tick', exposedTick); G.on('action', exposedTick); G.on('tick', briefNoticeTick); }
     if (G.on) G.on('arrive', function (d) {
       var prev = S().lastLoc; S().lastLoc = d && d.location;
       if ((prev === 'industrial_alley' || prev === 'alley') && d && d.location === 'quad') fenceClimb();

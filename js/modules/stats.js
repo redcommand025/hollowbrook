@@ -389,10 +389,13 @@
     if (!kind) return;
     n[kind] = 0;
     // A worn incontinence brief (wardrobe.js) catches it first: no wet clothes, nothing to see. Smell from a soiled brief is wardrobe/npcs' job.
-    if (wardrobeAbsorb(kind)) { containedAccident(kind); return; }
-    // Ordinary underwear soaks up part of it before it reaches the outer layer.
+    var held = wardrobeAbsorbPart(kind);
+    if (held >= 1) { containedAccident(kind); return; }
+    // Ordinary underwear soaks up part of it before it reaches the outer layer; a full brief overflows the rest.
     var under = wardrobeLayer('underLower'), soak = kind === 'bladder' ? 70 : 30;
-    if (under && under.integrity > 0) soak = Math.round(soak * (kind === 'bladder' ? 0.75 : 0.5));
+    if (held > 0) soak = Math.max(5, Math.round(soak * (1 - held)));
+    else if (under && under.integrity > 0) soak = Math.round(soak * (kind === 'bladder' ? 0.75 : 0.5));
+    // (wardrobe.js already says when a brief overflows)
     s.clothing.lowerWetness = clamp(s.clothing.lowerWetness + soak, 0, 100);
     s.flags.dirty = true;
     s.flags.accidentToday++;
@@ -404,7 +407,7 @@
     if (sc.social) { s.status.socialiteFame = clamp(s.status.socialiteFame + sc.social, 0, MAX); note('Socialite fame ' + sc.social, 'down'); }
     if (kind === 'bowels') { note('Your lower clothes are soiled. Rinse them out at a restroom sink, or go home and change, before people notice the smell.', 'info'); }
     else note('Your clothes are wet. Clean up at a restroom, or go home and change.', 'info');
-    if (G.emit) G.emit('accident', { kind: kind, type: kind, where: here().id, witness: sc.witness });
+    if (G.emit) G.emit('accident', { kind: kind, type: kind, where: here().id, witness: sc.witness, amount: VOLUME[kind].amount, unit: VOLUME[kind].unit, leaked: held > 0 ? 1 - held : 1 });
     if (kind === 'bowels' && !isSoiled()) s.clothing.lowerSoiled = true; // no wardrobe item to tag
     // Anyone who saw it: named NPCs (npcs.js adjusts their opinion), classmates (school.js lowers school reputation).
     if (sc.pk !== 'private') {
@@ -415,7 +418,15 @@
 
   // ---------- incontinence briefs (worn via wardrobe.js) ----------
   function WR() { return G.wardrobe || window.Wardrobe || null; }
-  function wardrobeAbsorb(kind) { try { var w = WR(); return !!(w && typeof w.absorb === 'function' && w.absorb(kind)); } catch (e) { return false; } }
+  // Each pee is 400 ml and each poo 0.5 lb. absorb(kind, amount, unit) may return true (all of it), false (none),
+  // or a number = how much it held; the rest overflows onto your clothes. wardrobeAbsorb returns the fraction held (0..1).
+  var VOLUME = { bladder: { amount: 400, unit: 'ml' }, bowels: { amount: 0.5, unit: 'lb' } };
+  function wardrobeAbsorbPart(kind) {
+    try { var w = WR(); if (!w || typeof w.absorb !== 'function') return 0;
+      var v = VOLUME[kind], r = w.absorb(kind, v.amount, v.unit);
+      if (r === true) return 1; if (typeof r === 'number' && r > 0) return clamp(r / v.amount, 0, 1); return 0; } catch (e) { return 0; }
+  }
+  function wardrobeAbsorb(kind) { return wardrobeAbsorbPart(kind) >= 1; }
   function wardrobeLayer(id) { try { var w = WR(); return w && typeof w.layer === 'function' ? w.layer(id) : null; } catch (e) { return null; } }
   function wearingBrief() { try { var w = WR(); return !!(w && w.wearingBrief && w.wearingBrief() && !(w.briefFull && w.briefFull())); } catch (e) { return false; } }
   function containedAccident(kind) {
@@ -423,10 +434,10 @@
     s.flags.accidentToday++;
     var r = rec(s); r.contained = (r.contained || 0) + 1;
     n.stress = clamp(n.stress + st, 0, MAX); n.control = clamp(n.control - 15, 0, MAX);
-    var t = kind === 'bowels' ? 'You can\'t hold it any longer and go in your brief. It holds, and nobody notices, but you should change it soon.' : 'You can\'t hold it any longer and wet your brief. It holds, and nobody notices.';
+    var t = 'You can\'t hold it any longer. Nobody around you notices.'; // wardrobe.js reports the fill level
     if (G.appendStory) G.appendStory('<p class="scene">' + t + '</p>'); else note(t, 'info');
     note('Stress +' + st, 'up'); note('Control -15', 'down');
-    if (G.emit) G.emit('accident', { kind: kind, type: kind, where: here().id, witness: null, contained: true, absorbed: true });
+    if (G.emit) G.emit('accident', { kind: kind, type: kind, where: here().id, witness: null, contained: true, absorbed: true, amount: VOLUME[kind].amount, unit: VOLUME[kind].unit });
   }
   function briefOption() {
     var s = S(), n = s.needs, both = n.bowels >= 300;
@@ -437,8 +448,8 @@
       if (!done.length) return { text: '<p>Your brief is already full. You need a restroom, or a fresh brief.</p>', minutes: 1 };
       var r = rec(s); r.briefUsed = (r.briefUsed || 0) + 1;
       n.stress = clamp(n.stress - 15, 0, MAX);
-      if (G.emit) done.forEach(function (k) { G.emit('accident', { kind: k, type: k, where: here().id, witness: null, contained: true, absorbed: true, chosen: true }); });
-      return { text: '<p>You go discreetly in your brief. Nobody around you can tell.' + (done.indexOf('bowels') >= 0 ? ' Change it soon, before anyone notices the smell.' : '') + '</p>', minutes: 2 };
+      if (G.emit) done.forEach(function (k) { G.emit('accident', { kind: k, type: k, where: here().id, witness: null, contained: true, absorbed: true, chosen: true, amount: VOLUME[k].amount, unit: VOLUME[k].unit }); });
+      return { text: '<p>You go discreetly. Nobody around you can tell.' + (done.indexOf('bowels') >= 0 ? ' Change soon, before anyone notices the smell.' : '') + '</p>', minutes: 2 };
     }, { time: 2, hint: 'Nobody sees, but a soiled brief can be smelled' });
   }
 
@@ -1022,6 +1033,7 @@
     crime: function (d) { chg('status.crime', d); },
     soiled: isSoiled,
     // undressed in public: covering() is true after "Cover yourself"; multiply notice chances by noticeMult() (0.5 while covering)
+    VOLUME: VOLUME,
     exposed: function () { return exposedNow() && inPublic(); }, covering: covering, noticeMult: function () { return covering() ? 0.5 : 1; },
     money: money, addMoney: addMoney,
     panelHTML: panelHTML,

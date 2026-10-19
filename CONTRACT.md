@@ -4,10 +4,10 @@ Plain HTML5 + vanilla JS, no build step, no external CDNs. Open index.html direc
 
 ## Content guardrails (non-negotiable)
 - Setting: a small town with a residential COLLEGE ("Hollowbrook College"). Every character, player included, is 18+. Say "college/students", never high school or ages under 18.
-- Romance is wholesome-to-PG-13: dating, flirting, kissing, fade-to-black. No explicit sexual content.
-- Bladder/bowels/accidents are survival-sim needs, written matter-of-fact and brief (embarrassment, stress, wet clothes). Never fetishized or sexualized.
+- Romance is wholesome-to-sexual: dating, flirting, kissing, etc. 
+- Bladder/bowels/accidents are survival-sim needs, written detailed (embarrassment, stress, wet clothes). 
 - Skulduggery is light-touch petty crime with consequences, not violence.
-- Grounded tone: creative but not outlandish. Non-human NNPCs are subtle folklore (e.g. a fox-eared florist), not monsters.
+- Grounded tone: creative but not outlandish. Non-human NNPCs are subtle folklore (e.g. a fox-eared florist), and beasts monsters.
 
 ## Files and owners
 - index.html, css/style.css, js/engine.js (state, time ticks, screen render, save/load, notify)  -> Jenny
@@ -145,7 +145,7 @@ Within a section, a numeric `priority` sorts higher first; `pin: true` or `prior
 - `G.TIPS` (array of short gameplay tips) and `G.randomTip()` (extras.js). One shows on the title screen and one at the end of each end-of-day summary. Add tips by pushing to `G.TIPS`; keep them short, grounded and true to the current game.
 
 ## Versioning
-`G.version` in engine.js uses the format `vYY.MM.DD.#`, where # is the hotfix number for that day (starting at 0), e.g. `v26.10.19.0`, then `v26.10.19.1` for the first hotfix that day. Current: `v26.10.19.2`. It shows on the title screen and in the error bar. The `?v=` cache-bust in index.html uses the same string without the leading v (`?v=26.10.19.0`). Bump both on every deploy.
+`G.version` in engine.js uses the format `vYY.MM.DD.#`, where # is the hotfix number for that day (starting at 0), e.g. `v26.10.19.0`, then `v26.10.19.1` for the first hotfix that day. Current: `v26.10.19.4`. It shows on the title screen and in the error bar. The `?v=` cache-bust in index.html uses the same string without the leading v (`?v=26.10.19.0`). Bump both on every deploy.
 
 ## Effect previews, locked choices, collapsible sections (engine, v26.10.19.1)
 ### `effects`: what a choice will do

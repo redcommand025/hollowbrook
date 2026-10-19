@@ -38,7 +38,7 @@
 
   var G = window.G = {
     store: store,
-    version: 'v26.10.19.3',
+    version: 'v26.10.19.4',
     state: {},
     time: { day: 1, hour: 7, minute: 30, weekday: 'Monday', clock: '07:30' },
     limits: {},          // path -> [min, max]; modules may add their own

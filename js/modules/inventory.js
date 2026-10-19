@@ -48,7 +48,7 @@
           return '<li>' + esc(x.label) + ': ' + x.count + ' ' + esc(unit) + (x.count === 1 ? '' : 's') + (x.off ? ' <span class="flavor">(' + x.off + ' gone off)</span>' : '') + '</li>';
         }).join('');
         return '<h3>Bag</h3><p class="flavor">Groceries: ' + used() + ' of ' + limit() + ' portions carried' + (I().tote ? ', with your canvas tote.' : '. A canvas tote from the grocer would hold more.') + '</p>' +
-          (rows ? '<ul>' + rows + '</ul>' : '<p class="flavor">No groceries. Hollowbrook Grocer on Main Street is open 7:00 to 22:00.</p>');
+          (function () { var u = used(), m = limit(), f = m ? u / m : 0; return '<p class="flavor">' + (u === 0 ? 'The bag hangs empty and light over your shoulder.' : f < 0.4 ? 'A few things rattle around in the bottom of the bag.' : f < 0.8 ? 'The bag has a comfortable weight to it.' : f < 1 ? 'The bag is nearly full. The strap digs into your shoulder a little.' : 'The bag is stuffed. Anything else will have to be carried in your arms.') + '</p>'; })() + (rows ? '<ul>' + rows + '</ul>' : '<p class="flavor">No groceries. Hollowbrook Grocer on Main Street is open 7:00 to 22:00.</p>');
       }
     });
   }

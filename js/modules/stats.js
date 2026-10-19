@@ -250,6 +250,7 @@
     }
     illnessTick(minutes, sleeping, wx, hr);
     exposureTick(minutes, sleeping);
+    bodyTick(minutes, sleeping);
     // general wear
     c.upperIntegrity -= minutes * 0.001; c.lowerIntegrity -= minutes * 0.0012;
     clampNeeds();
@@ -363,6 +364,68 @@
   }
   function crowded() { var h = G.time.hour; return h >= 8 && h < 21; }
   function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
+
+
+
+  // ---------- body notes: small, occasional lines about how you feel (between the hard warnings) ----------
+  var BODY = {
+    peckish: ['Your stomach gives a small, hopeful gurgle.', 'You catch yourself thinking about toast.', 'You could eat. Not urgently, but soon.'],
+    dry: ['Your lips feel a little dry.', 'A glass of water would be nice right about now.'],
+    weary: ['Your eyelids feel heavier than they did an hour ago.', 'You yawn so wide your jaw clicks.', 'You read the same line twice without taking it in.'],
+    tense: ['Your shoulders have crept up toward your ears again.', 'You realise you\'ve been clenching your jaw.', 'A tight knot sits just under your ribs.'],
+    cold: ['Your nose won\'t stop running.', 'You sneeze, and someone nearby says "bless you" without looking up.', 'Your head feels stuffed with cotton wool.'],
+    poison: ['Your stomach sloshes unhappily.', 'A wave of queasiness comes and goes.'],
+    sore: ['Your legs remind you about the gym with every step.', 'Reaching for something on a high shelf is a mistake. Ow.'],
+    good: ['You feel good today. Rested, fed, and steady.', 'There\'s a lightness in your step you can\'t quite explain.', 'You catch yourself humming.', 'For a moment everything feels exactly as it should be.'],
+    full: ['You feel pleasantly full.', 'You\'re a bit too full to move quickly.']
+  };
+  function bodyTick(minutes, sleeping) {
+    var s = S(), n = s.needs, f = s.flags;
+    if (sleeping) return;
+    f.bodyAcc = (f.bodyAcc || 0) + minutes;
+    if (f.bodyAcc < 180) return;
+    f.bodyAcc = 0;
+    if (Math.random() < 0.45) return;
+    var k = null;
+    if (hasPoison()) k = 'poison';
+    else if (hasCold()) k = 'cold';
+    else if (s.illness && s.illness.sore > 0 && Math.random() < 0.5) k = 'sore';
+    else if (n.stress >= 400 && n.stress < 700) k = 'tense';
+    else if (n.fatigue >= 450 && n.fatigue < 700) k = 'weary';
+    else if (n.hunger > 250 && n.hunger <= 450) k = 'peckish';
+    else if (n.thirst > 250 && n.thirst <= 400) k = 'dry';
+    else if (n.hunger >= 950) k = 'full';
+    else if (n.stress < 200 && n.fatigue < 400 && n.hunger > 500 && n.thirst > 500) k = 'good';
+    if (k) note(pick(BODY[k]), 'flavor');
+  }
+
+  // ---------- flavor text: varied lines, tinted by time of day and weather ----------
+  var FLAVOR = {
+    water: ['You drink deeply. Cool and clean.', 'The water is cold enough to make your teeth ache. Worth it.', 'You gulp it down and refill before you\'ve really thought about it.', 'Plain water, and somehow exactly right.'],
+    coffee: ['The coffee is strong enough to stand a spoon in. Your eyes open a little wider.', 'Bitter, hot, and doing its job. The world comes into focus.', 'You wrap both hands around the cup and let the first sip wake you up.', 'Someone has written "you got this" on the cup. You decide to believe them.'],
+    shower: ['Hot water, a bar of soap, and ten minutes where nobody needs anything from you.', 'You stand under the water until the mirror fogs over completely.', 'The dorm shower takes a while to warm up, but when it does, it\'s bliss.', 'Somebody down the hall is singing in the next stall. Badly. You don\'t mind.'],
+    sleepNight: ['You crawl into bed and pull the covers up to your chin.', 'The radiator ticks quietly as you drift off.', 'You\'re asleep almost before your head hits the pillow.', 'Hollowbrook goes quiet outside your window, and so do you.'],
+    sleepDay: ['You draw the curtains against the daylight and crash.', 'You sleep through the noise of the dorm hallway.', 'It feels strange to sleep while the sun is up, but your body insists.'],
+    nap: ['You lie down for a short nap.', 'You close your eyes "just for a minute" and wake an hour later.', 'You doze on top of the covers, one shoe still on.', 'A short, heavy nap. You wake up with a crease from the pillow on your cheek.'],
+    change: ['You change into a clean outfit and toss the old one in the laundry pile.', 'Fresh clothes. You feel like a new person, or at least a cleaner one.', 'You dig out something clean and kick the old clothes under the bed for later.'],
+    laundry: ['You haul your laundry down to the machines and wait it out, half-reading a textbook.', 'The dryer thumps like it\'s full of trainers. One of them probably is.', 'You fold your clothes on top of the machine while someone else waits pointedly.', 'Warm laundry straight out of the dryer is one of life\'s small joys.'],
+    gym: ['You push yourself until your lungs burn. It feels good, mostly.', 'The music in your headphones carries you through the last set.', 'You catch your reflection mid-rep and decide not to look again.', 'Sweaty, sore, and weirdly proud of yourself.'],
+    meditate: ['You sit quietly and let your thoughts settle.', 'You count your breaths. You lose count around twelve, and that\'s fine.', 'The noise in your head slows down, one thought at a time.'],
+    groom: ['You fix your hair and pick out an outfit that actually works.', 'You spend longer in front of the mirror than you meant to, but the result is good.', 'A little effort goes a long way. You look put together for once.'],
+    watch: ['You find a bench and watch the town go by, noticing who talks to whom.', 'A couple argues quietly outside the bakery, then makes up. You file it away.', 'You notice the same delivery van passing for the third time. Interesting.', 'An old man feeds the pigeons and names each one under his breath.'],
+    restroom: ['You find a free stall and take care of things.', 'The hand dryer roars like a jet engine when you\'re done.', 'Someone has carved initials into the stall door. You add nothing.', 'The restroom smells of pine cleaner and good intentions.'],
+    cook: ['The shared kitchen smells great for once, and a few people poke their heads in.', 'You burn your tongue on the first bite because you couldn\'t wait.', 'Somebody asks what you\'re making. You feel like a real chef for a second.']
+  };
+  function flavorTint() {
+    var h = G.time ? G.time.hour : 12, wx = weatherNow(), out = isOut(), bits = [];
+    if (out && /rain|storm/.test(wx)) bits.push(pick(['Rain drums on everything.', 'The rain hasn\'t let up.', 'Your shoes squelch a little.']));
+    else if (out && wx === 'snow') bits.push(pick(['Snow drifts past.', 'Your breath fogs in the cold air.']));
+    else if (out && wx === 'hot') bits.push(pick(['The heat sits heavy on the town.', 'The sun beats down.']));
+    if (h >= 22 || h < 5) bits.push(pick(['It\'s late, and the world feels hushed.', 'Most of Hollowbrook is asleep.']));
+    else if (h < 8) bits.push(pick(['The morning is still grey and new.', 'Early light slants through the windows.']));
+    return bits.length && Math.random() < 0.5 ? ' <span class="flavor">' + bits[0] + '</span>' : '';
+  }
+  function flav(key) { var a = FLAVOR[key]; return a ? pick(a) + flavorTint() : ''; }
 
   function accidentScene(kind) {
     var pk = placeKind(), w = witness(), busy = crowded(), place = (here().name || 'here');
@@ -686,6 +749,14 @@
     pasta:   { label: 'Pasta and sauce',   unit: 'portion', price: 5, qty: 3, ingredient: true },
     eggs:    { label: 'Half a dozen eggs', unit: 'egg',     price: 3, qty: 6, spoils: 10, ingredient: true }
   };
+  var GROC_ALT = {
+    water: ['Cold water, straight from the bottle. Simple and perfect.', 'You drink half, then the other half a minute later.'],
+    milk: ['You pour a tall glass and drink it standing at the counter.', 'It tastes like being a kid again, in a good way.'],
+    bread: ['You fold a slice in half and eat it in four bites.', 'Plain bread, slightly squashed from your bag. Still good.'],
+    fruit: ['You polish the apple on your sleeve first, out of habit.', 'Juicy enough that you have to lean forward. Worth it.'],
+    snacks: ['The crinkle of the bag gets a few looks. You don\'t care.', 'You promise yourself just one handful. You keep the promise, barely.'],
+    noodles: ['You slurp the noodles too loudly and burn your tongue a little. Classic.', 'Three minutes of waiting feels like an eternity. The first bite makes up for it.']
+  };
   function groc() { var s = S(); if (!s.groceries) s.groceries = { items: {} }; return s.groceries.items; }
   function grocCount(id) { var g = groc()[id]; return g ? g.length : 0; }
   function grocTotal() { var g = groc(), n = 0; for (var k in g) n += g[k].length; return n; }
@@ -727,7 +798,7 @@
         n.bowels = clamp(n.bowels + (d.hunger ? 15 : 0) + (d.bowels || 0), 0, MAX);
         if (d.thirst > 100) n.bladder = clamp(n.bladder + 40, 0, MAX);
         if (off) { maybePoison(0.5); return { text: '<p>' + (k === 'milk' ? 'One sip and you know. The milk has gone off.' : 'It tastes stale and a bit off. You finish it anyway.') + '</p>', minutes: d.mins }; }
-        return { text: '<p>' + d.text + '</p>', minutes: d.mins };
+        return { text: '<p>' + (GROC_ALT[k] && Math.random() < 0.6 ? pick(GROC_ALT[k]) : d.text) + flavorTint() + '</p>', minutes: d.mins };
       }, { sub: 'Your groceries', time: d.mins }));
     });
     // Cook a proper meal from ingredients
@@ -742,7 +813,7 @@
         n.bowels = clamp(n.bowels + 50, 0, MAX); trainSkill('cooking', 8);
         if (hasTrait('homeCook')) { chg('needs.hunger', 110); chg('needs.stress', -20); }
         if (anyOff) maybePoison(0.4);
-        return { text: '<p>You cook ' + recipe[2] + ' in the shared kitchen and eat it while it\'s hot. Proper food, and cheaper than eating out.' + (anyOff ? ' One of the ingredients smelled a little past it.' : '') + '</p>', minutes: 30 };
+        return { text: '<p>You cook ' + recipe[2] + ' in the shared kitchen and eat it while it\'s hot. Proper food, and cheaper than eating out. ' + flav('cook') + (anyOff ? ' One of the ingredients smelled a little past it.' : '') + '</p>', minutes: 30 };
       }, { sub: 'Your groceries', time: 30 }));
     }
   }
@@ -761,7 +832,7 @@
         n.bladder = 0; if (n.bowels >= 300) n.bowels = 0;
         if (!home) attitude('publicRestroom', 2);
         if (relief) chg('needs.stress', -30);
-        return { text: '<p>You find a free stall and take care of things.' + (relief ? ' The relief is enormous.' : '') + '</p>', minutes: mins };
+        return { text: '<p>' + flav('restroom') + (relief ? ' The relief is enormous.' : '') + '</p>', minutes: mins };
       }, { time: function () { return 3 + (n.bowels >= 300 ? 7 : 0); } }));
     }
     if (rr === false && !home && (n.bladder >= 400 || n.bowels >= 400)) out.actions.push(reliefOption());
@@ -783,7 +854,7 @@
       out.actions.push(opt('Drink some water', function () {
         chg('needs.thirst', 300); n.bladder = clamp(n.bladder + 40, 0, MAX);
         if (hasPoison()) S().illness.food = Math.max(0, S().illness.food - 90);
-        return { text: '<p>You drink deeply. Cool and clean.</p>', minutes: 2 };
+        return { text: '<p>' + flav('water') + '</p>', minutes: 2 };
       }));
     }
     if (n.hunger < 850 && money() >= 4 && (food === null || food || home)) {
@@ -803,19 +874,19 @@
         s.flags.swipeDay = today(); s.flags.swipes = swipes - 1;
         chg('needs.hunger', 500); chg('needs.thirst', 120); n.bowels = clamp(n.bowels + 60, 0, MAX); chg('needs.stress', -15);
         var dish = ['shepherd\'s pie', 'a veggie curry', 'pasta bake', 'a turkey sandwich and soup', 'fish and chips'][Math.floor(Math.random() * 5)];
-        return { text: '<p>You swipe your student card and sit down with ' + dish + '. It isn\'t gourmet, but it\'s hot and free.</p>', minutes: 25 };
+        return { text: '<p>You swipe your student card and sit down with ' + dish + '. ' + pick(['It isn\'t gourmet, but it\'s hot and free.', 'The cafeteria is loud and steamy, and the food is better than its reputation.', 'You eat with one eye on the room, listening to three conversations at once.', 'Someone at the next table is arguing about philosophy with their mouth full.']) + '</p>', minutes: 25 };
       }));
     }
     if ((hid === 'cafe' || hid === 'cafeteria') && money() >= 3 && n.fatigue >= 300) {
       out.actions.push(opt('Buy a coffee ($3)', function () {
         addMoney(-3); chg('needs.fatigue', -120); chg('needs.thirst', 80); n.bladder = clamp(n.bladder + 90, 0, MAX); n.bowels = clamp(n.bowels + 50, 0, MAX); chg('needs.stress', 10);
-        return { text: '<p>The coffee is strong enough to stand a spoon in. Your eyes open a little wider.</p>', minutes: 10 };
+        return { text: '<p>' + flav('coffee') + '</p>', minutes: 10 };
       }));
     }
     if ((hid === 'dorm_hall' || hid === 'gym') && (s.flags.dirty || n.stress >= 200 || n.fatigue >= 400)) {
       out.actions.push(opt('Take a shower', function () {
         s.flags.dirty = false; chg('needs.stress', -60); chg('needs.fatigue', -30); train('beauty', 4);
-        return { text: '<p>Hot water, a bar of soap, and ten minutes where nobody needs anything from you.</p>', minutes: 15 };
+        return { text: '<p>' + flav('shower') + '</p>', minutes: 15 };
       }));
     }
     if (home === true || home === null) {
@@ -824,26 +895,26 @@
           var hrs = Math.ceil(n.fatigue / 120); hrs = clamp(hrs, 2, 9);
           s.flags.sleeping = true; s.flags.sleptFull = hrs >= 7;
           chg('needs.stress', -80);
-          return { text: '<p>You crawl into bed and sleep for about ' + hrs + ' hours.</p>', minutes: hrs * 60 };
+          return { text: '<p>' + flav(G.time && G.time.hour >= 7 && G.time.hour < 19 ? 'sleepDay' : 'sleepNight') + ' You sleep for about ' + hrs + ' hours.</p>', minutes: hrs * 60 };
         }, { time: function () { return clamp(Math.ceil(n.fatigue / 120), 2, 9) * 60; } }));
       }
       out.actions.push(opt('Nap for an hour', function () {
         s.flags.sleeping = true;
-        return { text: '<p>You lie down for a short nap.</p>', minutes: 60 };
+        return { text: '<p>' + flav('nap') + '</p>', minutes: 60 };
       }));
       var wardrobeOn = !!(G.wardrobe || window.Wardrobe);
       if (!wardrobeOn && c.spareOutfits > 0 && (c.lowerWetness > 20 || c.upperWetness > 20 || c.upperIntegrity < 50 || c.lowerIntegrity < 50 || s.flags.dirty)) {
         out.actions.push(opt('Change into fresh clothes', function () {
           c.upperWetness = 0; c.lowerWetness = 0; c.upperIntegrity = 100; c.lowerIntegrity = 100; c.spareOutfits--; s.flags.dirty = false; c.lowerSoiled = false;
           chg('needs.stress', -20);
-          return { text: '<p>You change into a clean outfit and toss the old one in the laundry pile.</p>', minutes: 10 };
+          return { text: '<p>' + flav('change') + '</p>', minutes: 10 };
         }));
       }
       if (!wardrobeOn && c.spareOutfits < 3) {
         out.actions.push(opt('Do laundry ($3)', function () {
           if (money() < 3) return { text: '<p>You don\'t have enough for the machines.</p>', minutes: 1 };
           addMoney(-3); c.spareOutfits = 3; trainSkill('housekeeping', 8);
-          return { text: '<p>You haul your laundry down to the machines and wait it out, half-reading a textbook.</p>', minutes: 90 };
+          return { text: '<p>' + flav('laundry') + '</p>', minutes: 90 };
         }));
       }
       if (!wardrobeOn && (c.upperIntegrity < 80 || c.lowerIntegrity < 80)) {
@@ -859,26 +930,26 @@
     if (!hereHas('gym') && hereHas('outdoors')) {
       out.actions.push(opt('Go for a jog', function () {
         train('physique', 18); trainSkill('athletics', 10); chg('needs.fatigue', 90); chg('needs.thirst', -120); addStress(-40, 'hardWork'); attitude('hardWork', 1);
-        return { text: '<p>You push yourself until your lungs burn. It feels good, mostly.</p>', minutes: 45 };
+        return { text: '<p>' + flav('gym') + '</p>', minutes: 45 };
       }));
     }
     if (home === true || home === null || hereHas('quiet')) {
       out.actions.push(opt('Meditate', function () {
         train('willpower', 12); chg('needs.stress', -70);
-        return { text: '<p>You sit quietly and let your thoughts settle.</p>', minutes: 30 };
+        return { text: '<p>' + flav('meditate') + '</p>', minutes: 30 };
       }));
     }
     if (hereHas('mirror') || home === true || home === null) {
       out.actions.push(opt('Take time on your appearance', function () {
         train('beauty', 12); chg('needs.stress', -15);
-        return { text: '<p>You fix your hair and pick out an outfit that actually works.</p>', minutes: 30 };
+        return { text: '<p>' + flav('groom') + '</p>', minutes: 30 };
       }));
     }
     if (hereHas('public')) {
       out.actions.push(opt('People-watch for a while', function () {
         attitude('crowds', 2);
         train('awareness', 12); chg('needs.stress', -10);
-        return { text: '<p>You find a bench and watch the town go by, noticing who talks to whom.</p>', minutes: 30 };
+        return { text: '<p>' + flav('watch') + '</p>', minutes: 30 };
       }));
     }
     if (hasCold()) {

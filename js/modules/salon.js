@@ -132,8 +132,17 @@
     var lines = ['"Lovely thick hair, you\'re lucky," the stylist says, snipping away.',
       'The stylist hums along to the radio and tells you about her sister\'s wedding.',
       '"Chin up, love. No, a bit less. Perfect."',
-      'The stylist spins you round to face the mirror with a little flourish.'];
-    return lines[Math.floor(Math.random() * lines.length)];
+      'The stylist spins you round to face the mirror with a little flourish.',
+      'The stylist asks if you\'re a student up at the college, then tells you which professors she cut for back in the day.',
+      '"Hold still, there\'s a tricky bit at the back." You hold very still.',
+      'A hairdryer roars at the next chair. The stylist raises her voice to finish a story about a runaway goat on Mill Lane.',
+      'The stylist recommends three conditioners, a café, and a podcast about lighthouses, in that order.',
+      '"You\'d be amazed what people ask for," she says. "Last week someone brought in a photo of their dog."',
+      'The radio switches to the local weather. The stylist rolls her eyes at the forecast.',
+      'The little bell over the door jingles as a regular comes in for her standing appointment.',
+      'The stylist works in comfortable silence, combing, sectioning, snipping.'];
+    var i = Math.floor(Math.random() * lines.length); if (i === stylistLine.last) i = (i + 1) % lines.length; stylistLine.last = i;
+    return lines[i];
   }
 
   function salonOptions(out) {
@@ -179,7 +188,7 @@
       return { text: '<p>' + esc(stylistLine()) + '</p><p>A neat tidy-up that keeps your ' + esc(cur.label) + ' looking sharp.' + (lost ? ' The dyed ends are gone.' : '') + '</p>', minutes: 30 };
     }, { time: 30, disabled: !grown || money() < 12, hint: grown ? 'Tidies your current cut.' : 'Your cut still looks fresh.' }));
     out.actions.push(opt('Get a new haircut', function () { h.mode = 'cut'; return { text: '<p>The stylist hands you a dog-eared binder of styles. "Shorter is easy," she says. "Longer takes patience, or extensions."</p><p>' + esc(hairNote()) + '</p>', minutes: 2 }; }));
-    out.actions.push(opt('Look at hair colours', function () { h.mode = 'dye'; return { text: '<p>A fan of swatches, from honest browns to a blue the stylist calls "mermaid".</p>', minutes: 2 }; }));
+    out.actions.push(opt('Look at hair colours', function () { h.mode = 'dye'; return { text: '<p>' + ['A fan of swatches, from honest browns to a blue the stylist calls "mermaid".', 'The stylist fans out a ring of dyed hair samples. "Bold is fun," she says, "but brown forgives you."', 'A laminated colour chart, a little faded at the edges where people keep pointing at the reds.'][Math.floor(Math.random() * 3)] + '</p>', minutes: 2 }; }));
     out.actions.push(opt('Get clip-in extensions ($70)', function () {
       if (money() < 70) return { text: '<p>Seventy dollars is a lot of instant noodles.</p>', minutes: 1 };
       G_().change('money', -70); h.length = Math.min(90, h.length + 20); train(4); emit('cut');

@@ -331,6 +331,18 @@
     if (briefWeight() >= 5) t += '. The weight slows you down';
     return t + (briefFull() ? '. It won\'t hold another accident.' : '.');
   }
+  var LASTLINE = {};
+  function line(key, arr) { var i = Math.floor(Math.random() * arr.length); if (arr.length > 1 && i === LASTLINE[key]) i = (i + 1) % arr.length; LASTLINE[key] = i; return arr[i]; }
+  function hourNow() { var t = G_().time; return t && typeof t.hour === 'number' ? t.hour : 12; }
+  function weatherNote() {
+    var g = G_(); if (!g.world || !g.world.temp) return '';
+    var t = g.world.temp(), wm = warmth(), wx = g.world.weather ? String(g.world.weather()) : '', jk = wornItem('outer');
+    if (t < 0 && wm < 13) return line('wx', [' It\'s below freezing out, and you are not dressed for it.', ' The cold bites straight through what you\'re wearing.']);
+    if (t < 10 && wm < 7) return line('wx', [' You\'ll feel the chill in this.', ' A warmer layer wouldn\'t hurt today.']);
+    if (t >= 25 && wm >= 7) return line('wx', [' It\'s far too warm for this many layers.', ' You\'re going to cook in this.']);
+    if (/rain|storm|drizzle/i.test(wx) && !jk) return line('wx', [' It\'s wet out and you have no jacket.', ' Nothing here will keep the rain off.']);
+    return '';
+  }
   function describeOutfit() {
     var parts = [], exd = exposure();
     if (exd.upper === 'bare' && exd.lower === 'bare') return 'You aren\'t wearing anything.' + (wornItem('shoes') ? ' Just your ' + def(wornItem('shoes')).name + '.' : '');
@@ -338,7 +350,11 @@
     if (!parts.length) return 'You are not wearing much of anything.';
     var last = parts.pop(), txt = 'You\'re wearing ' + (parts.length ? parts.join(', ') + ' and ' : '') + last + '.';
     var st = style();
-    txt += ' ' + (st >= 8 ? 'You look genuinely sharp today.' : st >= 5 ? 'It\'s a put-together look.' : st >= 3 ? 'Casual, but it works.' : 'It is, generously, an outfit.');
+    txt += ' ' + (st >= 8 ? line('st', ['You look genuinely sharp today.', 'People are going to assume you have somewhere important to be.', 'Everything fits and everything goes. A rare day.'])
+      : st >= 5 ? line('st', ['It\'s a put-together look.', 'Neat, considered, quietly confident.', 'You look like someone who owns an iron.'])
+      : st >= 3 ? line('st', ['Casual, but it works.', 'Comfortable, and it doesn\'t look thrown on. Mostly.', 'A perfectly respectable student look of no particular effort.'])
+      : line('st', ['It is, generously, an outfit.', 'Nothing matches, but at least it\'s all clean. Probably.', 'It covers you. That is about all it does.']));
+    txt += weatherNote();
     var c = C();
     if (c.upperWetness + c.lowerWetness >= 40) txt += ' Your clothes are noticeably damp.';
     if (c.upperIntegrity < 40 || c.lowerIntegrity < 40) txt += ' A few seams are visibly giving up.';
@@ -428,11 +444,11 @@
           G_().change('money', -price);
           newItem(id); syncSpare();
           G_().emit('clothesBought', { id: id });
-          return { text: '<p>The clerk folds the ' + esc(d.name) + ' into a paper bag with a sprig of lavender. ' + esc(d.desc) + '</p><p class="hint">You can change into it in the fitting room or at home.</p>', minutes: 5 };
+          return { text: '<p>' + line('buy', ['The clerk folds the ' + esc(d.name) + ' into a paper bag with a sprig of lavender. ', 'The clerk wraps the ' + esc(d.name) + ' in tissue paper. "Good choice," she says, and sounds like she means it. ', 'The ' + esc(d.name) + ' goes into a bag stamped with the Threadbare needle-and-thread logo. ', 'The clerk snips off the tag and tucks a loyalty card into the bag with one stamp on it. ']) + esc(d.desc) + '</p><p class="hint">You can change into it in the fitting room or at home.</p>', minutes: 5 };
         }, { time: 5, disabled: money() < price, hint: d.desc + ' ' + shopLine(id) }));
       });
       if (slot === 'under_bottom') briefPackOption(out, 'Threadbare & Co.');
-      out.actions.push(opt('Step back from the racks', function () { w.mode = null; return { text: '<p>You drift back toward the front of the shop.</p>', minutes: 1 }; }));
+      out.actions.push(opt('Step back from the racks', function () { w.mode = null; return { text: '<p>' + line('leave', ['You drift back toward the front of the shop.', 'You leave the racks a little messier than you found them.', 'You step away before you talk yourself into anything else.']) + '</p>', minutes: 1 }; }));
       return;
     }
     var cats = CLOTH.map(function (sl) { return [sl, 'Browse ' + SLOT_LABEL[sl], 'the ' + SLOT_LABEL[sl]]; });
@@ -442,7 +458,7 @@
     cats.forEach(function (ct) {
       out.actions.push(opt(ct[1], function () {
         w.mode = 'shop:' + ct[0];
-        return { text: '<p>You flick through ' + esc(ct[2]) + '.' + (ct[0] === 'season' ? ' A chalkboard sign reads "New in for ' + season() + '".' : '') + '</p>', minutes: 3 };
+        return { text: '<p>You flick through ' + esc(ct[2]) + '.' + (ct[0] === 'season' ? ' A chalkboard sign reads "New in for ' + season() + '".' : '') + ' ' + line('browse', ['A radio behind the counter plays something from the seventies.', 'Hangers clack along the rail as you push them aside.', 'The shop cat is asleep in a basket of scarves and nobody has the heart to move her.', 'Someone in the next aisle is having a whispered argument about corduroy.', 'The tags are handwritten in looping blue ink.']) + '</p>', minutes: 3 };
       }));
     });
     // repairs
@@ -503,12 +519,12 @@
         if (drawerOf(slot) !== (w.mode === 'wardrobe:acc' ? 'acc' : w.mode === 'wardrobe:under' ? 'under' : 'main')) return;
         out.actions.push(opt((ACC.indexOf(slot) >= 0 ? 'Put on the ' : 'Wear the ') + d.name + (it.integ < 60 ? ' (worn)' : ''), function () {
           var note = wear(it.uid);
-          return { text: '<p>You change into the ' + esc(d.name) + '.' + esc(note) + '</p><p>' + esc(describeOutfit()) + '</p>', minutes: slot === 'shoes' ? 2 : 4 };
+          return { text: '<p>' + line('wear' + slot, slot === 'shoes' ? ['You lace up the ' + esc(d.name) + '.', 'You step into the ' + esc(d.name) + ' and test them with a little bounce.', 'You sit on the edge of the bed and pull on the ' + esc(d.name) + '.'] : slot === 'outer' ? ['You shrug on the ' + esc(d.name) + '.', 'You pull on the ' + esc(d.name) + ' and pat the pockets out of habit.', 'You zip up the ' + esc(d.name) + ' and roll your shoulders.'] : ['You change into the ' + esc(d.name) + '.', 'You pull on the ' + esc(d.name) + ' and check the mirror.', 'You swap into the ' + esc(d.name) + ' and smooth it down.', 'The ' + esc(d.name) + ' goes on. You turn side to side in the mirror.']) + esc(note) + '</p><p>' + esc(describeOutfit()) + '</p>', minutes: slot === 'shoes' ? 2 : 4 };
         }, { hint: d.desc }));
       });
       if (cur != null && drawerOf(slot) === (w.mode === 'wardrobe:acc' ? 'acc' : w.mode === 'wardrobe:under' ? 'under' : 'main')) {
         var cd = def(item(cur));
-        out.actions.push(opt('Take off the ' + cd.name, function () { takeOff(slot); return { text: '<p>You take off the ' + esc(cd.name) + '.</p>', minutes: 1 }; }));
+        out.actions.push(opt('Take off the ' + cd.name, function () { takeOff(slot); return { text: '<p>' + line('off', ['You take off the ' + esc(cd.name) + '.', 'You peel off the ' + esc(cd.name) + ' and drop it over the chair.', 'Off comes the ' + esc(cd.name) + '.']) + '</p>', minutes: 1 }; }));
       }
     });
     if (w.mode === 'wardrobe:under') changeBriefOption(out);
@@ -528,7 +544,7 @@
       dirty.forEach(function (it) { it.clean = true; it.wet = 0; it.days = 0; it.soiled = false; it.soiledAt = null; it.ml = 0; it.lb = 0; it.grew = false; });
       if (G_().stats && G_().stats.trainSkill) G_().stats.trainSkill('housekeeping', 6);
       syncSpare();
-      return { text: '<p>You haul the laundry bag down to the basement machines and wait out the spin cycle with a textbook. Everything comes out warm and smelling of cheap detergent.</p>', minutes: 90 };
+      return { text: '<p>' + line('laundry', ['You haul the laundry bag down to the basement machines and wait out the spin cycle with a textbook. Everything comes out warm and smelling of cheap detergent.', 'The basement laundry room hums. Someone has left a single sock on top of the dryer with a note: "Is this yours?" It is not.', 'You claim the one washer that doesn\'t walk across the floor on spin. Ninety minutes and two podcast episodes later, you have a warm armful of clean clothes.', 'A floormate is folding at the next table and you trade complaints about the dryer that eats quarters. Your clothes come out soft and smelling faintly of lemon.']) + '</p>', minutes: 90 };
     }, { time: 90 }));
     if (w.mode === 'wardrobe:acc' || w.mode === 'wardrobe:under') out.actions.push(opt('Back to your clothes', function () { w.mode = 'wardrobe'; return { text: '<p>You close the drawer.</p>', minutes: 0 }; }));
     else out.actions.push(opt('Open the underwear drawer', function () { w.mode = 'wardrobe:under'; return { text: '<p>Underwear and undershirts, folded more neatly than anything else you own.' + (supplies() ? ' Your briefs are at the back (' + supplies() + ' left).' : '') + '</p>', minutes: 1 }; }));
@@ -541,7 +557,7 @@
       mend.forEach(function (it) { it.integ = Math.min(maxOf(it), it.integ + fix); }); pushLive('top'); pushLive('bottom'); syncLayers();
       if (G_().stats && G_().stats.trainSkill) G_().stats.trainSkill('housekeeping', 5);
       G_().change('stats.needs.stress', -5);
-      return { text: '<p>You sit cross-legged on the bed with the sewing tin and patch up the worst of it. The stitches are not pretty, but they will hold.</p>', minutes: 45 };
+      return { text: '<p>' + line('mend', ['You sit cross-legged on the bed with the sewing tin and patch up the worst of it. The stitches are not pretty, but they will hold.', 'You put on some music and mend by lamplight. You only stab yourself twice.', 'Thread, needle, patience. The repairs are lopsided but sturdy.']) + '</p>', minutes: 45 };
     }));
     out.actions.push(opt(home ? 'Close the wardrobe' : 'Leave the fitting room', function () { w.mode = null; return { text: '<p>' + esc(describeOutfit()) + '</p>', minutes: 0 }; }));
   }
@@ -631,7 +647,7 @@
       if (hid === STORE) {
         if (!isOpen(STORE)) return out;
         storeOptions(out);
-        if (!w.mode) out.other.push(opt('Use the fitting room', function () { w.mode = 'wardrobe'; return { text: '<p>You pull the velvet curtain across. The mirror is kind; the lighting is not.</p>', minutes: 1 }; }));
+        if (!w.mode) out.other.push(opt('Use the fitting room', function () { w.mode = 'wardrobe'; return { text: '<p>' + line('fit', ['You pull the velvet curtain across. The mirror is kind; the lighting is not.', 'The fitting room smells of cedar and someone else\'s perfume. A hook, a stool, a long mirror.', 'You tug the curtain shut. It stops two inches short of the wall, as fitting room curtains always do.']) + '</p>', minutes: 1 }; }));
       }
       var exn = exposure();
       if ((exn.lower || exn.upper === 'bare') && inPublic()) out.other.unshift(opt('Find somewhere out of sight to hide', function () {
@@ -644,7 +660,8 @@
       if (home) out.other.push(opt('Open your wardrobe', function () {
         w.mode = 'wardrobe';
         var n = w.items.length, dirty = w.items.filter(function (it) { return !it.clean; }).length;
-        return { text: '<p>The wardrobe door sticks, as always. You own ' + n + ' pieces of clothing' + (dirty ? ', and ' + dirty + ' of them are in the laundry pile' : '') + '.</p><p>' + esc(describeOutfit()) + '</p>', minutes: 1 };
+        var h = hourNow(), mood = h < 7 ? 'In the grey pre-dawn light you squint at the hangers.' : h < 11 ? line('wopen', ['Morning light falls across the hangers.', 'You stand in front of the wardrobe, already thinking about coffee.']) : h < 18 ? line('wopen', ['The wardrobe door sticks, as always.', 'You tug the wardrobe open. Something slides off a hanger and you leave it there.']) : h < 22 ? line('wopen', ['The desk lamp throws long shadows into the wardrobe.', 'You open the wardrobe and give tomorrow a moment of thought.']) : 'It\'s late, and every option looks the same in lamplight.';
+        return { text: '<p>' + mood + ' You own ' + n + ' pieces of clothing' + (dirty ? ', and ' + dirty + ' of them are in the laundry pile' : '') + '.</p><p>' + esc(describeOutfit()) + '</p>', minutes: 1 };
       }));
       return out;
     }

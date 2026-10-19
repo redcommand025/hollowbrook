@@ -677,15 +677,102 @@
     return wx.text + ' (' + wx.label + ', ' + W().temp + '°C)';
   }
 
+
+
+  // Small things you pass on the way. Shown now and then on walks or rides along the streets.
+  var STREET_MOMENTS = {
+    any: ['A delivery van double-parks and puts its hazards on.', 'Two neighbours have stopped mid-pavement to chat, and you step around them.', 'A cat crosses in front of you, then sits down to wash, as if it had planned to all along.',
+      'Somebody\'s phone rings with an old ringtone, and three people check their pockets.', 'A poster for a lost tortoise is taped to a lamp post. "Answers to Gerald."', 'You catch your reflection in a shop window and fix your hair.'],
+    morning: ['A milk float hums past, bottles clinking.', 'A parent jogs by pushing a buggy, coffee in the other hand.'],
+    day: ['A group of schoolkids in hi-vis vests crocodiles past behind a teacher.', 'A window cleaner whistles from the top of his ladder.'],
+    evening: ['The smell of chips drifts from somewhere, and suddenly you\'re thinking about chips.', 'A couple walks ahead of you, swinging their joined hands.'],
+    night: ['Your footsteps sound louder than they should on the empty pavement.', 'A taxi slows hopefully beside you, then pulls away.'],
+    rain: ['A bus sends a wave of puddle water over the kerb, just missing you.', 'People hurry past under umbrellas, eyes down.'],
+    snow: ['Kids are pelting each other with snowballs by the bus shelter.', 'The pavement crunches underfoot, and you walk like everyone else, carefully.'],
+    hot: ['Tar has gone soft in the gutters, and an ice-cream van jingles somewhere nearby.'],
+    windy: ['A paper bag tumbles along the street ahead of you like it has somewhere to be.'],
+    fog: ['Shapes of people loom out of the fog and fade again.'],
+    bike: ['You freewheel down the slope, wind in your face.', 'A driver waves you through at the junction.']
+  };
+  function streetMoment(biking) {
+    if (Math.random() > 0.35) return '';
+    var w = W(), h = G.time.hour, pool = STREET_MOMENTS.any.slice(), wx = w.weather;
+    var tod = isDark(h) ? 'night' : h < 12 ? 'morning' : h < 18 ? 'day' : 'evening';
+    pool = pool.concat(STREET_MOMENTS[tod] || []);
+    if (wx === 'rain' || wx === 'storm' || wx === 'drizzle') pool = pool.concat(STREET_MOMENTS.rain, STREET_MOMENTS.rain);
+    else if (STREET_MOMENTS[wx]) pool = pool.concat(STREET_MOMENTS[wx], STREET_MOMENTS[wx]);
+    if (biking) pool = pool.concat(STREET_MOMENTS.bike);
+    var line = pick(pool); if (line === w.lastMoment) line = pick(pool); w.lastMoment = line;
+    return line;
+  }
+
+  /* ---------------- Ambient flavour: one small line per visit ---------------- */
+  // Keys: any, morning (before 12), day (12-18), evening (18-22), night (dark), and season names.
+  var AMBIENT = {
+    dorm_room: { any: ['Your roommate\'s side of the room is, as ever, a mystery of cables and laundry.', 'The radiator ticks as it warms up.', 'A sticky note on your mirror says "DRINK WATER" in your own handwriting.', 'Someone\'s music thumps faintly through the wall, all bass and no tune.'],
+      morning: ['Pale light comes through the gap in the curtains you never quite close.'], night: ['The corridor light makes a thin yellow line under the door.'], Winter: ['Frost has drawn ferns on the inside of the window again.'] },
+    dorm_hall: { any: ['A flyer for a lost hoodie has been taped over a flyer for a lost cat.', 'The vending machine hums and swallows somebody\'s coin with a clunk.', 'Two people argue cheerfully about whose turn it is to clean the microwave.', 'The bathroom door swings shut on its own, as it always does.'],
+      morning: ['A queue has formed outside the showers, towels over shoulders, nobody talking.'], night: ['Someone is whispering on the phone at the far end of the hall.'] },
+    quad: { any: ['A frisbee sails past and someone yells "sorry!" without meaning it.', 'A tour group shuffles after a guide walking backwards.', 'Pigeons work the benches outside the dining commons with professional focus.', 'The clock on Calloway\'s tower is four minutes fast. Everyone knows.'],
+      morning: ['Students cut diagonally across the grass with coffee cups, late for something.'], evening: ['The lamp posts come on one by one along the paths.'],
+      Spring: ['The cherry trees by the library are just starting to blossom.'], Summer: ['Someone has set up a hammock between two oaks and is fast asleep in it.'], Autumn: ['Leaves gather in drifts against the steps of the main building.'], Winter: ['Somebody has built a lopsided snowman wearing a college scarf.'] },
+    main_building: { any: ['The entrance hall smells of floor polish and old radiators.', 'A noticeboard announces a careers fair, a lost umbrella and a choir audition.', 'The porter nods at you from behind the front desk without looking up from his crossword.'], night: ['Your footsteps echo down the half-lit corridor.'] },
+    lecture_hall: { any: ['Rows of fold-down seats, half of them with a sticky hinge.', 'Someone has drawn a small cartoon frog on the whiteboard. Nobody has wiped it off.', 'The projector fan whirs even when nothing is on.'] },
+    deans_office: { any: ['The secretary types very fast and very loudly.', 'A bowl of wrapped mints sits on the counter, untouched by anyone brave enough.', 'Framed photos of past deans watch you from the wall, all equally stern.'] },
+    library: { any: ['A cart of returns waits by the desk, a paperback balanced on top.', 'Somebody\'s laptop fan whines in the silent study area.', 'The librarian\'s pencil scratches as she ticks off a list.', 'A study group whispers loudly enough that they might as well be talking.'], night: ['The top floor is nearly empty; a single desk lamp glows in the corner.'], Winter: ['The radiators under the windows are crowded with damp gloves.'] },
+    cafeteria: { any: ['Trays clatter onto the stack by the bins.', 'Today\'s board promises "Chef\'s Special". It doesn\'t say what it is.', 'The coffee urn gurgles like it\'s about to give up.', 'Someone is building a tower of empty yoghurt pots for reasons of their own.'], morning: ['The toast conveyor is running and the smell of slightly burnt bread fills the room.'], day: ['The lunch rush roars: chairs scraping, trays clattering, a dozen conversations.'] },
+    gym: { any: ['A treadmill thumps rhythmically in the corner.', 'The changing rooms smell of deodorant and chlorine from the pool next door.', 'Somebody drops a weight and the whole floor jumps.', 'A laminated sign asks you to wipe down the equipment. Nobody has.'] },
+    campus_farm: { any: ['The goats watch you with deep suspicion.', 'Hens potter about the yard, complaining softly.', 'A wheelbarrow of compost steams gently.'], morning: ['The cockerel is still making his opinions known.'], Spring: ['Rows of seedlings poke up in neat lines, each with a handwritten label.'], Summer: ['Bees drone over the flowering beans.'], Autumn: ['Pumpkins sit fat and orange in the far field.'], Winter: ['The animals huddle in their shed, breath steaming.'] },
+    college_road: { any: ['A cyclist rings their bell at a student walking in the bike lane.', 'Bus timetables flap behind their plastic covers.', 'The takeaway on the corner already has its "OPEN" sign flickering.'], morning: ['A stream of students heads up toward the campus gates.'], night: ['A fox trots along the pavement, unbothered by you.'] },
+    main_street: { any: ['A shopkeeper sweeps the pavement outside their door.', 'A dog tied up outside the café watches the door with total devotion.', 'Somebody is trying to parallel park and it isn\'t going well.', 'The bakery\'s extractor fan breathes warm, buttery air onto the street.'], morning: ['Shutters rattle up one by one along the street.'], evening: ['Window displays glow against the dimming street.'], Winter: ['Fairy lights are strung across the street between the lamp posts.'] },
+    town_square: { any: ['Pigeons wheel around the war memorial.', 'The town hall clock strikes the quarter hour, slightly off-key.', 'An old man feeds the birds from a paper bag, chatting to them.', 'A busker tunes a guitar and never quite starts playing.'], Summer: ['Children splash in the little fountain while parents pretend not to see.'], Autumn: ['Bunting from the last festival still hangs from one lamp post.'] },
+    high_street: { any: ['Shoppers weave around each other with bulging bags.', 'A charity collector rattles a tin with hopeful eyes.', 'The phone shop has a "SALE" sign that has been up for a year.'], evening: ['The shopping centre\'s sliding doors breathe open and shut as the last shoppers leave.'] },
+    residential: { any: ['A cat watches you from a windowsill, tail twitching.', 'Somewhere a lawnmower drones.', 'Recycling boxes line the kerb like a little parade.', 'A kid\'s bike lies abandoned on a front lawn.'], evening: ['Kitchen windows glow, and you can smell somebody\'s dinner.'], night: ['Televisions flicker blue behind closed curtains.'], Winter: ['Smoke curls up from a few chimneys.'] },
+    river_lane: { any: ['The river slides by, brown and patient.', 'A heron stands in the shallows like it\'s been there for a hundred years.', 'The lane\'s potholes are full of last week\'s rain.'], morning: ['Mist lifts off the water in slow curls.'], Autumn: ['Blackberry brambles along the hedge are heavy with fruit.'] },
+    alley: { any: ['A drainpipe drips steadily into a puddle.', 'Bins line the wall, one of them with a lid propped open by a cardboard box.', 'Someone has chalked a hopscotch grid on the cobbles.', 'The smell of frying drifts from a kitchen vent.'], night: ['A single bulb over a back door buzzes and flickers.'] },
+    cafe: { any: ['The espresso machine hisses like a steam train.', 'A regular is doing the crossword in pen, frowning.', 'The cake stand has one slice left of something with walnuts.', 'Mugs clink, a chair scrapes, and somebody laughs too loud and then apologises.'], morning: ['There\'s a queue of half-awake people staring at the menu board.'] },
+    market: { any: ['A trolley with a squeaky wheel announces itself somewhere in the aisles.', 'The tannoy crackles with a price check on aisle three.', 'Somebody is reading every label on every tin of soup.'], evening: ['The yellow-sticker trolley is out, and a small crowd circles it.'] },
+    florist: { any: ['The whole shop smells green and sweet.', 'Buckets of cut stems line the floor, dripping.', 'A ribbon spool spins as the florist ties off a bouquet.'], Spring: ['Tulips crowd every bucket in every colour.'], Winter: ['Holly wreaths hang in the window.'] },
+    park: { any: ['Ducks paddle hopefully toward anyone holding a paper bag.', 'A jogger passes, then passes again ten minutes later.', 'Somebody\'s dog is very proud of a stick far too big for it.', 'Teenagers on the swings pretend they\'re too old for the swings.'], Spring: ['Daffodils line the path in loud yellow clumps.'], Summer: ['Picnic blankets dot the grass.'], Autumn: ['Conkers lie split open under the horse chestnut.'], Winter: ['The pond has a thin skin of ice at the edges.'] },
+    bar: { any: ['The jukebox plays something from before you were born.', 'A dartboard thuds, followed by a groan.', 'The landlord polishes the same glass for a long time.', 'A quiz sheet from last Thursday is still pinned by the door.'], evening: ['It\'s getting busy: the hum of voices rises above the music.'] },
+    town_hall: { any: ['A queue of people with forms waits in silence.', 'Portraits of past mayors line the stairwell.', 'The noticeboard lists planning applications nobody reads.'] },
+    church: { any: ['Light comes through the stained glass in coloured patches on the floor.', 'The building is cool and quiet and smells of old stone.', 'A volunteer arranges flowers by the font.'], morning: ['The bells ring out the hour.'] },
+    docks: { any: ['Ropes creak against their bollards.', 'Gulls argue over something on a stack of pallets.', 'Diesel and river water mix in the air.'], morning: ['A barge chugs past, its skipper raising a hand.'] },
+    old_mill: { any: ['The waterwheel is still, furred with moss.', 'Wind whistles through the broken upper windows.', 'Swallows dart in and out of the rafters.'] },
+    woods: { any: ['A woodpecker drums somewhere out of sight.', 'Your footsteps go quiet on the soft path.', 'Sunlight breaks through the canopy in patches.'], Spring: ['Bluebells carpet the ground under the trees.'], Autumn: ['The path is ankle-deep in crunching leaves.'], Winter: ['The bare branches creak in the cold.'], night: ['An owl calls, and something small rustles away in the undergrowth.'] },
+    shopping_centre: { any: ['Piped music plays a soft version of a song you used to like.', 'A child presses their face against the toy shop window.', 'The escalator hums, carrying a family slowly upward.', 'The food court smells of fried things and cinnamon.'] },
+    clothing_store: { any: ['A shop assistant refolds a stack of jumpers someone just unfolded.', 'The changing room curtain doesn\'t quite reach the wall.'] },
+    furniture_store: { any: ['Somebody is sitting on every sofa in turn, very seriously.', 'Little price tags dangle from lamps you can\'t afford.'] },
+    pet_store: { any: ['A budgie chatters at its own reflection.', 'The fish tanks bubble softly in their blue light.', 'A puppy in the window pen falls asleep mid-wag.'] },
+    hair_salon: { any: ['Hairdryers roar, then stop all at once.', 'The radio plays, and the stylists sing along to the chorus.', 'Someone in the chair holds very still while their fringe is trimmed.'] },
+    vet_clinic: { any: ['A cat yowls from inside a carrier, deeply offended.', 'The receptionist knows every pet\'s name and none of the owners\'.', 'A poster on the wall shows the life stages of a tapeworm. Nobody looks at it twice.'] },
+    dog_pound: { any: ['A chorus of barks greets you, every one of them hopeful.', 'A volunteer walks a greyhound around the yard on a long lead.', 'A board by the gate shows photos of dogs that found homes.'] }
+  };
+  var INDOOR_WX = { clear: 'Sunlight slants through the windows.', cloudy: 'Through the windows the sky is flat and grey.', drizzle: 'Fine drizzle beads the windows.', rain: 'Rain streams down the windows.',
+    storm: 'Thunder rattles the windows, and the lights flicker once.', fog: 'Fog presses white against the windows.', snow: 'Snow drifts past the windows.', hot: 'The air is stuffy and warm, and every window is propped open.', windy: 'The wind whistles at the window frames.' };
+  function ambientLine(id) {
+    var a = AMBIENT[id]; if (!a) return '';
+    var h = G.time.hour, pool = (a.any || []).slice();
+    var tod = isDark(h) ? 'night' : h < 12 ? 'morning' : h < 18 ? 'day' : 'evening';
+    if (a[tod]) pool = pool.concat(a[tod], a[tod]);   // time-of-day and season lines turn up more often
+    if (a[season()]) pool = pool.concat(a[season()], a[season()]);
+    if (!pool.length) return '';
+    var w = W(), line = pick(pool);
+    if (pool.length > 1 && line === w.lastAmbient) line = pick(pool);
+    w.lastAmbient = line;
+    return line;
+  }
+
   function locationBlurb() {
     var l = loc(), h = G.time.hour, night = isDark(h) && NIGHT[l.id];
     var out = '<p><b>' + l.name + '</b> · ' + l.district + '</p><p>' + (night ? NIGHT[l.id] : l.desc) + '</p>';
     var f = festivalLive(); if (f && f.where === l.id) out += '<p><b>' + f.name + ':</b> ' + f.desc + '</p>';
     else if (f) out += '<p><i>You can hear the ' + f.name + ' going on over at ' + LOCATIONS[f.where].name + '.</i></p>';
     if (l.id === MARKET_DAY.where && marketLive()) out += '<p><b>' + MARKET_DAY.name + ':</b> ' + MARKET_DAY.desc + '</p>';
+    var amb = ambientLine(l.id); if (amb) out += '<p>' + amb + '</p>';
     var cr = crowdLine(l.id); if (cr) out += '<p><i>' + cr + '</i></p>';
     if (!l.indoor) out += '<p>' + weatherLine() + ' ' + (isDark(h) ? (['clear', 'windy', 'hot'].indexOf(W().weather) >= 0 ? moonLine() : 'It is dark out; the streetlamps buzz.') : seasonTouch()) + '</p>';
-    else out += '<p>Outside the window: ' + WEATHER[W().weather].label.toLowerCase() + '.</p>';
+    else out += '<p>' + (INDOOR_WX[W().weather] || ('Outside the window: ' + WEATHER[W().weather].label.toLowerCase() + '.')) + '</p>';
     return out;
   }
 
@@ -727,6 +814,7 @@
       w.location = dest;
       w.visited[dest] = true;
       var text = '<p>' + (biking ? 'You cycle to ' : 'You head to ') + dl.name + '. ' + fmtT(mins) + '</p>';
+      var sm = (mins >= 3 && (isRoad(dest) || isRoad(w.location) || dest === 'park')) ? streetMoment(biking) : ''; if (sm) text += '<p>' + sm + '</p>';
       var wc = weatherClosure(dest);
       if (wc) text += '<p><i>' + wc + '</i></p>';
       else if (!isOpen(dest, G.time.hour)) text += '<p><i>It is closed right now. Opening hours are ' + dl.open[0] + ':00 to ' + (dl.open[1] % 24) + ':00.</i></p>';

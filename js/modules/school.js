@@ -553,7 +553,28 @@
     } });
   }
 
+  var NOTICES = [
+    'LOST: one blue umbrella, answers to nothing. Please return to the porter\'s lodge.',
+    'Room for rent above the bakery. Must tolerate the smell of bread at 4am.',
+    'Study group for Mathematics, Tuesdays in the library. Bring snacks or questions, ideally both.',
+    'The Rowing Club needs a cox. You must be light, loud and unafraid of cold water.',
+    'FOUND: a single glove on the quad bench. It looks lonely.',
+    'Free kittens, enquire at the Copper Kettle Café. (Mrs. Abernathy says these are NOT café kittens.)',
+    'Reminder: bikes chained to the library railings will be removed. Again.',
+    'Hollowbrook Players auditions on Thursday. No experience needed, just confidence and a loud voice.',
+    'Selling: a textbook, lightly highlighted, with only one coffee ring. $8.',
+    'Whoever keeps taking the good stapler from the computer room: we know.',
+    'Lecture cancelled: Dr. Varga\'s field trip is postponed due to "an incident with a heron".',
+    'Volunteers wanted for the Gardening Club\'s pumpkin weigh-in. Cake provided.',
+    'Guitar lessons, cheap, patient teacher. Tear off a number.',
+    'Has anyone seen a grey cat in a red collar? Answers to Mortimer, eventually.'
+  ];
   function phase2Options(o) {
+    if (loc() === 'main_building' || loc() === 'quad') o.other.push({ label: 'Read the campus noticeboard', mins: 3, run: function () {
+      var pool = NOTICES.slice(), out = [];
+      for (var i = 0; i < 3 && pool.length; i++) out.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+      return { text: '<p>The corkboard is three layers deep in pins and flyers. A few catch your eye:</p><ul><li>' + out.join('</li><li>') + '</li></ul>', minutes: 3 };
+    } });
     if (at('farm')) farmPetOptions(o);
     var s = S(), t = time(), here = loc();
     // teachers after class
@@ -1246,6 +1267,54 @@
       name: "Dean's Office", district: 'Campus', indoor: true, open: [8, 17], restroom: false,
       desc: 'A wood-panelled waiting room in the admin wing: a ticking clock, a potted fern, and a secretary who sees everything.'
     }, [['quad', 2]]);
+    // ---- extra flavour text (Ted) ----
+    (function () {
+      function more(arr, lines) { if (arr && arr.push) lines.forEach(function (l) { if (arr.indexOf(l) < 0) arr.push(l); }); }
+      more(CLASS_FLAVOR.lit, ['Professor Hart sets a ten-minute freewrite on the word "home". The room fills with scratching pens.', 'Someone reads their sonnet aloud. It rhymes "orange" with "door hinge" and gets a round of applause.', 'The discussion drifts from the novel to whether anyone has ever really left their hometown.', 'You spend the hour annotating a single page until the margins are fuller than the text.']);
+      more(CLASS_FLAVOR.math, ['Professor Ellison makes a mistake on the board on purpose and waits to see who catches it.', 'A proof finally clicks halfway through, and you have to stop yourself saying "oh" out loud.', 'The radiator ticks. Somebody\'s calculator beeps. Ellison doesn\'t look up.', 'Group work on probability turns into an argument about a coin someone swears is unlucky.']);
+      more(CLASS_FLAVOR.sci, ['Dr. Varga hands round soil samples from the river bank. Yours has a tiny snail in it.', 'You titrate a solution three times before it turns the right shade of pink.', 'A microscope session. The pond water is more crowded than the high street on market day.', 'Dr. Varga tells a long story about a field trip in a thunderstorm. It\'s somehow about pH.']);
+      more(CLASS_FLAVOR.art, ['Ms. Moreau makes everyone draw with their other hand. Your apple looks like a potato with ambitions.', 'Clay day. By the end, everyone has grey up to the elbows.', 'A critique session. Moreau calls your shading "brave", which could mean anything.', 'You mix a green you\'ll never manage to mix again and use it everywhere.']);
+      more(CLASS_FLAVOR.pe, ['Five-a-side in the drizzle. Mud is involved.', 'Coach Okafor times your sprint, writes the number down, and says nothing.', 'Badminton in the sports hall. The shuttlecock ends up on a beam, as it always does.', 'Stretching, a slow jog round the field, then a lecture on hydration that you half hear.']);
+      more(CLASS_FLAVOR.agri, ['Mr. Pell has the class guess the weight of a pumpkin. The winner gets to keep it.', 'You learn to tell a ripe tomato by the smell of the vine.', 'A muddy session planting garlic in neat rows. Pell checks the spacing with a stick.', 'The lecture is cut short when a goat gets into the classroom.']);
+      try {
+        more(CLUBS.drama.flavor, ['The director wants more "presence". You stand in a doorway, very present.', 'You build a cardboard castle that collapses during the dress rehearsal.']);
+        more(CLUBS.rowing.flavor, ['A heron watches the whole outing from the bank, unimpressed.', 'Flat water, a pink sky, and for ten strokes the boat runs perfectly.']);
+        more(CLUBS.art.flavor, ['Someone brings a bowl of lemons to draw. By the end, someone else has eaten one.', 'A quiet session. Just pencils, rain on the skylight and the odd sigh.']);
+        more(CLUBS.garden.flavor, ['You find a potato the size of a fist that everyone missed last season.', 'Tea from a flask on an upturned crate. Nobody hurries.']);
+        more(CLUBS.books.flavor, ['Half the group hasn\'t finished the book, so the discussion is mostly about the cover.', 'A heated debate over whether a villain can be likeable ends in agreement over biscuits.']);
+      } catch (e) {}
+      try {
+        more(JOBS.cafe.shifts, ['A power cut hits mid-rush. You hand out free biscuits by candlelight.', 'You learn eleven regulars\' orders by heart and get a little smug about it.']);
+        more(JOBS.farm.shifts, ['A hen escapes. You and Mr. Pell chase it round the barn for twenty minutes.', 'You pick beans until your fingers smell green.']);
+        more(JOBS.library.shifts, ['Someone returns a book eleven years overdue with a note of apology tucked inside.', 'You spend the shift relabelling the poetry section, one sticker at a time.']);
+        more(JOBS.grocer.shifts, ['You price-check tins all evening and start dreaming in barcodes.', 'A delivery driver hands you a crate of bananas and a ten-minute life story.']);
+      } catch (e) {}
+      more(WHISPERS, ['A group by the vending machine goes quiet as you walk up, then starts talking about the weather.', 'Someone in the corridor says your name and then "no, the other one".', 'A seat next to you stays empty in the dining commons, even though it\'s busy.']);
+    })();
+    // campus ambience when you arrive somewhere on campus
+    var AMBIENT = {
+      morning: ['First-years hurry past clutching coffee and timetables.', 'A groundskeeper is raking leaves off the main path.', 'The bell tower clock is, as always, four minutes slow.'],
+      day: ['Students sprawl on the steps between classes, arguing about lunch.', 'Someone is practising the trumpet badly from an upper window.', 'A tour group of prospective students shuffles after a guide walking backwards.'],
+      evening: ['Lamps come on along the paths one at a time.', 'Laughter drifts out of the student union bar.', 'A few late lab windows still glow in the science block.'],
+      night: ['The campus is quiet except for a security guard\'s torch sweeping the quad.', 'A fox trots across the lawn as if it owns the place.'],
+      rain: ['Umbrellas bob across the quad like a slow parade.', 'Rain drums on the bike shelter roof.'],
+      snow: ['Someone has built a lopsided snowman wearing a college scarf.', 'Footprints criss-cross the white quad.'],
+      Autumn: ['Conkers crunch under your shoes along the avenue of chestnuts.'],
+      Spring: ['Daffodils have pushed up along the edge of the lawn.'],
+      Summer: ['The fountain is surrounded by people with their feet in it.'],
+      Winter: ['Your breath clouds in the cold air outside the main building.']
+    };
+    function ambientLine() {
+      var t = time(), pool = [], w = (G.state.world && G.state.world.weather) || '';
+      pool = pool.concat(AMBIENT[t.hour < 6 || t.hour >= 22 ? 'night' : t.hour < 11 ? 'morning' : t.hour < 18 ? 'day' : 'evening']);
+      if (/rain|storm|drizzle/i.test(w)) pool = pool.concat(AMBIENT.rain, AMBIENT.rain);
+      if (/snow/i.test(w)) pool = pool.concat(AMBIENT.snow, AMBIENT.snow);
+      if (G.time && AMBIENT[G.time.season]) pool = pool.concat(AMBIENT[G.time.season]);
+      return pick(pool);
+    }
+    if (G.on) G.on('arrive', function (d) {
+      try { if (!S() || !onCampus() || ['dorm_room', 'restroom'].indexOf(d && d.location) >= 0) return; if (chance(0.12) && G.notify) G.notify(ambientLine(), 'info'); /* rare: world.js already describes each arrival */ } catch (e) {}
+    });
     if (G.on) { G.on('newDay', newDay); G.on('newDay', repNewDay); G.on('spotted', onSpotted); G.on('accident', onAccident); G.on('arrive', repArrive); G.on('tick', exposedTick); G.on('action', exposedTick); G.on('tick', briefNoticeTick); }
     if (G.on) G.on('arrive', function (d) {
       var prev = S().lastLoc; S().lastLoc = d && d.location;

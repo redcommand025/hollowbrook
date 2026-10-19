@@ -3015,8 +3015,9 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         r.lastChatDay = t.day;
       }
       if (gain) _changeRep(state, id, gain);
+      var line = pool === DATING_LINES[id] ? pick(pool) : smalltalkLine(state, id, st);
       return {
-        text: nm(id) + ": " + pick(pool),
+        text: nm(id) + ": " + line,
         minutes: 10
       };
     }
@@ -3537,6 +3538,743 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
   });
   INVITE_SPOT.dunn = 'cafe';
   RELATIONS.push(['dunn', 'dot', 'friends', 'Dunn buys his tea biscuits from Dot every morning and pretends it\'s a security check.'], ['dunn', 'wren', 'rivals', 'Dunn has never quite caught Wren at anything, and they both know it.']);
+  // ---------- Flavor pass: more small talk per stage (hostile..close) ----------
+  var SMALLTALK_MORE = {
+    eleanor: {
+      hostile: ['"I know exactly who you are. So does the council."', 'She smiles for a passing photographer, then lets the smile drop the moment it leaves.'],
+      cold: ['"My secretary handles appointments. She is very good at saying no."', '"Hollowbrook has many residents. I do try to remember the pleasant ones."'],
+      neutral: ['"The library roof leaks, the bus runs late, and everyone blames me. Lovely town, though."', '"If you see a pothole on Main Street, write to me. Politely, ideally."', '"I was a student here once. The Commons coffee was terrible then, too."'],
+      friendly: ['"You remembered my name and my question. Half of the council manages neither."', '"Come to the next open forum. Somebody sensible should stand at the back and nod."', '"I keep a peppermint tin for emergencies. This feels like one." She offers you one.'],
+      friend: ['"Four elections, and I still rewrite every speech the night before."', '"Marcus and I will fight about parking until one of us is buried under a meter."', '"Mina thinks I don\'t notice her taking notes on how I shake hands. I do. She\'s good."'],
+      close: ['She takes her shoes off under the bench. "Don\'t tell a soul. Mayors aren\'t meant to have feet."', '"Sometimes I walk the long way home just to be nobody for twenty minutes. You can come, if you like."']
+    },
+    marcus: {
+      hostile: ['"You\'re bad for business. Out."', '"I\'ve put your face on the list by the till. It\'s a short list."'],
+      cold: ['"If you\'re not buying, step aside. There\'s a queue."', 'He taps his ledger without looking up. "Busy."'],
+      neutral: ['"Bananas are cheaper on Thursday. Don\'t ask me why. Ask the bananas."', '"Benny thinks he can sell fish off a boat and call it a business. Ha."', '"We stock forty kinds of noodles because of you students. Forty."'],
+      friendly: ['"You count change like you mean it. I respect that."', '"Want a tip? Never trust a supplier who smiles on a Monday."', 'He hands you a dented tin of peaches. "Can\'t sell it. Can\'t bin it. Yours."'],
+      friend: ['"Dot thinks she runs this place. Dot is right. Don\'t tell Dot."', '"I balanced these books every night for twelve years. Never once took a holiday. Is that sad? Be honest."'],
+      close: ['He leans on the counter, ledger shut for once. "I don\'t say this to people. Thanks for sticking around."', '"The girls asked who I keep talking about. I said a supplier. They didn\'t buy it."']
+    },
+    hart: {
+      hostile: ['"I have read your work. I have read worse, but not recently."', 'He looks at you over his glasses and says nothing, which is somehow a full paragraph.'],
+      cold: ['"Unless you have a question about the syllabus, I have a stack of essays waiting."', '"Ah. You."'],
+      neutral: ['"Wordsworth wandered lonely as a cloud. You look like you\'re wandering late for a seminar."', '"Every library sounds the same at closing time. That hush is called hope, and dust."', '"Read one poem a day. It costs nothing and it ruins you in the best way."'],
+      friendly: ['"You underlined the right line in the Hopkins. Most people underline the wrong one."', '"Dr. Raman says chemistry explains love. I say it merely explains the hangover."', '"Come by office hours. Bring an argument. I\'m bored of agreement."'],
+      friend: ['"I keep a list of every student who made me rethink a book. You\'re on it. In pencil, for now."', '"My first lecture, I dropped all my notes into a heating vent. I improvised for an hour. Best class I ever gave."'],
+      close: ['He reads you a line from his notebook, then looks embarrassed. "Draft. Very early draft."', '"You\'re the only person who asks how I am and waits for the answer."']
+    },
+    okafor: {
+      hostile: ['"You. Bleachers. Stay there until I forget you exist."', 'She blows her whistle at you, purely on principle.'],
+      cold: ['"I\'ve no time for people who quit halfway through a lap."', '"Talk while you stretch. Or don\'t talk."'],
+      neutral: ['"Warm up first. Your hamstrings will write me a thank-you note."', '"Theo thinks he invented rowing. He did not. I checked."', '"Two laps of the field. Go on. Nobody ever regrets the laps."'],
+      friendly: ['"You came back. Most people don\'t come back. Good."', '"Your form\'s improving. Your excuses aren\'t."', '"I\'ve got spare trainers in the cupboard. Size eight? Close enough."'],
+      friend: ['"Raman and I fight about budgets every spring. Then we get a drink. Don\'t tell the students."', '"I coach because somebody once believed in me when my knee didn\'t. Simple as that."', '"My mum still calls after every match to ask if I shouted enough. Always, Mum."'],
+      close: ['She sits beside you on the bench, towel round her neck. "Five minutes of quiet. Coach\'s orders."', '"I don\'t say it to many people, but you\'ve got grit. The real kind."']
+    },
+    sam: {
+      hostile: ['Sam closes the sketchbook so hard a pencil shoots out.', '"I\'m drawing. You\'re in the way of the light."'],
+      cold: ['"Oh. Hi." Sam keeps their eyes on the page.', '"I\'m kind of in the zone. Sorry."'],
+      neutral: ['"Charcoal gets everywhere. I found some in my toast once."', '"Ollie hums while I draw. It helps, weirdly. Like a soundtrack."', '"Professor Hart says I draw like a poet. I think he meant messy."'],
+      friendly: ['"Hold still. No, the other way. Perfect. Your nose is very drawable."', '"I traded Ollie a sketch for a mixtape. Best deal I\'ve ever made."', '"There\'s a mural going up behind the Commons. I\'m painting the ducks."'],
+      friend: ['"I don\'t really talk to Theo anymore. It\'s fine. It\'s mostly fine."', '"My portfolio review is next week. If I vanish, check the studio first."', '"You\'re in about half my sketchbook now. You should probably start charging."'],
+      close: ['Sam tucks a tiny folded drawing into your pocket. "Open it later. Not now. Later."', '"When I can\'t draw, I just think about who I\'d show it to. Usually it\'s you."']
+    },
+    theo: {
+      hostile: ['"Whatever you\'re selling, mate, we\'re not buying."', 'Theo turns his back and starts talking loudly about rowing.'],
+      cold: ['"Bit busy. Training."', '"Yeah, hi." He\'s already looking past you.'],
+      neutral: ['"Five a.m. starts on the river. You haven\'t lived until you\'ve seen fog on the water."', '"Coach says my catch is lazy. My catch is not lazy."', '"Mina wants to cut our budget. Over my dead, well-rowed body."'],
+      friendly: ['"You should come to a race. Bring a scarf. Bring noise."', '"Lunch tomorrow? I\'ll save you a seat next to the loud ones."', '"I ate four breakfasts today. Rowers are basically furnaces."'],
+      friend: ['"My dad still asks for my split times on the phone. Before he asks how I am."', '"Sam and I, we were a thing once. It\'s weird now. I don\'t know how to fix it."', '"I like that you don\'t care that I\'m captain. Feels normal. Feels good."'],
+      close: ['He shoulders you gently. "You\'re my person, you know that? Whatever that means."', '"Everyone wants the captain. You just want me. It\'s nice."']
+    },
+    rosa: {
+      hostile: ['She shuts her gate firmly without a word.', '"I was a nurse forty years. I know trouble when I see it, and I see it now."'],
+      cold: ['"Hm." She keeps weeding.', '"My tomatoes are not for strangers who don\'t say good morning."'],
+      neutral: ['"Wear a coat, you\'ll catch your death. Yes, even in this weather."', '"Dot and I do the crossword on Sundays. She cheats. Very kindly, but she cheats."', '"That herbalist in the woods sells nettle tea for everything. Nettle tea! For everything!"'],
+      friendly: ['"Come by Sunday. I make too much soup. I always make too much soup."', '"Jules leaves bread on my step. I leave soup on theirs. Very civilised, we are."', '"Sit, sit. Your colour is better today. Good."'],
+      friend: ['"Miguel would have liked you. He liked people who listen."', '"I still check my pockets for a stethoscope. Forty years, the hands remember."', '"You young ones think you invented heartbreak. Sit, I\'ll tell you about 1979."'],
+      close: ['She presses a jar of something into your hands. "Mole sauce. Miguel\'s recipe. Don\'t you dare share it."', '"You come by even when you don\'t need anything. That\'s how I know."']
+    },
+    jules: {
+      hostile: ['"I\'m too tired to be polite. Leave."', 'Jules stares at you with the blank fury of someone on hour twenty of a shift.'],
+      cold: ['"Bakery\'s closed. Well, not closed. Closed to you."', 'They grunt and go back to kneading.'],
+      neutral: ['"Sourdough is a pet that lives in a jar and judges you."', '"I sleep from seven till two. If you knock in that window, I will haunt you."', '"Dot sells my bread. I eat my bread. Dot pretends not to notice. It\'s a system."'],
+      friendly: ['"Taste this. Cardamom. Tell me it\'s not too much. Lie if it is."', '"Rosa left soup again. I\'m going to have to bake her a cake the size of a car."', '"You\'re one of maybe four people I\'d talk to before coffee."'],
+      friend: ['"Silas still plays the song he wrote about us. It\'s a good song. That\'s the annoying part."', '"Sometimes I bake an extra loaf just to have the oven full, then give it to whoever\'s awake."'],
+      close: ['They lean their head against your shoulder for one second. "Okay. Recharged."', '"I picked my shifts to match when you\'re usually around. Don\'t make it weird."']
+    },
+    wren: {
+      hostile: ['"Go on. Walk away while you still remember the way out."', 'Wren flicks a bottle cap at your feet and doesn\'t look up.'],
+      cold: ['"What do you want? Make it quick."', '"You\'re standing in my light. And my alley."'],
+      neutral: ['"Dunn did his rounds already. You just missed the excitement. There wasn\'t any."', '"Every bin back here has a story. Most of them are about pizza."', '"Mina Sato walked past earlier. Didn\'t even look. Fine by me."'],
+      friendly: ['"Here. Shortcut to the square, through the gate with the broken latch. Don\'t say I never gave you anything."', '"Benny gave me a coat. Said it was too small for him. It was not too small for him."', '"You\'re less annoying than you were. Congrats."'],
+      friend: ['"I still have my student card. Don\'t know why. Keep meaning to bin it."', '"If you\'re ever in trouble, the third fire escape has a loose window. Just saying."'],
+      close: ['Wren hands you half a sandwich without a word, then looks deeply interested in the wall.', '"You\'re the only one who never asks when I\'m getting my life together. Thanks for that."']
+    },
+    silas: {
+      hostile: ['He plays one loud, sour chord in your direction and keeps going.', '"Not a request line, friend. Move along."'],
+      cold: ['He nods without missing a beat and doesn\'t look up.', '"Coins in the case if you\'re staying. Otherwise, the square\'s big."'],
+      neutral: ['"This one\'s about a train I missed. Not a metaphor. I really missed it."', '"The acoustics under the town hall arch are better than any studio."', '"Ollie keeps trying to pay me in sandwiches. I keep letting him."'],
+      friendly: ['"I tried a new tune this morning. Three people stopped. That\'s a hit, round here."', '"You hum along. Slightly off. I like it."', 'He plays the opening of something you half-recognise, just to see if you\'ll smile.'],
+      friend: ['"Jules and I lived together a year. Most of my good songs are from that year. Most of my sad ones too."', '"I\'m thinking of playing indoors again. Don\'t make a big deal of it."', '"Fame\'s just strangers knowing your name. I\'d rather have people who know your coffee order."'],
+      close: ['"I keep a spare pick in my pocket for you. In case you ever want to learn."', 'He stops mid-song when you arrive, and the whole square seems to wait for him to start again.']
+    },
+    kit: {
+      hostile: ['Her ears pin flat back. "I think you should go."', 'Kit turns the shop sign to CLOSED while you are still in the doorway.'],
+      cold: ['"The roses are three dollars a stem." Her ears don\'t move toward you at all.', '"Mm-hm." She goes on trimming stems.'],
+      neutral: ['"Sunflowers turn to follow the light. Even cut ones try."', '"Hazel sends dog gossip, I send catnip. It\'s a very fair trade."', 'One ear swivels toward the street a second before a bicycle bell rings outside.'],
+      friendly: ['"Lily of the valley for luck. Don\'t put it in your tea. People have tried."', '"Nell taught me which flowers to sell and which to leave in the ground. Mostly the second list."', '"You walk softly. Most people stomp in here like it\'s a stable."'],
+      friend: ['"My grandmother had ears like mine. She said they hear what people mean, not what they say."', '"I close the shop for one evening each month. I won\'t tell you why yet."', '"I\'ve known Nell a long time. Longer than makes sense, if you add it up. Don\'t add it up."'],
+      close: ['Her ears tilt toward you and stay there. "I like when you\'re here. The shop sounds better."', '"I saved you a moonflower seed. Plant it when the moon is thin. You\'ll know when."']
+    },
+    morrow: {
+      hostile: ['The goats turn, all of them, and stare at you until you step back.', '"You should not be here." Morrow\'s voice is very calm.'],
+      cold: ['Morrow keeps working. A hen steps between you, deliberately.', '"The animals are uneasy. So am I."'],
+      neutral: ['"The goats have opinions about the weather. Today they are optimistic."', '"Bees remember faces. Be kind near the hives."', '"The soil is turning. I can feel the season leaving."'],
+      friendly: ['"Fen sends greetings. Fen does not send greetings to many."', '"You may scatter the grain. Slowly. They do not like surprises."', '"Dr. Raman thinks I have a gift. I think I simply listen."'],
+      friend: ['"The old barn was built by a family named Ashe. I helped. I was told I looked young then, too."', '"Some nights I walk to the park and count the stars that have moved. Few have."'],
+      close: ['Morrow rests a hand on your shoulder, warm as sun-soaked stone. "Stay. The evening is better with you."', '"I have kept many things. I would like to keep you, if you allow it. As a friend, or more."']
+    },
+    hazel: {
+      hostile: ['"I don\'t sell to people who make my animals nervous. Goodbye."', 'Pip hisses at you, which you didn\'t know parakeets could do.'],
+      cold: ['"Browsing is fine. Just don\'t tap the glass."', 'She keeps her back to you, refilling a water bowl.'],
+      neutral: ['"That tabby in the corner is fourteen. Nobody wants the old ones. Their loss."', '"Dee and I share a kettle through the back wall. She talks through it, too."', '"Hamsters are nocturnal. Please stop asking why he\'s asleep."'],
+      friendly: ['"Want to hold the hedgehog? Gently. She\'s shy, like me."', '"Kit\'s catnip is the only brand the shop cats will touch. Snobs."', 'Pip hops onto your finger, considers, and stays. Hazel looks quietly delighted.'],
+      friend: ['"At the zoo I had a tortoise older than my gran. I still send him a card at Christmas. To the keeper. For him."', '"I\'m saving for a bigger rescue room. Every jar of coins counts."', '"Biscuit escaped again. I\'m starting to think he just likes being found."'],
+      close: ['She leans her head on your shoulder for a moment, then straightens up, pink. "Sorry. Long day of guinea pigs."', '"You\'re the only person I\'d leave in charge of the shop. That\'s a big deal. Huge."']
+    },
+    dee: {
+      hostile: ['"I\'ve heard all about you, sweetie. All of it."', 'Dee snaps her scissors shut and turns her chair away, very pointedly.'],
+      cold: ['"No walk-ins. No exceptions. No, not even for you."', '"Mm." She files her nails without looking at you.'],
+      neutral: ['"Purple this month. Next month, maybe copper. Life\'s too short for one colour."', '"Marcus still gets his trim here. Every six weeks. Same chair. We don\'t talk about it."', '"Hazel next door says I talk too loud through the wall. I say she listens too well."'],
+      friendly: ['"Your ends are split. Your soul is fine, though. Come back Thursday."', '"I know who\'s seeing who in this town. I also know who\'s pretending not to."', '"Sit, sweetie, I\'ll do your fringe for free. Practice. Totally practice."'],
+      friend: ['"I opened this place with a loan and three chairs. Still three chairs. Still paying the loan."', '"Everyone tells me their secrets in this chair. Something about the cape."', '"Karaoke at the Lantern on Fridays. I\'m legendary. Badly, but legendary."'],
+      close: ['She stops the scissors mid-snip. "I\'d tell you anything. That never happens, you know."', '"You\'re the only gossip I\'d never pass on. Don\'t ruin my reputation."']
+    },
+    raman: {
+      hostile: ['"You are a contaminant. Kindly leave my greenhouse."', 'She labels a jar FOR NOBODY and places it pointedly between you.'],
+      cold: ['"Lab coats are on the hook. You are not wearing one, so I assume you are leaving."', '"I have three titrations running. Be brief."'],
+      neutral: ['"Basil is a drama queen. Overwater it once and it never forgives you."', '"Adrian insists poetry outlasts chemistry. Paper burns, I tell him. Combustion is chemistry."', '"Goggles on, always. My eyebrows learned this the hard way."'],
+      friendly: ['"You repotted the chillies correctly. I am almost unbearably pleased."', '"Morrow says the soil speaks. I say the soil has a measurable pH. We are both right."', '"Coach Okafor wants my budget for a new scoreboard. She can have it over my compost."'],
+      friend: ['"My mother grew curry leaves in a coffee tin on a windowsill in Leeds. That tin is in my office."', '"Every year I swear I will take a holiday. Every year the tomatoes need me."'],
+      close: ['She offers you her best seed packet, the hand-labelled one. "Heirloom. From my grandmother. I trust you with it."', '"I talk to the plants when I am lonely. Lately, I talk to you instead. The plants are jealous."']
+    },
+    ollie: {
+      hostile: ['Ollie goes white and walks quickly the other way.', '"P-please just leave me alone."'],
+      cold: ['He nods once and stares at his shoes.', '"Oh. Um. I have to... go. Somewhere."'],
+      neutral: ['"I counted the stairs in the music block. Forty-two. That\'s not useful, sorry."', '"Silas says stage fright is just excitement wearing a coat. I don\'t believe him yet."', '"Sam lent me a pencil once. I still have it. I should give it back."'],
+      friendly: ['"I practised in front of the mirror today. The mirror was very supportive."', '"Do you want an earbud? It\'s Debussy. It\'s, um, very nice."', '"I talked to someone in seminar today. On purpose. Two whole sentences."'],
+      friend: ['"I can play anything if I don\'t think about who\'s listening. With you it\'s easier. I don\'t know why."', '"My violin was my grandad\'s. It has a crack he glued himself. It sounds better for it."'],
+      close: ['He looks right at you and doesn\'t blush. Then he does, a lot. "That was a whole second. Did you see?"', '"I wrote down every nice thing you\'ve said to me. Is that strange? It\'s a short book. A good one."']
+    },
+    mina: {
+      hostile: ['"I have filed a note about you. Mentally. It is not a good note."', 'Mina makes a small, precise tick in her planner while looking straight at you.'],
+      cold: ['"Agenda item? No? Then we\'re done."', '"I\'ll pencil you in for never."'],
+      neutral: ['"Committee meeting at four, petition at five, essay at midnight. Standard Tuesday."', '"I colour-code my week. Blue is study. Green is council. Red is crying, scheduled for Sunday."', '"Eleanor says the trick to politics is remembering birthdays. I have a spreadsheet."'],
+      friendly: ['"I have five minutes free on Thursday. I\'m giving them to you. Use them wisely."', '"You\'d be excellent on the events committee. That was not a question."', '"Wren and I were roommates. That\'s all I\'m saying. That\'s all anyone needs to hear."'],
+      friend: ['"I haven\'t slept past seven since I was eleven. I\'m told that isn\'t normal."', '"My parents still save me the last dumplings when I visit. I always pretend I\'m not hungry. I always am."', '"Sometimes I wish someone would just tell me I\'ve done enough."'],
+      close: ['She takes your arm as you walk. "No agenda. Just this." She seems surprised to mean it.', '"I wrote your name in my planner in pen. Do you understand how serious that is?"']
+    },
+    benny: {
+      hostile: ['"Walk off my jetty before I help you off it."', 'Benny spits into the river and keeps mending his net.'],
+      cold: ['"Fish ain\'t for sale to you. Try the shop."', 'He grunts and keeps working, back turned.'],
+      neutral: ['"Cormorant\'s been stealing off my line all week. Clever bird. I respect it."', '"Marcus charges double for fish I catch for nothing. That\'s business, apparently."', '"Fog came up the river at dawn. Couldn\'t see my own boots."'],
+      friendly: ['"Here, hold this knot. No, the other end. There. You\'ve got sailor\'s hands, kid."', '"Wren keeps an eye on the docks for me. Don\'t tell her I know."', '"That ferryman, Fen, thinks they own the river. River don\'t belong to nobody."'],
+      friend: ['"Learned to tie knots inside. Funny thing to take away from six years. But I did."', '"I\'ve been practising my letters. Slow going. Don\'t laugh."', '"Some mornings the river\'s so still you could walk on it. Those are the mornings I like best."'],
+      close: ['He shares his Thermos with you without asking. "Strong as tar. Good for the heart."', '"Never had many people I\'d call a friend. You\'re one. Don\'t make a fuss about it."']
+    },
+    nell: {
+      hostile: ['Every bramble on the path seems to lean a little toward your ankles.', '"The woods have decided about you. So have I."'],
+      cold: ['Nell gathers her basket and turns away. A crow watches you instead.', '"Mind where you step. Not everything here is only a plant."'],
+      neutral: ['"Elderflower for colds, chamomile for nerves, and an early night for both."', '"Rosa Delgado says my tinctures are nonsense. Rosa Delgado buys my tinctures."', '"The path changes after rain. Follow the birch trees, not your feet."'],
+      friendly: ['"Kit came by with gossip and honey. Good friends bring both."', '"Sit on that stump. It is a good stump. It has been listening for a hundred years."', 'She hands you a pouch of dried lavender. "Under your pillow. Not in your tea."'],
+      friend: ['"I knew the woods when the mill still turned. I was older than I looked even then."', '"People bring me their troubles in jars and baskets. You just bring yourself. It is restful."', '"The fox who lives under the oak trusts you now. That took her eleven years with me."'],
+      close: ['She threads a daisy into your buttonhole without asking. "There. Now the woods know you are mine to look after."', '"When you are gone a while, the kettle sulks. So do I, a little."']
+    },
+    dot: {
+      hostile: ['"I\'ve served this town thirty-one years and I\'ve never had to ask anyone to leave. Don\'t make you the first."', 'Dot scans your shopping in total silence, which is the most frightening thing she has ever done.'],
+      cold: ['"Next, please." She doesn\'t look up from the till.', '"Bags are by the door. You can pack your own."'],
+      neutral: ['"The yellow stickers go on at six. That\'s the real reason the college lot come in at five past."', '"Rosa and I have done the Sunday crossword for twenty years. She\'s rubbish at anagrams."', '"Jules\'s bread sells out by ten. Come early or come sweet-talking."'],
+      friendly: ['"Your usual? Oh, you\'ve got a usual now. Welcome to Hollowbrook."', '"Marcus wants a loyalty card scheme. I said I\'ve been the loyalty card since 1995."', '"You\'re looking better than you did in Freshers\' Week, love. They all look grey in Freshers\' Week."'],
+      friend: ['"Officer Dunn buys the same tea biscuits every morning and calls it a security check. Bless him."', '"I could tell you what this whole town had for tea last night. I won\'t, mind. But I could."', '"My Arthur proposed in the tinned goods aisle. Aisle four. I still smile every time I restock it."'],
+      close: ['She pats your hand on the counter. "You come in even when you don\'t need milk. I notice that."', '"Don\'t tell the others, but you\'re my favourite customer. Since you first walked in, anyway."']
+    },
+    dunn: {
+      hostile: ['"I\'ve got my eye on you. Both eyes. And the notebook."', 'He writes something down slowly while maintaining unbroken eye contact.'],
+      cold: ['"Move along, please. Nothing to see but me."', '"I\'ll remember your face. That\'s not a compliment."'],
+      neutral: ['"Lost dog by the fountain this morning. Found its owner by noon. Good day\'s work."', '"Wren Cassidy was down the alley again. Can\'t prove a thing. Never can."', '"Lock your door, keep your phone charged, and don\'t feed the pigeons. They unionise."'],
+      friendly: ['"Dot saves me the good biscuits. Don\'t tell the chief, it\'s practically bribery."', '"You walk this town like you live here now. That\'s a good sign."', '"If the late bus doesn\'t come, there\'s a bench by the station under a light. Wait there, not in the dark."'],
+      friend: ['"Twenty years, and the worst crime I ever solved was a stolen garden gnome. I miss that gnome."', '"Some nights I just walk round the square to make sure every lamp\'s on. It helps me sleep."'],
+      close: ['He hands you his Thermos lid, full and steaming. "You\'re the only one I share this with. It\'s practically a medal."', '"If you ever need anything, you call me. Not the station. Me."']
+    },
+    fen: {
+      hostile: ['The water by the jetty goes very still and very dark.', '"Some fares are not worth taking." Fen does not look at you.'],
+      cold: ['"The boat is full." It is not full.', 'Fen ties off a rope with great attention and none at all for you.'],
+      neutral: ['"The river remembers every coin dropped in it. Most people forget."', '"Morrow brings me apples from the farm. I bring them river stones. We are both satisfied."', '"Benny thinks he has right of way. The river has right of way."'],
+      friendly: ['"You walk on the jetty boards that don\'t creak. Someone taught you, or you listen well."', '"Mist tonight. Good crossing weather, if you know the way."', 'Fen skims a stone that skips far more times than seems right.'],
+      friend: ['"There was a bridge here before this one, and a ford before that. I miss the ford."', '"I keep a lantern in the stern. Not for seeing. For being seen by those who should."', '"Most people only cross once. You keep coming back. It pleases me."'],
+      close: ['Fen lets you hold the oars, which you suspect is a great honour. "Gently. It knows you now."', '"If you ever lose your way home, come to the river. I will find you."']
+    }
+  };
+  Object.keys(SMALLTALK_MORE).forEach(function (id) {
+    if (!SMALLTALK[id]) SMALLTALK[id] = {};
+    Object.keys(SMALLTALK_MORE[id]).forEach(function (k) {
+      SMALLTALK[id][k] = (SMALLTALK[id][k] || []).concat(SMALLTALK_MORE[id][k]);
+    });
+  });
+  // ---------- Flavor pass: context-aware small talk (weather, season, time of day) ----------
+  // Reads G.world.weather() (else state.world.weather), G.time.season (else G.world.season()),
+  // and G.world.partOfDay() (else G.time.hour). Anything missing is simply skipped.
+  function ctxNow(state) {
+    var c = {
+      w: null,
+      s: null,
+      t: null
+    };
+    var W_ = window.G && window.G.world || {};
+    try {
+      c.w = typeof W_.weather === 'function' ? W_.weather() : null;
+    } catch (e) {}
+    if (!c.w) {
+      try {
+        c.w = state && state.world && state.world.weather || null;
+      } catch (e) {}
+    }
+    try {
+      c.s = time().season || null;
+    } catch (e) {}
+    if (!c.s) {
+      try {
+        c.s = typeof W_.season === 'function' ? W_.season() : null;
+      } catch (e) {}
+    }
+    var pd = null;
+    try {
+      pd = typeof W_.partOfDay === 'function' ? W_.partOfDay() : null;
+    } catch (e) {}
+    var PD = {
+      'early morning': 'morning',
+      morning: 'morning',
+      midday: 'afternoon',
+      afternoon: 'afternoon',
+      evening: 'evening',
+      night: 'night'
+    };
+    if (pd && PD[pd]) c.t = PD[pd];else {
+      try {
+        var h = time().hour;
+        if (typeof h === 'number') c.t = h < 5 ? 'night' : h < 12 ? 'morning' : h < 18 ? 'afternoon' : h < 21 ? 'evening' : 'night';
+      } catch (e) {}
+    }
+    return c;
+  }
+  var tierOf = function tierOf(st) {
+    return st === 'hostile' || st === 'cold' ? 'cool' : st === 'neutral' || st === 'friendly' ? 'mid' : 'warm';
+  };
+  // Generic lines anyone could say, by warmth tier. Keys: w:<weather>, s:<Season>, t:<part of day>.
+  var CTX_GENERIC = {
+    cool: {
+      'w:rain': ['"Rain. Wonderful. And now you."', '"I\'d rather be dry and alone, if it\'s all the same."'],
+      'w:storm': ['"Not the weather for chit-chat."', 'A rumble of thunder fills the silence where a reply should be.'],
+      'w:drizzle': ['"Damp day. Short conversation."'],
+      'w:fog': ['"Can\'t see a thing in this fog. Shame it didn\'t hide you."'],
+      'w:snow': ['"It\'s cold enough without this."'],
+      'w:hot': ['"Too hot to bother. Especially with you."'],
+      'w:windy': ['"Wind\'s picking up. So is my urge to be somewhere else."'],
+      'w:clear': ['"Nice day. Was, anyway."'],
+      'w:cloudy': ['"Grey sky, grey mood. Don\'t push it."'],
+      's:Winter': ['"Some of us want to get home before dark. It gets dark at five."'],
+      's:Autumn': ['"Leaves everywhere, and people everywhere. Same problem."'],
+      's:Spring': ['"Spring. Everyone\'s cheerful. Exhausting."'],
+      's:Summer': ['"Too warm for small talk."'],
+      't:morning': ['"It\'s early. Keep it short."'],
+      't:afternoon': ['"I have things to do this afternoon. This isn\'t one of them."'],
+      't:evening': ['"It\'s late in the day for this."'],
+      't:night': ['"It\'s late. Go home."']
+    },
+    mid: {
+      'w:rain': ['"This rain. My shoes have given up entirely."', '"Proper downpour. The gutters on Main Street will be rivers by teatime."'],
+      'w:storm': ['"Did you hear that thunder? I nearly dropped everything."', '"If the power goes again, I\'m blaming the council."'],
+      'w:drizzle': ['"It\'s not even proper rain. Just damp, hanging about."'],
+      'w:fog': ['"Fog this thick, you could lose a whole bus in it."'],
+      'w:snow': ['"Snow! The whole town goes quiet when it snows. I love it."', '"Watch the steps. Somebody always goes over on the steps."'],
+      'w:hot': ['"This heat. I\'ve been dreaming about the frozen aisle."', '"Find some shade, drink some water. Doctor\'s orders. I\'m not a doctor."'],
+      'w:windy': ['"Hold on to your hat. Somebody\'s umbrella just flew past the window."'],
+      'w:clear': ['"Gorgeous out, isn\'t it? Makes everything feel easier."'],
+      'w:cloudy': ['"Can\'t decide if it wants to rain or not, can it?"'],
+      's:Autumn': ['"Conker season. I still pick them up. Can\'t help it."', '"The leaves on the quad are going gold. Best time of year."'],
+      's:Winter': ['"Dark by five. My body thinks it\'s bedtime at teatime."', '"Have you been to the Frost Market yet? The chestnuts alone are worth it."'],
+      's:Spring': ['"Blossom everywhere. The whole town looks like a wedding."', '"Feels like the year\'s waking up, doesn\'t it?"'],
+      's:Summer': ['"Long evenings. I never want to go in."', '"Half the town\'s at the river on days like this."'],
+      't:morning': ['"Morning! Have you had coffee? You look like you need coffee."', '"Early start, is it? Me too."'],
+      't:afternoon': ['"Afternoon already. Where does the day go?"', '"That mid-afternoon slump. You know the one."'],
+      't:evening': ['"Evening. Nearly time to put the day away."', '"Lovely light this time of the evening."'],
+      't:night': ['"You\'re out late. Get home safe, won\'t you?"', '"Night owl, are we? Me too, apparently."']
+    },
+    warm: {
+      'w:rain': ['"Share my umbrella? There\'s room if we squash."', '"Rainy days are for tea and good company. I\'ve got one of those."'],
+      'w:storm': ['"Stay in with me till it passes. I\'m not scared of thunder. I just prefer company."'],
+      'w:drizzle': ['"Your hair\'s all misty. It suits you, annoyingly."'],
+      'w:fog': ['"Stick close in this fog. I\'d hate to lose you."'],
+      'w:snow': ['"First one to make a snow angel wins. Winner buys hot chocolate. Wait, that\'s backwards."', '"You\'ve got snow on your eyelashes. Hold still."'],
+      'w:hot': ['"Ice cream. You and me. I\'m not taking no for an answer."'],
+      'w:windy': ['"Your scarf\'s trying to escape. Here." A quick, careful tuck.'],
+      'w:clear': ['"Days like this I\'m glad you\'re around to share them."'],
+      'w:cloudy': ['"Grey day. You make it less grey."'],
+      's:Autumn': ['"We should go and kick leaves in the park. I\'m serious. It\'s therapy."'],
+      's:Winter': ['"Cold hands? Give them here."'],
+      's:Spring': ['"Spring always makes me want to start something new. Maybe with you."'],
+      's:Summer': ['"Let\'s waste a whole summer evening doing nothing at all. Together."'],
+      't:morning': ['"Morning. Seeing you is better than coffee. Nearly."'],
+      't:afternoon': ['"I was hoping I\'d run into you this afternoon."'],
+      't:evening': ['"Walk with me a bit? It\'s a nice evening for it."'],
+      't:night': ['"Late one. I\'m glad you\'re here, though."']
+    }
+  };
+  // Per-NPC context lines (used from neutral up, in their own voice).
+  var CTX_NPC = {
+    eleanor: {
+      'w:rain': ['"The council will want to know why the drains are flooding. I\'ll want to know too."'],
+      's:Winter': ['"Gritting the roads is the most popular thing I ever do. Nobody thanks me for it."'],
+      't:morning': ['"Three meetings before ten. Remind me why I wanted this job."'],
+      't:evening': ['"The office empties at five. I like the hour after, when the building stops talking."']
+    },
+    marcus: {
+      'w:rain': ['"Rain\'s good for umbrella sales and bad for everything else."'],
+      'w:hot': ['"Heatwave means ice lollies. I ordered triple. Don\'t let me down, sun."'],
+      's:Winter': ['"Soup sales doubled. I love winter. Don\'t quote me."'],
+      't:evening': ['"Last hour of trade. This is where the real money is. Yellow stickers."']
+    },
+    hart: {
+      'w:rain': ['"Rain on the library windows. Perfect weather for Brontës."'],
+      's:Autumn': ['"Season of mists and mellow fruitfulness. Keats would have hated the bus timetable, though."'],
+      'w:snow': ['"Snow. The world, briefly, as a blank page."'],
+      't:night': ['"Night is when the good sentences arrive. And leave, before morning."']
+    },
+    okafor: {
+      'w:rain': ['"Rain\'s no excuse. Rain is a bonus."'],
+      'w:hot': ['"Hydrate. I mean it. I will check."'],
+      't:morning': ['"Best part of the day. Lungs full, nobody talking."'],
+      's:Winter': ['"Indoor track season. Everyone gets grumpy. Especially me."']
+    },
+    sam: {
+      'w:clear': ['"The shadows are so sharp today. Everything looks drawn in ink."'],
+      'w:fog': ['"Fog is just the world doing a soft-pencil sketch of itself."'],
+      's:Autumn': ['"I\'ve been collecting leaves for a collage. My room is now forty percent leaf."'],
+      't:afternoon': ['"This is the hour. The honey light. Look, look!"']
+    },
+    theo: {
+      'w:fog': ['"Fog on the river this morning. Rowed blind. Brilliant."'],
+      'w:windy': ['"Headwind on the water. My arms are actually crying."'],
+      't:morning': ['"Already been out on the water. The river at dawn is the best thing in Hollowbrook."'],
+      's:Summer': ['"Regatta season! Come and shout at me from the bank."']
+    },
+    rosa: {
+      'w:rain': ['"My tomatoes needed this. My hip did not."'],
+      'w:hot': ['"Sit in the shade, mijo. And put a hat on. A hat!"'],
+      's:Spring': ['"Planting time. Miguel always put the first seed in on a Sunday."'],
+      't:morning': ['"Up with the sun, like a sensible person. Have you eaten?"']
+    },
+    jules: {
+      't:morning': ['"Morning for you. Bedtime for me. We\'re ships passing in the night. Day. Whatever."'],
+      't:night': ['"Ah, my hours. Welcome. The ovens are warm."'],
+      'w:snow': ['"Snow makes the whole street sound like a bakery at four a.m. Muffled and good."'],
+      's:Winter': ['"Winter is mince pie season. I have made four hundred. Help."']
+    },
+    wren: {
+      'w:rain': ['"Fire escape on the left keeps you dry. Mostly. Don\'t tell anyone."'],
+      'w:snow': ['"Snow means footprints. Footprints mean Dunn. I hate snow."'],
+      't:night': ['"Alley\'s a different place at night. Stick with me or stay out."'],
+      's:Summer': ['"Summer\'s easy. Warm nights, long days. Everything\'s easier in summer."']
+    },
+    silas: {
+      'w:rain': ['"Rain makes the strings go flat. And the audience go home."'],
+      'w:clear': ['"Good busking weather. People are generous when the sun\'s out."'],
+      't:evening': ['"Evening sets are the best. Everyone\'s walking slower."'],
+      's:Winter': ['"Fingerless gloves. Musician\'s secret. And a lot of tea."']
+    },
+    kit: {
+      'w:rain': ['Her ears twitch at every drop on the shop roof. "Busy day for the gutters."'],
+      's:Spring': ['"Spring is mad in here. Everyone wants tulips at once."'],
+      'w:storm': ['Her ears flatten at the thunder, then perk up again, a little embarrassed.'],
+      't:evening': ['"I like the park at dusk. Everything rustles just right."']
+    },
+    morrow: {
+      'w:fog': ['"The fog came up from the river. It does that when it wants to listen."'],
+      's:Winter': ['"The fields are sleeping. We must tread softly."'],
+      't:night': ['Morrow\'s eyes catch the lamplight. "The night is kind to those who keep still."'],
+      's:Autumn': ['"Harvest. The land gives, and we must give back. That is the bargain."']
+    },
+    hazel: {
+      'w:storm': ['"Storms make the dogs anxious. I\'ve been handing out cuddles all day."'],
+      'w:hot': ['"Bunnies hate the heat. I\'ve got frozen water bottles in every hutch."'],
+      's:Spring': ['"Baby season at the rescue. I haven\'t slept since Tuesday."'],
+      't:morning': ['"Feeding time. Pip insists on supervising."']
+    },
+    dee: {
+      'w:rain': ['"Rain! Frizz city. My bookings just doubled."'],
+      'w:windy': ['"Wind like this undoes a blow-dry in four seconds. I\'ve timed it."'],
+      's:Summer': ['"Summer means highlights. Everyone wants to look sun-kissed without the sun."'],
+      't:evening': ['"Last client of the day is always the one with the best gossip."']
+    },
+    raman: {
+      'w:clear': ['"Sun! The greenhouse will be thirty degrees. The tomatoes are thrilled."'],
+      'w:snow': ['"Snow insulates the soil, did you know? Nature\'s duvet."'],
+      's:Autumn': ['"Seed-saving season. My pockets are going to rattle until spring."'],
+      't:morning': ['"Morning is the best time to water. Fewer losses to evaporation. And fewer students."']
+    },
+    ollie: {
+      'w:rain': ['"I like the rain. Nobody notices you in the rain."'],
+      'w:storm': ['"The thunder was in B flat. Sorry. I notice that kind of thing."'],
+      't:evening': ['"Practice rooms open up in the evening. I get the one with the good piano."'],
+      's:Winter': ['"Cold fingers make my vibrato wobbly. I sit on my hands before I play."']
+    },
+    mina: {
+      'w:rain': ['"Rain does not cancel committee. Nothing cancels committee."'],
+      's:Autumn': ['"Autumn term. New members, new budgets, new disasters."'],
+      't:morning': ['"I\'ve already done two hours of work. It\'s fine. It\'s great."'],
+      'w:snow': ['"I have a snow-day contingency plan. It\'s colour-coded."']
+    },
+    benny: {
+      'w:fog': ['"Fog on the water. Fish like it. Boats don\'t."'],
+      'w:storm': ['"Storm coming up the valley. Tied her down twice. River\'s in a temper."'],
+      't:morning': ['"Up at four. Best catch is before the town wakes up."'],
+      's:Winter': ['"River freezes at the edges some winters. Quietest sound you ever heard."']
+    },
+    nell: {
+      'w:rain': ['"Rain is the woods drinking. Let them drink."'],
+      's:Autumn': ['"Mushroom time. Pick nothing without asking me first. Nothing."'],
+      'w:fog': ['"The fog is thick today. It is easy to lose the path, and easier to find another."'],
+      't:evening': ['"Dusk. The hour when the woods change hands."']
+    },
+    dot: {
+      'w:rain': ['"Rain brings them all in for soup and biscuits. I could set my watch by it."'],
+      'w:snow': ['"Snow day! Bread and milk gone by nine. Every single time."'],
+      't:morning': ['"First customer of the day gets a smile for free. That\'s you, love."'],
+      't:evening': ['"Stickers go on at six. You timed that well, didn\'t you?"']
+    },
+    dunn: {
+      'w:rain': ['He shakes the rain off his cape. "Thirty years of this cape. Never failed me once."'],
+      'w:fog': ['"Fog like this, I walk the square twice. People get turned around."'],
+      't:night': ['"Late to be out. Want me to walk you as far as the corner?"'],
+      's:Autumn': ['"Bonfire Night\'s coming. Busiest night of my year. Fireworks and lost children."']
+    },
+    fen: {
+      'w:fog': ['"Fog. The river is closest to itself on days like this."'],
+      'w:rain': ['Rain beads on Fen\'s coat and rolls off without leaving a mark.'],
+      't:night': ['"The river is deepest at night. Not in water. In other ways."'],
+      's:Winter': ['"Winter crossings are the clearest. The cold makes the water honest."']
+    }
+  };
+  function _contextLine(state, id, st) {
+    try {
+      var c = ctxNow(state),
+        keys = [];
+      if (c.w) keys.push('w:' + c.w);
+      if (c.s) keys.push('s:' + c.s);
+      if (c.t) keys.push('t:' + c.t);
+      if (!keys.length) return null;
+      var tier = tierOf(st);
+      var gen = [],
+        own = [];
+      keys.forEach(function (k) {
+        (CTX_GENERIC[tier][k] || []).forEach(function (x) {
+          return gen.push(x);
+        });
+        if (tier !== 'cool' && CTX_NPC[id]) (CTX_NPC[id][k] || []).forEach(function (x) {
+          return own.push(x);
+        });
+      });
+      // Non-human folk keep it subtle: their own lines only, unless they have none for this moment.
+      if (BY_ID[id] && BY_ID[id].group === 'Non-Human' && own.length) return pick(own);
+      if (own.length && (!gen.length || Math.random() < 0.55)) return pick(own);
+      return gen.length ? pick(gen) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+  var ctxAll = null;
+  function CTX_ALL() {
+    if (ctxAll) return ctxAll;
+    ctxAll = new Set();
+    [CTX_GENERIC.cool, CTX_GENERIC.mid, CTX_GENERIC.warm].concat(Object.keys(CTX_NPC).map(function (k) {
+      return CTX_NPC[k];
+    })).forEach(function (m) {
+      return Object.keys(m).forEach(function (k) {
+        return m[k].forEach(function (x) {
+          return ctxAll.add(x);
+        });
+      });
+    });
+    return ctxAll;
+  }
+  function smalltalkLine(state, id, st) {
+    var pool = SMALLTALK[id] ? SMALLTALK[id][st] || SMALLTALK[id].neutral : null;
+    if (Math.random() < 0.35) {
+      var c = _contextLine(state, id, st);
+      if (c) return c;
+    }
+    return pool && pool.length ? pick(pool) : '"Hello."';
+  }
+
+  // ---------- Flavor pass: greetings (first meeting, then by stage) ----------
+  var FIRST_MEET = {
+    eleanor: '"Eleanor Whitlock. Mayor, for my sins." She shakes your hand as if she has already counted your vote.',
+    marcus: '"Marcus Vane. I own the Grocer. If you need anything, I probably sell it, at a fair price."',
+    hart: '"Adrian Hart. I teach literature, which is to say I am paid to argue with dead people."',
+    okafor: '"Coach Okafor. Nia, off the field. You look like you could run. Can you run?"',
+    sam: '"Oh! Hi. Sam. Sam Rivera. Sorry, I have charcoal on my hand. Now you do too. Sorry."',
+    theo: '"Theo Lindqvist. Rowing captain. You\'ll hear me before you see me, usually."',
+    rosa: '"Rosa Delgado, from next door. Come here, let me look at you. Too thin. We\'ll fix that."',
+    jules: '"Jules Park. Upstairs. The one who bakes at three a.m. Sorry in advance about the timer."',
+    wren: '"Wren." A long, measuring look. "Just Wren. You don\'t need the rest yet."',
+    silas: 'He finishes the verse first. "Silas Grey. Requests are free. Coins are encouraged."',
+    kit: 'Her ears swivel toward you before you speak. "Kit Amberly. Welcome to the shop. Mind the buckets."',
+    morrow: '"Morrow." Just that. The nearest goat stops chewing to look at you.',
+    hazel: '"Hazel Marsh. This is Pip." The parakeet on her shoulder tilts its head. "He\'s deciding about you."',
+    dee: '"Dee Fontaine, Snip and Curl. Oh, sweetie, we need to talk about your hair. Later. Lovely to meet you."',
+    raman: '"Dr. Priya Raman. Chemistry, and the greenhouse. Please do not touch anything that is labelled."',
+    ollie: '"O-Ollie. Brennan. Hi. Sorry. Hi." He shifts his violin case to shake your hand, and nearly drops it.',
+    mina: '"Mina Sato, student council president." The handshake is brief and firm. "I\'ll remember your name. I remember everyone\'s."',
+    benny: '"Benny Moss." He wipes his hand on his trousers before offering it. "Mind the ropes."',
+    nell: '"Nell Bramble. You found the path. That means the path wanted to be found." She smiles.',
+    dot: '"Dot Pearce, love. I\'ve been on this till since before you were born. Bag\'s five cents."',
+    dunn: '"Officer Dunn. Just Dunn is fine." He touches the brim of his cap. "Welcome to Hollowbrook."',
+    fen: '"Fen." Their river-grey eyes rest on you a moment. "The ferry runs when it runs."'
+  };
+  var GREET_STAGE = {
+    hostile: [function (id) {
+      return nm(id) + " glares at you.";
+    }, function (id) {
+      return nm(id) + " sees you coming and folds " + pronouns(id).pos + " arms.";
+    }, function (id) {
+      return nm(id) + "'s expression hardens the moment you approach.";
+    }],
+    cold: [function (id) {
+      return nm(id) + " barely acknowledges you.";
+    }, function (id) {
+      return nm(id) + " gives you a short, flat nod.";
+    }, function (id) {
+      return nm(id) + " glances up, then back down again.";
+    }],
+    neutral: [function (id) {
+      return nm(id) + " nods hello.";
+    }, function (id) {
+      return nm(id) + " offers a polite smile.";
+    }, function (id) {
+      return nm(id) + " looks up. \"Oh, hello.\"";
+    }],
+    friendly: [function (id) {
+      return nm(id) + " smiles when " + pronouns(id).sub + " " + (pronouns(id).be === 'are' ? 'see' : 'sees') + " you.";
+    }, function (id) {
+      return nm(id) + " brightens a little. \"Hey, you.\"";
+    }, function (id) {
+      return nm(id) + " gives you a friendly wave.";
+    }],
+    friend: [function (id) {
+      return nm(id) + " waves you over.";
+    }, function (id) {
+      return nm(id) + " grins and makes room for you.";
+    }, function (id) {
+      return nm(id) + ": \"There you are! I was hoping you'd turn up.\"";
+    }],
+    close: [function (id) {
+      return nm(id) + " lights up the moment you arrive.";
+    }, function (id) {
+      return nm(id) + " drops what " + pronouns(id).sub + " " + (pronouns(id).be === 'are' ? 'are' : 'is') + " doing to come and say hello.";
+    }, function (id) {
+      return nm(id) + " greets you like you are the best part of the day.";
+    }]
+  };
+  var GREET_DATING = [function (id) {
+    return nm(id) + " breaks into a smile meant only for you.";
+  }, function (id) {
+    return nm(id) + " catches your hand for a moment in greeting.";
+  }, function (id) {
+    return nm(id) + " looks up, and " + pronouns(id).pos + " whole face softens.";
+  }];
+  var GREET_TOD = {
+    morning: ['"Morning."', '"Good morning."'],
+    afternoon: ['"Afternoon."', '"Good afternoon."'],
+    evening: ['"Evening."', '"Good evening."'],
+    night: ['"You\'re up late."', '"Bit late to be out, isn\'t it?"']
+  };
+  function greetLine(state, id, st, first) {
+    try {
+      var n = BY_ID[id],
+        P = pronouns(id);
+      if (first) {
+        if (FIRST_MEET[id] && Math.random() < 0.75) return "You introduce yourself. " + n.blurb + " " + FIRST_MEET[id];
+        return "You introduce yourself. " + n.blurb + " \"" + n.name + ",\" " + P.sub + " say" + (P.be === 'are' ? '' : 's') + ". " + pick(['"Nice to meet you."', '"Good to meet you."', '"Pleased to meet you."']);
+      }
+      var out = (rel(state, id).romance >= 3 ? pick(GREET_DATING) : pick(GREET_STAGE[st] || GREET_STAGE.neutral))(id);
+      var c = ctxNow(state);
+      if (st !== 'hostile' && st !== 'cold' && c.t && GREET_TOD[c.t] && Math.random() < 0.3 && !/"/.test(out)) out += ' ' + pick(GREET_TOD[c.t]);
+      return out;
+    } catch (e) {
+      return nm(id) + " nods hello.";
+    }
+  }
+
+  // ---------- Flavor pass: background chatter overheard around town ----------
+  var CHATTER_PAIR = {
+    friends: [function (a, b) {
+      return nm(a) + " is telling " + nm(b) + " a long story. " + nm(b) + " keeps saying \"No!\" in delight.";
+    }, function (a, b) {
+      return nm(a) + " asks " + nm(b) + ", \"Same time next week?\" \"Obviously,\" says " + nm(b) + ".";
+    }, function (a, b) {
+      return nm(a) + " and " + nm(b) + " are arguing cheerfully about whose turn it is to pay.";
+    }, function (a, b) {
+      return nm(b) + " laughs at something " + nm(a) + " said, loud enough to turn heads.";
+    }],
+    rivals: [function (a, b) {
+      return nm(a) + ", to " + nm(b) + ": \"I'm only saying, some of us read the minutes.\" " + nm(b) + " does not reply.";
+    }, function (a, b) {
+      return nm(a) + " and " + nm(b) + " have a conversation made entirely of very polite, very sharp remarks.";
+    }, function (a, b) {
+      return "You overhear " + nm(b) + " mutter, \"Of course " + pronouns(a).sub + "'d say that,\" after " + nm(a) + " walks past.";
+    }, function (a, b) {
+      return nm(a) + " says \"Lovely to see you\" to " + nm(b) + " in a tone that means the opposite.";
+    }],
+    exes: [function (a, b) {
+      return nm(a) + " and " + nm(b) + " exchange a careful \"Hi.\" Then an even more careful \"Bye.\"";
+    }, function (a, b) {
+      return "You hear " + nm(a) + " ask " + nm(b) + ", a little too casually, \"So, you're doing well?\"";
+    }, function (a, b) {
+      return nm(b) + " starts to say something to " + nm(a) + ", then thinks better of it.";
+    }]
+  };
+  // A few pairs get their own overheard moments (key = sorted ids joined by _).
+  var CHATTER_PAIR_SPECIAL = {
+    mina_theo: ['Mina, to Theo: "The boathouse needs a new roof, not a new boat." Theo: "It needs both!"'],
+    eleanor_marcus: ['Marcus is saying something about loading bays. Eleanor is saying something about the bylaws. Neither is listening.'],
+    benny_marcus: ['Marcus: "You can\'t sell fish off a boat." Benny: "Watch me."'],
+    hart_raman: ['Hart: "Poetry is the chemistry of the soul." Raman: "That sentence has no measurable content, Adrian."'],
+    okafor_raman: ['Raman and Okafor are comparing budget spreadsheets in a silence you could cut with a ruler.'],
+    jules_rosa: ['Rosa presses a covered bowl into Jules\'s hands. "Soup. Eat it. Don\'t argue." Jules does not argue.'],
+    nell_rosa: ['Rosa, to Nell: "Nettle tea is not medicine." Nell, serenely: "And yet you keep buying it."'],
+    jules_silas: ['Silas hums the first bar of a song. Jules gives him a look. He stops humming.'],
+    dee_marcus: ['Dee, to Marcus: "Six weeks, same time, same chair." Marcus, resigned: "Same chair."'],
+    dot_rosa: ['Dot and Rosa have their heads together over a folded newspaper. "Seven down is \'tomato\'." "It is never tomato, Rosa."'],
+    dot_marcus: ['Marcus: "Who moved the biscuits?" Dot: "I did. In 2009." Marcus sighs.'],
+    dot_dunn: ['Dunn holds up a packet of biscuits. "Security check." Dot: "Of course, Officer."'],
+    dunn_wren: ['Dunn, mildly, to Wren: "Afternoon, Cassidy." Wren, sweetly: "Afternoon, Officer. Nothing to see."'],
+    benny_fen: ['Benny: "My side of the jetty." Fen: "The river has no sides." Benny grumbles off.'],
+    fen_morrow: ['Morrow and Fen stand side by side watching the water, saying nothing at all, for a long time.'],
+    kit_nell: ['Kit and Nell are talking in low voices about the moon. When you look over, both are smiling innocently.'],
+    hazel_kit: ['Hazel, to Kit: "The shop cats rejected the new catnip." Kit: "The shop cats are snobs."'],
+    dee_hazel: ['Dee: "You can hear me through the wall?" Hazel: "Everyone can hear you through the wall, Dee."'],
+    ollie_silas: ['Silas, to Ollie: "Breathe on the upbeat. You\'ve got it." Ollie nods very seriously.'],
+    ollie_sam: ['Sam swaps Ollie a folded drawing for a scribbled tracklist. Both look pleased with the deal.'],
+    benny_wren: ['Benny hands Wren a paper bag. "Spare. Was going to throw it out." Wren takes it without comment.'],
+    eleanor_mina: ['Eleanor, to Mina: "Smile with your eyes, not just your mouth." Mina makes a note.'],
+    okafor_theo: ['Coach Okafor, to Theo: "Your catch is lazy." Theo: "It is NOT lazy."'],
+    sam_theo: ['Sam and Theo end up at the same table, then both remember somewhere else to be.'],
+    mina_wren: ['Mina and Wren pass each other without a word. The air goes several degrees colder.']
+  };
+  var CHATTER_LOC = {
+    market: ['A woman by the bread shelf: "They\'ve moved the eggs again. Every month, they move the eggs."', 'Two shoppers debate, at length, whether a pineapple is ripe.', 'A kid asks for every single thing in the sweets aisle, in order.'],
+    cafe: ['Someone at the window table: "I said one shot, she gave me three. I can hear colours now."', 'Two friends over flat whites are planning a holiday they clearly won\'t take.', 'The barista calls a name. Three people stand up.'],
+    bar: ['From the darts board: "That was in! That was definitely in!"', 'Someone at the bar is explaining the offside rule to someone who did not ask.', 'A table near the fire is arguing about the quiz answer from last Thursday.'],
+    park: ['A dog owner by the pond: "He\'s friendly! He\'s just... very friendly!"', 'Two pensioners on a bench are rating the ducks out of ten.', 'A jogger passes, panting, "Last lap. Last lap. Definitely the last lap."'],
+    docks: ['A man on a narrowboat calls across: "Kettle\'s on if you\'re passing!"', 'Two anglers argue over whether the river is "up" or "high," which apparently are different.', 'Someone on the jetty is telling a long story about a fish that got away.'],
+    town_square: ['By the fountain: "The bus was late again. I\'m writing to the mayor."', 'A grandmother points at the pigeons and tells a child their names.', 'Two shopkeepers lean in their doorways, comparing how quiet the morning was.'],
+    main_street: ['Outside the pharmacy: "She said she\'d call, but she always says that."', 'Two teenagers are deciding which café has the best chips. It is a serious debate.', 'A delivery driver asks you if this is Main Street. It is. He looks relieved.'],
+    church: ['A whisper from the back pew: "Did you bring the cake for the bake sale?" "I thought YOU did."', 'Two parishioners agree that the new hymn books are "very modern."'],
+    town_hall: ['A clerk sighs: "Third complaint about the bins this week."', 'Someone in the queue mutters that they were told to bring form B, not form C.'],
+    shopping_centre: ['By the fountain: "We said we\'d meet by the fountain. Which fountain?" "There\'s one fountain, Dad."', 'A tired parent promises a toddler "just one more shop," for the fourth time.', 'Two friends compare shopping bags and declare a draw.'],
+    residential: ['Over a garden fence: "Your roses are lovely." "They\'re weeds, Pat." "Lovely weeds."', 'Someone is calling a cat named Mittens with diminishing hope.', 'A neighbour mows a lawn while discussing the neighbour two doors down.'],
+    alley: ['From behind the bins: "I told you it was a shortcut." "It\'s a long-cut, Gary."'],
+    florist: ['A man at the counter: "What says sorry, but not too sorry?"', 'A customer asks if sunflowers are a romantic flower. The answer is apparently complicated.'],
+    pet_store: ['A child, very seriously: "I will feed it every day. Every. Day."', 'Two customers coo over a rabbit that ignores them completely.'],
+    hair_salon: ['From under a dryer: "And THEN she said she\'d never even met him!"', 'Someone in the chair: "Just a trim." Everyone in the salon knows it will not be just a trim.'],
+    clothing_store: ['Two friends hold up identical jumpers. "Which one?" "They\'re the same." "Which ONE?"'],
+    furniture_store: ['A couple stands in a tiny showroom kitchen, pretending to cook. "Pass the salt." "There\'s no salt, it\'s a display."'],
+    vet_clinic: ['In the waiting room: "He\'s not sick, he\'s just dramatic."'],
+    quad: ['A student on the grass: "If I submit it at 11:59, it\'s technically on time."', 'Someone with a frisbee yells "Sorry!" across the quad, too late.', 'Two first-years are lost and pretending not to be.'],
+    library: ['A whisper from a carrel: "Is that due today?" "It was due yesterday."', 'Someone is apologising to the librarian for a book that has been "basically returned" for a month.'],
+    cafeteria: ['From the next table: "Is it lasagne or shepherd\'s pie?" "Yes."', 'A group is splitting chips with the precision of diplomats.', 'Someone is loudly retelling last night\'s party, adding details each time.'],
+    gym: ['By the weights: "One more set." "You said that three sets ago."', 'Somebody\'s playlist leaks out of their headphones. It is entirely power ballads.'],
+    lecture_hall: ['Two rows back: "Did he say this is on the exam?" "He says everything is on the exam."', 'Someone is quietly unwrapping a sandwich, very slowly, as if that makes it silent.'],
+    dorm_hall: ['Through a door: "Who took my oat milk? I wrote my NAME on it."', 'Someone is practising a presentation to the vending machine.', 'A muffled cheer from down the corridor: somebody won something online.'],
+    campus_farm: ['An agriculture student, to a goat: "Please. Please put that down."', 'Two volunteers argue gently about whether the hens have names. They do.']
+  };
+  var CHATTER_DISTRICT = {
+    campus: ['A student hurrying past: "Have you started the essay?" "Define started."', 'Someone on the phone: "Yes, Mum, I\'m eating vegetables. Chips are a vegetable."', 'Two students argue about which lecturer gives the best extensions.'],
+    town: ['A passer-by: "It used to be a bank, you know. Before the café. Before the other café."', 'Two neighbours stop to talk about the weather, then about the neighbours.', 'A man explains directions to a tourist, then explains them again, louder.']
+  };
+  var CHATTER_CTX = {
+    'w:rain': ['Someone under an awning: "Forecast said sunny. Forecast lies."', 'A shriek and a laugh as someone steps in a puddle deeper than it looked.'],
+    'w:storm': ['A voice nearby: "Count between the flash and the bang. Three. Two. Oh, it\'s right on top of us."'],
+    'w:snow': ['A child\'s voice: "Is school cancelled? Please say school is cancelled."'],
+    'w:hot': ['Somebody fanning themselves: "I\'m going to live in the freezer aisle. I\'ve decided."'],
+    'w:fog': ['Out of the fog: "Gary? GARY? Oh, sorry, I thought you were Gary."'],
+    'w:windy': ['Someone chasing a runaway hat: "Not again!"'],
+    's:Autumn': ['A passer-by: "Is it too early for the big coat? It\'s too early for the big coat."'],
+    's:Winter': ['Two people blowing on their hands: "Hot chocolate?" "Hot chocolate."'],
+    's:Spring': ['Someone sneezes three times. "Pollen. Every year. Every single year."'],
+    's:Summer': ['A voice from the shade: "Remember when we complained it was cold? Good times."'],
+    't:morning': ['Someone gulping coffee: "I am not awake. Do not talk to me yet."'],
+    't:evening': ['A pair heading home: "Takeaway?" "Takeaway."'],
+    't:night': ['Footsteps and a laugh fade away down the street.']
+  };
+  var QUIET_LOCS = /^(dorm_room|home_|restroom|bathroom|fitting_room|changing_room|woods|old_mill)/;
+  function chatterTick(state, minutes) {
+    var N = ns(state);
+    if (N.talking) return;
+    var here = loc(state);
+    if (QUIET_LOCS.test(here)) return;
+    var W_ = window.G.world || {};
+    try {
+      if (typeof W_.isPrivate === 'function' && W_.isPrivate()) return;
+    } catch (e) {}
+    var L = null;
+    try {
+      L = typeof W_.location === 'function' ? W_.location(here) : null;
+    } catch (e) {}
+    if (!L) return;
+    var t = time(),
+      nowM = t.day * 1440 + t.hour * 60 + (t.minute || 0);
+    if (N.chatterAt != null && nowM - N.chatterAt < 60 && nowM >= N.chatterAt) return; // at most once an in-game hour
+    var crowd = crowdScale(0.4),
+      people = present(state);
+    var night = t.hour >= 23 || t.hour < 6;
+    if (!people.length && (crowd < 0.08 || night && crowd < 0.2)) return; // empty, or empty at night
+    var p = 0.2 * Math.min(1, (minutes || 10) / 30) * (0.4 + Math.min(1, crowd));
+    if (Math.random() >= p) return;
+    var line = null;
+    var pairs = [];
+    for (var i = 0; i < people.length; i++) for (var j = i + 1; j < people.length; j++) {
+      var l = linkOf(people[i], people[j]);
+      if (l) pairs.push([people[i], people[j], l]);
+    }
+    if (pairs.length && Math.random() < 0.65) {
+      var pr = pick(pairs),
+        a = Math.random() < 0.5 ? pr[0] : pr[1],
+        b = a === pr[0] ? pr[1] : pr[0];
+      var sp = CHATTER_PAIR_SPECIAL[pr[2].key];
+      line = sp && Math.random() < 0.5 ? sp[Math.floor(Math.random() * sp.length)] : pick(CHATTER_PAIR[pr[2].type] || CHATTER_PAIR.friends)(a, b);
+      setFlag(state, 'link_' + pr[2].key);
+    } else {
+      if (people.length && night) return; // only familiar faces around this late; let them be
+      var c = ctxNow(state),
+        pool = [];
+      (CHATTER_LOC[here] || CHATTER_DISTRICT[onCampusHere() ? 'campus' : 'town']).forEach(function (x) {
+        return pool.push(x);
+      });
+      if (Math.random() < 0.35) ['w:' + c.w, 's:' + c.s, 't:' + c.t].forEach(function (k) {
+        return (CHATTER_CTX[k] || []).forEach(function (x) {
+          return pool.push(x);
+        });
+      });
+      line = pick(pool);
+    }
+    if (!line) return;
+    N.chatterAt = nowM;
+    N.chatterCount = (N.chatterCount || 0) + 1;
+    if (window.G.appendStory) window.G.appendStory("<p class=\"scene chatter\"><i>" + line + "</i></p>");
+  }
   var _loop2 = function _loop2() {
     var R = ROMANCE_PLUS[id],
       qid = 'rom_' + id;
@@ -5516,6 +6254,11 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
           exposeTick(state, minutes);
         } catch (e) {}
       }
+      if (!ns(state).talking) {
+        try {
+          chatterTick(state, minutes);
+        } catch (e) {}
+      }
       smellAftercare(state);
       // Gentle reputation drift toward 0 once per day for people you ignore.
       var t = time();
@@ -5575,19 +6318,11 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
             var st = _stage(s, id).key;
             var pr = petReaction(s, id) + birthdayGreet(s, id) + conditionLine(s, id) + socialGreet(s, id) + marketGreet(s, id) + grocerGreet(s, id) + sightGreet(s, id);
             if (first) return {
-              text: pr + ("You introduce yourself. " + BY_ID[id].blurb + " \"" + BY_ID[id].name + ",\" " + pronouns(id).sub + " say" + (pronouns(id).be === 'are' ? '' : 's') + ". \"Nice to meet you.\""),
+              text: pr + greetLine(s, id, st, true),
               minutes: 5
             };
-            var greet = rel(s, id).romance >= 3 ? 'breaks into a smile meant only for you.' : {
-              hostile: 'glares at you.',
-              cold: 'barely acknowledges you.',
-              neutral: 'nods hello.',
-              friendly: 'smiles when they see you.',
-              friend: 'waves you over.',
-              close: 'lights up the moment you arrive.'
-            }[st];
             return {
-              text: nm(id) + " " + greet + pr,
+              text: greetLine(s, id, st, false) + pr,
               minutes: 1
             };
           }
@@ -5651,7 +6386,18 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     present: present,
     pronouns: pronouns,
     whereIs: whereIs,
-    stage: _stage
+    stage: _stage,
+    flavor: {
+      context: function context() {
+        return ctxNow(S());
+      },
+      contextLine: function contextLine(state, id) {
+        return _contextLine(state || S(), id, _stage(state || S(), id).key);
+      },
+      isContextLine: function isContextLine(line) {
+        return CTX_ALL().has(line);
+      }
+    }
   };
   window.G && (window.G.npcs = {
     exoticsUnlocked: function exoticsUnlocked() {

@@ -460,7 +460,7 @@
     if (sleeping || !exposedNow() || !inPublic()) { f.covering = false; f.exposedWarned = false; return; }
     var ex = null; try { ex = WR().exposed(); } catch (e) {}
     var sev = ex && typeof ex === 'object' ? ((ex.lower === 'bare' || ex.naked) ? 1 : ex.lower === 'under' ? 0.5 : 0) + (ex.upper === 'bare' ? 0.5 : 0) : 1;
-    n.stress = clamp(n.stress + minutes * 0.35 * Math.max(0.5, sev) * (f.covering ? 0.5 : 1), 0, MAX);
+    if (!(WR() && typeof WR().exposed === 'function')) n.stress = clamp(n.stress + minutes * 0.35 * Math.max(0.5, sev) * (f.covering ? 0.5 : 1), 0, MAX); // wardrobe.js owns this stress when loaded
     var r = rec(s); r.exposedMinutes = (r.exposedMinutes || 0) + minutes;
     if (!f.exposedWarned) { f.exposedWarned = true; note('You aren\'t properly dressed, and people can see. Cover up, or get somewhere private and change.', 'down'); }
   }

@@ -6491,13 +6491,23 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       }
     };
   });
+  function questHint(state, qid) {
+    var def = QUESTS[qid];
+    if (!def) return '';
+    if (questStatus(state, qid) === 'done') return ' <i>(Quest complete: ' + def.title + '.)</i>';
+    var next = def.steps.find(function (st) {
+      return !st.done(state);
+    });
+    return next ? ' <i>(Next: ' + next.text + ')</i>' : '';
+  }
   function retryLocked(state, label, key) {
     var f = ns(state).persuadeFail || {},
       m = Math.max(1, Math.ceil(f[key] - nowMin()));
     var why = "Try again in " + (m >= 60 ? '1 hour' : m + ' min');
     return {
       label: label,
-      icon: '📌',
+      icon: '📜',
+      section: 'people',
       time: 10,
       disabled: true,
       reason: why,
@@ -6517,11 +6527,15 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         if (flag(state, qxFlag(Q.id, i)) || !qxPrevDone(state, Q, i)) return;
         if (st.kind === 'talk' && st.to === id && !isPersuade(st)) out.push({
           label: st.label,
-          icon: '📌',
+          icon: '📜',
+          section: 'people',
+          time: 10,
+          effects: ['^+Quest progress'],
           run: function run(s) {
             setFlag(s, qxFlag(Q.id, i));
+            checkQuests(s);
             return {
-              text: nm(id) + ": " + st.reply,
+              text: nm(id) + ": " + st.reply + questHint(s, Q.id),
               minutes: 10
             };
           }
@@ -6529,9 +6543,10 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         if (st.kind === 'talk' && st.to === id && isPersuade(st) && !persuadeReady(state, qxFlag(Q.id, i))) out.push(retryLocked(state, st.label, qxFlag(Q.id, i)));
         if (st.kind === 'talk' && st.to === id && isPersuade(st) && persuadeReady(state, qxFlag(Q.id, i))) out.push({
           label: st.label,
-          icon: '📌',
+          icon: '📜',
+          section: 'people',
           time: 10,
-          effects: ['!−Rep if it fails'],
+          effects: ['^+Quest progress', '!−Rep if it fails'],
           check: function check(s) {
             return "Persuasion: " + diffLabel(persuadeChance(s || state, id));
           },
@@ -6540,8 +6555,9 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
             if (Math.random() < persuadeChance(s, id)) {
               setFlag(s, key);
               if (ns(s).persuadeFail) delete ns(s).persuadeFail[key];
+              checkQuests(s);
               return {
-                text: nm(id) + ": " + st.reply,
+                text: nm(id) + ": " + st.reply + questHint(s, Q.id),
                 minutes: 10
               };
             }
@@ -6556,16 +6572,32 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         });
         if (st.kind === 'item' && (st.to || Q.giver) === id && has(state, st.item)) out.push({
           label: "Give " + BY_ID[id].name + " the " + ITEMS[st.item].name + " (" + Q.title + ")",
-          icon: '📌',
+          icon: '📜',
+          section: 'people',
+          time: 5,
+          effects: ['^+Quest progress'],
           run: function run(s) {
             ns(s).items[st.item]--;
             setFlag(s, qxFlag(Q.id, i));
+            checkQuests(s);
+            var body = nm(id) + " takes the " + ITEMS[st.item].name + ". " + (st.to && st.to !== Q.giver ? "\"From " + BY_ID[Q.giver].name + "? Really?\" " + pronouns(id).Sub + " " + (pronouns(id).be === 'are' ? 'look' : 'looks') + " at the gift for a long moment." : '"Perfect. Thank you."');
             return {
-              text: nm(id) + " takes the " + ITEMS[st.item].name + ". " + (st.to && st.to !== Q.giver ? "\"From " + BY_ID[Q.giver].name + "? Really?\" " + pronouns(id).Sub + " " + (pronouns(id).be === 'are' ? 'look' : 'looks') + " at the gift for a long moment." : '"Perfect. Thank you."'),
+              text: body + questHint(s, Q.id),
               minutes: 5
             };
           }
         });
+      });
+    });
+    return out;
+  }
+  // Talk/item quest beats also surface as location actions when the target is here (so you need not already be in conversation).
+  function qxPresentTalkActions(state) {
+    if (ns(state).talking) return [];
+    var out = [];
+    present(state).forEach(function (id) {
+      qxTalkOptions(state, id).forEach(function (o) {
+        return out.push(o);
       });
     });
     return out;
@@ -6601,11 +6633,13 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         if (st.stress > 0) fx.push('!+Stress');
         if (st.stress < 0) fx.push('^−Stress');
         if (st.crime) fx.push('!+Crime');
+        if (!fx.length) fx.push('^+Quest progress');else if (fx.indexOf('^+Quest progress') < 0) fx.unshift('^+Quest progress');
         var o = {
           label: st.label,
-          icon: '📌',
+          icon: '📜',
+          section: 'people',
           time: st.minutes,
-          effects: fx.length ? fx : undefined,
+          effects: fx,
           run: function run(s) {
             if (st.cost && money(s) < st.cost) return {
               text: 'You check your wallet. Not enough.',
@@ -6628,8 +6662,9 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
             if (st.thirst) safeChange('stats.needs.thirst', st.thirst);
             if (st.stress) safeChange('stats.needs.stress', st.stress);
             if (st.crime) safeChange('stats.status.crime', st.crime);
+            checkQuests(s);
             return {
-              text: st.scene,
+              text: st.scene + questHint(s, Q.id),
               minutes: st.minutes
             };
           }
@@ -6685,7 +6720,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
   function locationActions(state) {
     var here = loc(state),
       t = time(),
-      out = qxLocationActions(state);
+      out = qxLocationActions(state).concat(qxPresentTalkActions(state));
     // Shopping for gift items
     var _loop3 = function _loop3(it) {
       var I = ITEMS[it];
@@ -6844,7 +6879,8 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       });
     });
     out.forEach(function (o) {
-      if (!o.icon) o.icon = /^(Sit for Sam|Row out with|Wait for the moonflower|Climb to Wren|Meet |Have dinner with)/.test(o.label) ? '❤️' : '📌';
+      if (!o.icon) o.icon = /^(Sit for Sam|Row out with|Wait for the moonflower|Climb to Wren|Meet |Have dinner with)/.test(o.label) ? '❤️' : '📜';
+      if (!o.section) o.section = 'people';
     });
     return out;
   }
@@ -6887,13 +6923,17 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         if (st.kind !== 'item' || flag(state, 'rom_' + id + '_s' + i) || !has(state, st.item)) return;
         out.push({
           label: "Give " + BY_ID[id].name + " the " + ITEMS[st.item].name,
-          icon: '❤️',
+          icon: '📜',
+          section: 'people',
+          time: 5,
+          effects: ['^+Quest progress'],
           run: function run(s) {
             ns(s).items[st.item]--;
             setFlag(s, 'rom_' + id + '_s' + i);
             changeAff(s, id, 4);
+            checkQuests(s);
             return {
-              text: nm(id) + " takes the " + ITEMS[st.item].name + " and smiles. \"You remembered.\"",
+              text: nm(id) + " takes the " + ITEMS[st.item].name + " and smiles. \"You remembered.\"" + questHint(s, 'rom_' + id),
               minutes: 5
             };
           }
@@ -6902,10 +6942,15 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     }
     if (id === 'hazel' && questStatus(state, 'hazel_ferret') === 'active' && flag(state, 'hazel_ferret_got') && !flag(state, 'hazel_ferret_given')) out.push({
       label: 'Hand Biscuit back to Hazel',
+      icon: '📜',
+      section: 'people',
+      time: 5,
+      effects: ['^+Quest progress'],
       run: function run(s) {
         setFlag(s, 'hazel_ferret_given');
+        checkQuests(s);
         return {
-          text: '"You absolute menace," Hazel tells the ferret, kissing his head. To you: "Thank you. Really."',
+          text: '"You absolute menace," Hazel tells the ferret, kissing his head. To you: "Thank you. Really."' + questHint(s, 'hazel_ferret'),
           minutes: 5
         };
       }
@@ -6974,50 +7019,69 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     // Hand-in topics
     if (id === 'rosa' && questStatus(state, 'rosa_meds') === 'active' && flag(state, 'rosa_meds_got') && !flag(state, 'rosa_meds_given')) out.push({
       label: 'Give Rosa her pills',
+      icon: '📜',
+      section: 'people',
+      time: 5,
+      effects: ['^+Quest progress'],
       run: function run(s) {
         setFlag(s, 'rosa_meds_given');
+        checkQuests(s);
         return {
-          text: '"Bless you." She presses ten dollars into your hand and won\'t take it back.',
+          text: '"Bless you." She presses ten dollars into your hand and won\'t take it back.' + questHint(s, 'rosa_meds'),
           minutes: 5
         };
       }
     });
     if (id === 'hart' && questStatus(state, 'hart_book') === 'active' && flag(state, 'hart_book_got') && !flag(state, 'hart_book_given')) out.push({
       label: 'Return Hart\'s book',
+      icon: '📜',
+      section: 'people',
+      time: 5,
+      effects: ['^+Quest progress'],
       run: function run(s) {
         setFlag(s, 'hart_book_given');
+        checkQuests(s);
         return {
-          text: 'He holds it like a lost pet. "I could kiss you. Academically speaking."',
+          text: 'He holds it like a lost pet. "I could kiss you. Academically speaking."' + questHint(s, 'hart_book'),
           minutes: 5
         };
       }
     });
     if (id === 'rosa' && questStatus(state, 'rom_kit') === 'active' && !flag(state, 'rom_kit_rosa')) out.push({
       label: 'Ask about the moonflower patch',
-      icon: '❤️',
+      icon: '📜',
+      section: 'people',
+      time: 10,
+      effects: ['^+Quest progress'],
       run: function run(s) {
         setFlag(s, 'rom_kit_rosa');
+        checkQuests(s);
         return {
-          text: '"Behind the willows in the park. My late husband planted it. Tell that fox girl to water it, would you?"',
+          text: '"Behind the willows in the park. My late husband planted it. Tell that fox girl to water it, would you?"' + questHint(s, 'rom_kit'),
           minutes: 10
         };
       }
     });
     if (id === 'sam' && questStatus(state, 'rom_sam') === 'active' && has(state, 'sketchbook') && !flag(state, 'rom_sam_gift')) out.push({
       label: 'Give Sam the sketchbook',
-      icon: '❤️',
+      icon: '📜',
+      section: 'people',
+      time: 5,
+      effects: ['^+Quest progress'],
       run: function run(s) {
         ns(s).items.sketchbook--;
         setFlag(s, 'rom_sam_gift');
         changeAff(s, 'sam', 5);
+        checkQuests(s);
         return {
-          text: 'Sam hugs it to their chest. "Golden hour. The park. Don\'t be late."',
+          text: 'Sam hugs it to their chest. "Golden hour. The park. Don\'t be late."' + questHint(s, 'rom_sam'),
           minutes: 5
         };
       }
     });
     out.forEach(function (o) {
-      if (!o.icon) o.icon = '📌';
+      if (!o.icon) o.icon = '📜';
+      if (!o.section) o.section = 'people';
     });
     return out;
   }
@@ -8110,7 +8174,8 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         var t = talkingOptions(state);
         if (t) {
           res.dialogue = t.map(wrap);
-          res.actions = mo;
+          // Keep location quest Go-steps (and any present-talk beats for other NPCs here) available while conversing.
+          res.actions = mo.concat(locationActions(state).map(wrap));
           return res;
         }
       }

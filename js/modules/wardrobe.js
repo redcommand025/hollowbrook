@@ -520,7 +520,7 @@
         out.actions.push(opt((ACC.indexOf(slot) >= 0 ? 'Put on the ' : 'Wear the ') + d.name + (it.integ < 60 ? ' (worn)' : ''), function () {
           var note = wear(it.uid);
           return { text: '<p>' + line('wear' + slot, slot === 'shoes' ? ['You lace up the ' + esc(d.name) + '.', 'You step into the ' + esc(d.name) + ' and test them with a little bounce.', 'You sit on the edge of the bed and pull on the ' + esc(d.name) + '.'] : slot === 'outer' ? ['You shrug on the ' + esc(d.name) + '.', 'You pull on the ' + esc(d.name) + ' and pat the pockets out of habit.', 'You zip up the ' + esc(d.name) + ' and roll your shoulders.'] : ['You change into the ' + esc(d.name) + '.', 'You pull on the ' + esc(d.name) + ' and check the mirror.', 'You swap into the ' + esc(d.name) + ' and smooth it down.', 'The ' + esc(d.name) + ' goes on. You turn side to side in the mirror.']) + esc(note) + '</p><p>' + esc(describeOutfit()) + '</p>', minutes: slot === 'shoes' ? 2 : 4 };
-        }, { hint: d.desc }));
+        }, { hint: d.desc, time: slot === 'shoes' ? 2 : 4 }));
       });
       if (cur != null && drawerOf(slot) === (w.mode === 'wardrobe:acc' ? 'acc' : w.mode === 'wardrobe:under' ? 'under' : 'main')) {
         var cd = def(item(cur));
@@ -559,7 +559,7 @@
       G_().change('stats.needs.stress', -5);
       return { text: '<p>' + line('mend', ['You sit cross-legged on the bed with the sewing tin and patch up the worst of it. The stitches are not pretty, but they will hold.', 'You put on some music and mend by lamplight. You only stab yourself twice.', 'Thread, needle, patience. The repairs are lopsided but sturdy.']) + '</p>', minutes: 45 };
     }));
-    out.actions.push(opt(home ? 'Close the wardrobe' : 'Leave the fitting room', function () { w.mode = null; return { text: '<p>' + esc(describeOutfit()) + '</p>', minutes: 0 }; }));
+    out.actions.push(opt(home ? 'Close the wardrobe' : 'Leave the fitting room', function () { w.mode = null; return { text: '<p>' + esc(describeOutfit()) + '</p>', minutes: 0 }; }, { time: 0 }));
   }
 
   /* out in public without enough on: people notice, and reputation drops until you hide or get dressed */

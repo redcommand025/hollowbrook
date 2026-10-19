@@ -960,10 +960,6 @@
         var ev = tryEvent('idle');
         return { text: '<p>You let half an hour drift by.</p>' + (ev ? '<p>' + ev.text + '</p>' : ''), minutes: 30 };
       } });
-      opts.actions.push({ label: 'Wait', minutes: 60, run: function () {
-        var ev = tryEvent('idle');
-        return { text: '<p>An hour passes.</p>' + (ev ? '<p>' + ev.text + '</p>' : ''), minutes: 60 };
-      } });
 
       if (!l.indoor && ['rain', 'storm', 'drizzle'].indexOf(w.weather) >= 0) {
         opts.actions.push({ label: 'Shelter under an awning until it eases', minutes: 40, run: function () {
@@ -984,13 +980,9 @@
           ['Dairy', function () { return 'The chiller hums. Milk in three sizes, local butter in paper, eggs from the campus farm, and a cheese wedge someone has clearly put back in the wrong place.'; }],
           ['Drinks', function () { return 'Bottled water, fizzy drinks, juice cartons and a fridge of energy drinks with a "students: 2 for $3" sign taped crookedly to the door.'; }]
         ];
-        AISLES.forEach(function (a) {
-          opts.actions.push({ label: 'Browse the ' + a[0].toLowerCase() + ' aisle', minutes: 3, sub: 'Aisles', run: function () { return { text: '<p>' + a[1]() + '</p>', minutes: 3 }; } });
-        });
-        var q = 1 + Math.round(busy * 8);
-        opts.actions.push({ label: 'Queue at the checkout', minutes: q, sub: 'Aisles', run: function () {
-          var line = busy > 0.5 ? 'The queue snakes back past the magazines. Someone ahead is paying in coins.' : busy > 0.2 ? 'There are a couple of people ahead of you.' : 'There\'s nobody waiting, and the till beeps you straight through.';
-          return { text: '<p>' + line + ' The checkout has a bowl of lollipops and a charity tin for the animal shelter.</p>', minutes: q };
+        opts.actions.push({ label: 'Browse the aisles', minutes: 5, run: function () {
+          var two = AISLES.slice().sort(function () { return Math.random() - 0.5; }).slice(0, 2);
+          return { text: '<p>' + two[0][1]() + '</p><p>' + two[1][1]() + '</p><p>' + (busy > 0.5 ? 'The checkout queue snakes back past the magazines.' : busy > 0.2 ? 'A couple of people wait at the till.' : 'The till is quiet.') + '</p>', minutes: 5 };
         } });
       }
 
@@ -1019,10 +1011,9 @@
           G.change('money', -6); w.bikeFlat = false; return { text: '<p>The kiosk owner patches the tube in ten minutes flat, whistling.</p>', minutes: 15 };
         } });
       }
-      opts.other.push({ label: 'Check the forecast', minutes: 1, run: function () { return { text: '<p>You check the weather app. ' + forecastLine() + '</p>', minutes: 1 }; } });
-      opts.other.push({ label: 'Check the time and weather', minutes: 0, run: function () {
+      if (w.location === 'dorm_room') opts.other.push({ label: 'Check the weather app', minutes: 1, run: function () {
         return { text: '<p>It is ' + G.time.clock + ' on ' + G.time.weekday + ', day ' + G.time.dayOfSeason + ' of ' + G.time.season +
-          ' (' + partOfDay(G.time.hour) + ').</p><p>' + weatherLine() + '</p>', minutes: 0 };
+          '. ' + weatherLine() + '</p><p>' + forecastLine() + '</p>', minutes: 1 };
       } });
       opts.other.push({ label: 'Open the town map', minutes: 0, run: function () { return { text: mapHtml(), minutes: 0 }; } });
       return opts;

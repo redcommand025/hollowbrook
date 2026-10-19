@@ -233,7 +233,7 @@
       var out = { dialogue: [], actions: [], travel: [], other: [] };
       if (!state.creation || !state.creation.done || !P()) return out;
       var h = H(), hid = hereId(), tags = hereTags();
-      var atSalon = hid === SALON && isOpen(SALON), mirror = tags.indexOf('home') >= 0 || tags.indexOf('mirror') >= 0;
+      var atSalon = hid === SALON && isOpen(SALON), mirror = tags.indexOf('home') >= 0;   // mirror actions only in your dorm room
       if ((h.mode === 'cut' || h.mode === 'dye') && !atSalon) h.mode = null;
       if ((h.mode === 'style' || h.mode === 'makeup') && !mirror) h.mode = null;
       if (h.mode === 'makeup') { makeupOptions(out); return out; }

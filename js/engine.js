@@ -19,7 +19,7 @@
     try {
       var bar = document.getElementById('errbar');
       if (!bar) { bar = document.createElement('div'); bar.id = 'errbar'; bar.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:5000;background:#5a1d1d;color:#fff;font:12px system-ui;padding:6px 10px;white-space:pre-wrap'; document.body.appendChild(bar); }
-      bar.textContent = 'Something broke: ' + e.message + ' (' + String(e.filename || '').split('/').pop().split('?')[0] + ':' + e.lineno + ':' + (e.colno || 0) + ') [build 20261019h]. Please tell the developers.';
+      bar.textContent = 'Something broke: ' + e.message + ' (' + String(e.filename || '').split('/').pop().split('?')[0] + ':' + e.lineno + ':' + (e.colno || 0) + ') [build 20261019i]. Please tell the developers.';
     } catch (x) {}
   });
   var memStore = {};
@@ -189,6 +189,41 @@
     return all;
   }
 
+
+  /* Priority sections for options. Modules may set o.section to one of these ids; otherwise it is guessed from the label. */
+  var SECTIONS = [['now', 'Right now'], ['needs', 'Needs'], ['here', 'Here'], ['people', 'People'], ['shop', 'Shop'], ['self', 'You'], ['travel', 'Travel']];
+  G.SECTIONS = SECTIONS;
+  var RX = {
+    now: /\b(attend|go to class|join (the )?class|lecture|seminar|exam|start (your |a )?shift|clock in|work (a|your) shift|ask for work|sit (the|your) test|catch the bus)\b/i,
+    needs: /\b(pee|poo|toilet|restroom stall|use the (restroom|bathroom|toilet)|somewhere to (pee|go)|in your brief|cover yourself|hide|throw away ruined|rinse out|change (into|your) (brief|diaper|clothes)|sleep|nap|eat |drink |wake up|get dressed|put your clothes)\b/i,
+    shop: /\b(buy|browse (the )?(racks|shelves|aisles|menu|stock)|sell|shop|checkout|queue at|order|pay for|aisle|rack)\b|\(\$\d/i,
+    self: /\b(mirror|forecast|wardrobe|journal|phone|your bag|inventory|makeup|restyle|laundry|mend|sew|check yourself|your room|decorate)\b/i
+  };
+  var SUBSEC = { 'Groceries': 'shop', 'Aisles': 'shop', 'Your groceries': 'needs', 'Go to': 'travel', 'Travel to': 'travel' };
+  function sectionOf(o, k) {
+    if (o.section) return o.section === 'top' ? 'now' : o.section;
+    if (o.priority === 'top' || o.urgent) return 'now';
+    if (k === 'travel') return 'travel';
+    if (k === 'dialogue') return 'people';
+    if (o.sub && SUBSEC[o.sub]) return SUBSEC[o.sub];
+    var l = String(o.label || '').replace(/<[^>]+>/g, '');
+    if (/\b(lift|pickpocket|shoplift|steal|pocket)\b/i.test(l)) return 'here';
+    if (RX.now.test(l)) return 'now';
+    if (RX.needs.test(l)) return 'needs';
+    if (RX.shop.test(l)) return 'shop';
+    if (RX.self.test(l)) return 'self';
+    if (/^(talk|chat|ask|flirt|hang out|text|call|greet|give|hug|kiss|date)\b/i.test(l)) return 'people';
+    return 'here';
+  }
+  function dormOnly(o) {
+    if (o.anywhere) return false;
+    var l = String(o.label || '');
+    return /\bmirror\b|reflection|forecast/i.test(l) && !/fitting room|salon/i.test(l);
+  }
+  function inDorm() {
+    var loc = (G.state.world && G.state.world.location) || '';
+    return /^dorm_room$|^home_/.test(loc);
+  }
   var current = {};
   /* Persistent banners: modules register fn() -> html or null; shown above the story every render. */
   var banners = [];
@@ -203,13 +238,20 @@
     if (!started) return;
     renderBanners();
     current = collectOptions();
-    var titles = { dialogue: 'Dialogue', actions: 'Actions', travel: 'Travel', other: 'Other' };
     var html = '', visibleN = 0, hints = !G.settings || G.settings.numberHints !== false;
-    Object.keys(titles).forEach(function (k) {
-      if (!current[k].length) return;
-      html += '<section class="optgroup"><h3>' + titles[k] + ':</h3><ul>';
-      var lastSub = null;
+    var buckets = {}; SECTIONS.forEach(function (sec) { buckets[sec[0]] = []; });
+    ['dialogue', 'actions', 'other', 'travel'].forEach(function (k) {
       current[k].forEach(function (o, i) {
+        if (dormOnly(o) && !inDorm()) return;
+        var sec = sectionOf(o, k); (buckets[sec] || buckets.here).push({ o: o, k: k, i: i });
+      });
+    });
+    SECTIONS.forEach(function (sec) {
+      var list = buckets[sec[0]]; if (!list.length) return;
+      html += '<section class="optgroup sec-' + sec[0] + '"><h3>' + sec[1] + ':</h3><ul>';
+      var lastSub = null;
+      list.forEach(function (it) {
+        var o = it.o, k = it.k, i = it.i;
         if (o.sub && o.sub !== lastSub) { html += '</ul><h4 class="optsub">' + esc(o.sub) + ':</h4><ul>'; lastSub = o.sub; }
         var lbl = o.label, tv = [o.time, o.mins, o.minutes].filter(function (v) { return v !== undefined && v !== null; })[0], tm = null;
         if (typeof tv === 'function') { try { tv = tv(G.state); } catch (e) { tv = null; } }

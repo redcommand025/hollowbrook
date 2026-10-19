@@ -100,3 +100,8 @@ Every option should declare `minutes` (aliases `mins`, `time`; a number or a fun
 - Bulk grows as a brief fills: +1 at 50%, +1 more at 85%, and cloth grows by 1 at most. Plastic gets one step louder at 50%.
 - Hooks: `briefFill()` (0..1), `briefBulk()`, `briefNoise()`, `briefWeight()` (lb), `briefVisible()` (bulk is greater than `conceal('lower')`), and `briefs(id?)` for stock.
 - `stats.clothing.diaperFill` is the fill as a percentage.
+
+## Action sections (priority order)
+The engine groups every option into sections, top to bottom: `now` (Right now: class, shifts), `needs`, `here`, `people`, `shop`, `self` (You), `travel`.
+Set `section: 'now'|'needs'|'here'|'people'|'shop'|'self'|'travel'` on an option to place it; otherwise it is guessed from the label, `sub`, and its group (`dialogue` goes to People, `travel` goes to Travel). `priority: 'top'` or `urgent: true` also puts it in Right now.
+Mirror and forecast options only show in the dorm room (set `anywhere: true` to override).

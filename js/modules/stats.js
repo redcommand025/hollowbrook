@@ -939,7 +939,7 @@
         return { text: '<p>' + flav('meditate') + '</p>', minutes: 30 };
       }));
     }
-    if (hereHas('mirror') || home === true || home === null) {
+    if (home === true || home === null) { // mirror actions only in your dorm room (Red: less clutter)
       out.actions.push(opt('Take time on your appearance', function () {
         train('beauty', 12); chg('needs.stress', -15);
         return { text: '<p>' + flav('groom') + '</p>', minutes: 30 };
@@ -966,7 +966,7 @@
       }));
     }
     groceryOptions(out, n, home);
-    out.other.push(opt('Check yourself over', function () { return { text: selfDescription(), minutes: 1 }; }));
+    if (home === true || home === null) out.other.push(opt('Check yourself over in the mirror', function () { return { text: selfDescription(), minutes: 1 }; }));
     return out;
   }
 

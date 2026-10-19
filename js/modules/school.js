@@ -1086,8 +1086,8 @@
           o.actions.push({ label: 'Sit your ' + (s.examType === 'finals' ? 'finals' : 'midterms'), run: function (st) { return sitExam(st); } });
           o.actions.push({ label: 'Skip the exam', run: function (st) { return skipExam(st); } });
         } else if (c && !suspended && !s.attendedKeys[classKey(c)]) {
-          o.actions.push({ label: 'Attend ' + SUBJECTS[c.subj].name + (c.late ? ' (late)' : ''), run: function (st) { return attend(st, false); } });
-          o.actions.push({ label: 'Focus hard in ' + SUBJECTS[c.subj].name, run: function (st) { return attend(st, true); } });
+          o.actions.unshift({ priority: 100, pin: true, label: 'Attend ' + SUBJECTS[c.subj].name + (c.late ? ' (late)' : ''), run: function (st) { return attend(st, false); } });
+          o.actions.splice(1, 0, { priority: 99, pin: true, label: 'Focus hard in ' + SUBJECTS[c.subj].name, run: function (st) { return attend(st, true); } });
           o.actions.push({ label: 'Nap at the back', run: sleepInClass });
           o.dialogue.push({ label: 'Ask ' + teacherName(c.subj) + ' a question', run: function () {
             grade(c.subj, 1); return { text: '<p>You raise your hand. ' + teacherName(c.subj) + ' looks pleased someone was listening.</p>', minutes: 5 };

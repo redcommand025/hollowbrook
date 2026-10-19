@@ -483,6 +483,8 @@
     },
     onTick: function () {},
     getOptions: function (state) {
+      var wd = window.G && G.world, tg = wd && wd.here ? ((wd.here() || {}).tags || []) : [];
+      if (tg.indexOf('home') < 0) return { dialogue: [], actions: [], travel: [], other: [] };   // the mirror is in your dorm room
       return { dialogue: [], actions: [], travel: [], other: [{
         label: 'Look in a mirror',
         run: function (st) {

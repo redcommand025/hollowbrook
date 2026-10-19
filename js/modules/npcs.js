@@ -6292,6 +6292,8 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
           }
         };
         if (tm) w.time = tm;
+        w.section = o.section || 'people';
+        if (o.sub) w.sub = o.sub;
         return w;
       };
       if (ns(state).talking) {
@@ -6333,6 +6335,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       var here = present(state);
       if (here.length) res.other.push({
         time: 1,
+        section: 'people',
         label: "Look around (" + here.length + " familiar face" + (here.length > 1 ? 's' : '') + ")",
         run: function run(s) {
           var pairs = pairScenes(s, here);

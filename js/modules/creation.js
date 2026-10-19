@@ -486,16 +486,17 @@
       var wd = window.G && G.world, tg = wd && wd.here ? ((wd.here() || {}).tags || []) : [];
       if (tg.indexOf('home') < 0) return { dialogue: [], actions: [], travel: [], other: [] };   // the mirror is in your dorm room
       return { dialogue: [], actions: [], travel: [], other: [{
-        label: 'Look in a mirror',
+        label: 'Look in a mirror', time: 1,
         run: function (st) {
           var p = st.creation.player;
-          return { text: '<div style="float:right;margin:0 0 8px 12px">' + paperdollSVG(p) + '</div><p>You catch your reflection. ' + esc(describe(p)) + '</p>' + (window.Salon && Salon.hairNote ? '<p>' + esc(Salon.hairNote()) + '</p>' : ''), minutes: 1 };
+          return { text: '<div style="float:right;margin:0 0 8px 12px">' + paperdollSVG(p) + '</div><p>You catch your reflection. ' + esc(describe(p)) + '</p>' + (window.Salon && Salon.hairNote ? '<p>' + esc(Salon.hairNote()) + '</p>' : '') + (function () { try { return G.stats && G.stats.selfDescription ? G.stats.selfDescription() : ''; } catch (e) { return ''; } })(), minutes: 1 };
         }
       }] };
     }
   };
 
   window.Creation = { open: open, paperdollSVG: paperdollSVG, describe: describe, npcLook: npcLook, OPTIONS: OPT, module: mod };
+  (function (gofn, pick) { mod.getOptions = function (state) { var out = gofn.apply(this, arguments); if (out) ['actions', 'other', 'dialogue'].forEach(function (k) { (out[k] || []).forEach(function (o) { if (o && !o.section) o.section = pick(o, state); }); }); return out; }; })(mod.getOptions, function () { return 'self'; });
   if (window.G && typeof window.G.register === 'function') window.G.register(mod);
   if (window.G && typeof window.G.addTab === 'function') window.G.addTab({
     id: 'appearance', label: 'Appearance', order: 5,

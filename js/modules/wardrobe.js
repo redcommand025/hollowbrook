@@ -676,6 +676,7 @@
       desc: 'A narrow clothing shop with creaky floorboards, racks sorted by colour, and a velvet-curtained fitting room. The owner hums along to the radio.'
     }, [['shopping_centre', 1]]);
 
+  (function (gofn, pick) { mod.getOptions = function (state) { var out = gofn.apply(this, arguments); if (out) ['actions', 'other', 'dialogue'].forEach(function (k) { (out[k] || []).forEach(function (o) { if (o && !o.section) o.section = pick(o, state); }); }); return out; }; })(mod.getOptions, function (o, st) { var l = o.label || '', m = (st.wardrobe && st.wardrobe.mode) || ''; if (/^Buy /.test(l)) return 'shop'; if (/brief|diaper|hide|out of sight/i.test(l)) return 'needs'; if (m.indexOf('shop') === 0 || /^(Browse|Check the clearance|Sell|Have your|Step back|Use the fitting room|Leave the fitting room)/.test(l)) return 'shop'; return 'self'; });
     g.register(mod);
     if (g.on) {
       g.on('start', function (state) { ensure(state); giveStarter(state); });

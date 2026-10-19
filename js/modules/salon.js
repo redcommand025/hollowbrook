@@ -250,6 +250,7 @@
       name: 'Snip & Curl Salon', district: 'Shopping Centre', indoor: true, open: [9, 18], tags: ['mirror', 'public'],
       desc: 'Three chairs, a wall of mirrors, a shelf of dye swatches in every shade, and a radio tuned to golden oldies.'
     }, [['shopping_centre', 1]]);
+  (function (gofn, pick) { mod.getOptions = function (state) { var out = gofn.apply(this, arguments); if (out) ['actions', 'other', 'dialogue'].forEach(function (k) { (out[k] || []).forEach(function (o) { if (o && !o.section) o.section = pick(o, state); }); }); return out; }; })(mod.getOptions, function (o, st) { return /\(\$\d+\)|binder|colours|haircut|Never mind/.test(o.label || '') ? 'shop' : 'self'; });
     g.register(mod);
     if (g.on) {
       g.on('start', function () { if (P()) H(); });

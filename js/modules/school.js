@@ -1035,6 +1035,22 @@
     [/^Spend time with the animals/, 30], [/^Check the hen coop/, 15], [/^Look over your plots/, 3],
     [/help herd the goats/, 30], [/explore the farm/, 20], [/^Share some of your vegetables/, 5]
   ];
+  // engine sections (CONTRACT.md: now|needs|here|people|shop|self|travel)
+  var SECT = [
+    [/^(Attend |Focus hard in |Sit (the|your) |Work a \d-hour|Join in with |Take part in |Work off community service|Run a farmers|Run .*stall)/, 'now'],
+    [/^(Join |Leave |Browse the club fair board)/, 'here', 'Clubs'],
+    [/^Quit your job/, 'self'],
+    [/^Sell your produce|^Sell .* to /, 'shop']
+  ];
+  function tagSections(opts) {
+    ['dialogue', 'actions', 'other'].forEach(function (g) {
+      (opts[g] || []).forEach(function (o) {
+        if (!o || o.section || typeof o.label !== 'string') return;
+        for (var i = 0; i < SECT.length; i++) if (SECT[i][0].test(o.label)) { if (g !== 'dialogue' || SECT[i][1] === 'now') o.section = SECT[i][1]; if (SECT[i][2] && !o.sub) o.sub = SECT[i][2]; return; }
+      });
+    });
+    return opts;
+  }
   function addMins(opts) {
     ['dialogue', 'actions', 'travel', 'other'].forEach(function (g) {
       (opts[g] || []).forEach(function (o) {
@@ -1086,8 +1102,8 @@
           o.actions.push({ label: 'Sit your ' + (s.examType === 'finals' ? 'finals' : 'midterms'), run: function (st) { return sitExam(st); } });
           o.actions.push({ label: 'Skip the exam', run: function (st) { return skipExam(st); } });
         } else if (c && !suspended && !s.attendedKeys[classKey(c)]) {
-          o.actions.unshift({ priority: 100, pin: true, label: 'Attend ' + SUBJECTS[c.subj].name + (c.late ? ' (late)' : ''), run: function (st) { return attend(st, false); } });
-          o.actions.splice(1, 0, { priority: 99, pin: true, label: 'Focus hard in ' + SUBJECTS[c.subj].name, run: function (st) { return attend(st, true); } });
+          o.actions.unshift({ section: 'now', pin: true, label: 'Attend ' + SUBJECTS[c.subj].name + (c.late ? ' (late)' : ''), run: function (st) { return attend(st, false); } });
+          o.actions.splice(1, 0, { section: 'now', pin: true, label: 'Focus hard in ' + SUBJECTS[c.subj].name, run: function (st) { return attend(st, true); } });
           o.actions.push({ label: 'Nap at the back', run: sleepInClass });
           o.dialogue.push({ label: 'Ask ' + teacherName(c.subj) + ' a question', run: function () {
             grade(c.subj, 1); return { text: '<p>You raise your hand. ' + teacherName(c.subj) + ' looks pleased someone was listening.</p>', minutes: 5 };
@@ -1261,7 +1277,7 @@
 
   function boot() {
     if (!window.G || !G.register) return setTimeout(boot, 50);
-    var _go = mod.getOptions; mod.getOptions = function (st) { return addMins(_go.call(mod, st) || {}); };
+    var _go = mod.getOptions; mod.getOptions = function (st) { return tagSections(addMins(_go.call(mod, st) || {})); };
     G.register(mod);
     if (G.world && G.world.addLocation && !(G.world.location && G.world.location('deans_office'))) G.world.addLocation('deans_office', {
       name: "Dean's Office", district: 'Campus', indoor: true, open: [8, 17], restroom: false,

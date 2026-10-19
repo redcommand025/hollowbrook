@@ -966,7 +966,7 @@
       }));
     }
     groceryOptions(out, n, home);
-    if (home === true || home === null) out.other.push(opt('Check yourself over in the mirror', function () { return { text: selfDescription(), minutes: 1 }; }));
+    // the mirror self-check now lives in Lucy's 'Look in a mirror' (creation.js), which can call G.stats.selfDescription()
     return out;
   }
 

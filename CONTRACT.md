@@ -102,6 +102,7 @@ Every option should declare `minutes` (aliases `mins`, `time`; a number or a fun
 - `stats.clothing.diaperFill` is the fill as a percentage.
 
 ## Action sections (priority order)
-The engine groups every option into sections, top to bottom: `now` (Right now: class, shifts), `needs`, `here`, `people`, `shop`, `self` (You), `travel`.
+The engine groups every option into sections, top to bottom: `now` (Right now: class, shifts), `needs`, `here`, `people`, `shop`, `self` (Getting ready), `travel`.
 Set `section: 'now'|'needs'|'here'|'people'|'shop'|'self'|'travel'` on an option to place it; otherwise it is guessed from the label, `sub`, and its group (`dialogue` goes to People, `travel` goes to Travel). `priority: 'top'` or `urgent: true` also puts it in Right now.
 Mirror and forecast options only show in the dorm room (set `anywhere: true` to override).
+Within a section, a numeric `priority` sorts higher first; `pin: true` or `priority >= 90` puts it in Right now.

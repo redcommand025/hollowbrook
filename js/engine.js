@@ -19,7 +19,7 @@
     try {
       var bar = document.getElementById('errbar');
       if (!bar) { bar = document.createElement('div'); bar.id = 'errbar'; bar.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:5000;background:#5a1d1d;color:#fff;font:12px system-ui;padding:6px 10px;white-space:pre-wrap'; document.body.appendChild(bar); }
-      bar.textContent = 'Something broke: ' + e.message + ' (' + String(e.filename || '').split('/').pop().split('?')[0] + ':' + e.lineno + ':' + (e.colno || 0) + ') [build 20261019i]. Please tell the developers.';
+      bar.textContent = 'Something broke: ' + e.message + ' (' + String(e.filename || '').split('/').pop().split('?')[0] + ':' + e.lineno + ':' + (e.colno || 0) + ') [build 20261019l]. Please tell the developers.';
     } catch (x) {}
   });
   var memStore = {};
@@ -191,7 +191,7 @@
 
 
   /* Priority sections for options. Modules may set o.section to one of these ids; otherwise it is guessed from the label. */
-  var SECTIONS = [['now', 'Right now'], ['needs', 'Needs'], ['here', 'Here'], ['people', 'People'], ['shop', 'Shop'], ['self', 'You'], ['travel', 'Travel']];
+  var SECTIONS = [['now', 'Right now'], ['needs', 'Needs'], ['here', 'Here'], ['people', 'People'], ['shop', 'Shop'], ['self', 'Getting ready'], ['travel', 'Travel']];
   G.SECTIONS = SECTIONS;
   var RX = {
     now: /\b(attend|go to class|join (the )?class|lecture|seminar|exam|start (your |a )?shift|clock in|work (a|your) shift|ask for work|sit (the|your) test|catch the bus)\b/i,
@@ -202,7 +202,7 @@
   var SUBSEC = { 'Groceries': 'shop', 'Aisles': 'shop', 'Your groceries': 'needs', 'Go to': 'travel', 'Travel to': 'travel' };
   function sectionOf(o, k) {
     if (o.section) return o.section === 'top' ? 'now' : o.section;
-    if (o.priority === 'top' || o.urgent) return 'now';
+    if (o.priority === 'top' || o.urgent || o.pin || (typeof o.priority === 'number' && o.priority >= 90)) return 'now';
     if (k === 'travel') return 'travel';
     if (k === 'dialogue') return 'people';
     if (o.sub && SUBSEC[o.sub]) return SUBSEC[o.sub];
@@ -248,6 +248,7 @@
     });
     SECTIONS.forEach(function (sec) {
       var list = buckets[sec[0]]; if (!list.length) return;
+      list = list.map(function (it, n) { it.n = n; return it; }).sort(function (a, b) { var pa = typeof a.o.priority === 'number' ? a.o.priority : 0, pb = typeof b.o.priority === 'number' ? b.o.priority : 0; return pb - pa || a.n - b.n; });
       html += '<section class="optgroup sec-' + sec[0] + '"><h3>' + sec[1] + ':</h3><ul>';
       var lastSub = null;
       list.forEach(function (it) {

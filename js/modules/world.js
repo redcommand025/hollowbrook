@@ -361,7 +361,7 @@
         return { text: '<p>You order the ' + it.name.toLowerCase() + '. ' + it.text + '</p>', minutes: 15 };
       } });
     });
-    out.push({ label: 'Never mind', minutes: 0, run: function () { W().menuOpen = null; return { text: '<p>You put the menu back.</p>', minutes: 0 }; } });
+    out.push({ label: 'Never mind', minutes: 0, section: 'shop', run: function () { W().menuOpen = null; return { text: '<p>You put the menu back.</p>', minutes: 0 }; } });
     return out;
   }
   function applyFx(fx) { Object.keys(fx || {}).forEach(function (k) { G.change(k, fx[k]); }); }
@@ -933,7 +933,7 @@
       if (w.menuOpen && (w.menuOpen !== w.location || !isOpen(w.location))) w.menuOpen = null;
       if (w.menuOpen) { opts.actions = menuOptions(w.menuOpen); return opts; }
       if (MENUS[w.location] && isOpen(w.location)) {
-        opts.actions.push({ label: 'Look at the menu', minutes: 1, run: function () {
+        opts.actions.push({ label: 'Look at the menu', minutes: 1, section: 'shop', run: function () {
           w.menuOpen = w.location;
           var m = MENUS[w.location], lines = m.items.filter(function (it) { return !it.hours || (G.time.hour >= it.hours[0] && G.time.hour < it.hours[1]); })
             .map(function (it) { return it.name + ', $' + it.price; });
@@ -980,7 +980,7 @@
           ['Dairy', function () { return 'The chiller hums. Milk in three sizes, local butter in paper, eggs from the campus farm, and a cheese wedge someone has clearly put back in the wrong place.'; }],
           ['Drinks', function () { return 'Bottled water, fizzy drinks, juice cartons and a fridge of energy drinks with a "students: 2 for $3" sign taped crookedly to the door.'; }]
         ];
-        opts.actions.push({ label: 'Browse the aisles', minutes: 5, run: function () {
+        opts.actions.push({ label: 'Browse the aisles', minutes: 5, section: 'shop', run: function () {
           var two = AISLES.slice().sort(function () { return Math.random() - 0.5; }).slice(0, 2);
           return { text: '<p>' + two[0][1]() + '</p><p>' + two[1][1]() + '</p><p>' + (busy > 0.5 ? 'The checkout queue snakes back past the magazines.' : busy > 0.2 ? 'A couple of people wait at the till.' : 'The till is quiet.') + '</p>', minutes: 5 };
         } });
@@ -1011,11 +1011,11 @@
           G.change('money', -6); w.bikeFlat = false; return { text: '<p>The kiosk owner patches the tube in ten minutes flat, whistling.</p>', minutes: 15 };
         } });
       }
-      if (w.location === 'dorm_room') opts.other.push({ label: 'Check the weather app', minutes: 1, run: function () {
+      if (w.location === 'dorm_room') opts.other.push({ label: 'Check the weather app', minutes: 1, section: 'self', run: function () {
         return { text: '<p>It is ' + G.time.clock + ' on ' + G.time.weekday + ', day ' + G.time.dayOfSeason + ' of ' + G.time.season +
           '. ' + weatherLine() + '</p><p>' + forecastLine() + '</p>', minutes: 1 };
       } });
-      opts.other.push({ label: 'Open the town map', minutes: 0, run: function () { return { text: mapHtml(), minutes: 0 }; } });
+      opts.other.push({ label: 'Open the town map', minutes: 0, section: 'self', run: function () { return { text: mapHtml(), minutes: 0 }; } });
       return opts;
     }
   };

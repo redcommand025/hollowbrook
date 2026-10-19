@@ -101,10 +101,14 @@
     // ----- outfit (from wardrobe.js when present) -----
     var o = outfit || (window.Wardrobe && Wardrobe.spriteOutfit ? Wardrobe.spriteOutfit(p) : null) ||
       { top: { kind: 'tee', color: shirt }, bottom: { kind: 'pants', color: pants }, shoes: { kind: 'sneakers', color: shoes } };
-    var topC = o.top.color, botC = o.bottom.color, shoeC = (o.shoes || {}).color || shoes;
-    if ((o.wetU || 0) > 40) topC = shade(topC, 0.8);
-    if ((o.wetL || 0) > 40) botC = shade(botC, 0.8);
-    var tk = o.top.kind, bk = o.bottom.kind, sk = (o.shoes || {}).kind || 'sneakers', ok = o.outer ? o.outer.kind : null;
+    // no top / no bottom: bare skin, with any under layer showing (wardrobe.js lets you undress)
+    var uT = o.under_top, uB = o.under_bottom, deg = o.deg || {};
+    var topPiece = o.top || (uT ? { kind: 'tank', color: uT.color } : { kind: 'bare', color: skin });
+    var botPiece = o.bottom || { kind: 'bare', color: skin };
+    var topC = topPiece.color, botC = botPiece.color, shoeC = (o.shoes || {}).color || shoes;
+    if (o.top && (o.wetU || 0) > 40) topC = shade(topC, (o.wetU || 0) >= 90 ? 0.68 : 0.8);
+    if (o.bottom && (o.wetL || 0) > 40) botC = shade(botC, (o.wetL || 0) >= 90 ? 0.68 : 0.8);
+    var tk = topPiece.kind, bk = botPiece.kind, sk = o.shoes ? o.shoes.kind || 'sneakers' : 'none', ok = o.outer ? o.outer.kind : null;
     var lhw = hip;
 
     // hood behind the head
@@ -119,9 +123,16 @@
       for (var x2 = 14; x2 <= 12 + lhw; x2++) px(x2, y4, x2 === 12 + lhw ? shade(legCol, 0.78) : legCol);
     }
     if (skirtRows) for (var sr = 0; sr < skirtRows; sr++) span(ly + sr, Math.min(lhw + 1 + (sr >> 1), lhw + 3), sr === skirtRows - 1 ? shade(botC, 0.85) : botC, true);
+    // underwear when there are no bottoms over it
+    if (!o.bottom && uB) {
+      var bRows = uB.kind === 'brief' ? 4 : 3, bW = lhw + (uB.kind === 'brief' ? 1 : 0);
+      for (var ub = 0; ub < bRows; ub++) span(ly + ub, bW, ub === bRows - 1 ? shade(uB.color, 0.85) : uB.color, true);
+      if (uB.wet > 40) { px(12, ly + 1, shade(uB.color, 0.75)); px(13, ly + 1, shade(uB.color, 0.75)); px(12, ly + 2, shade(uB.color, 0.75)); px(13, ly + 2, shade(uB.color, 0.75)); }
+    }
     // shoes
     var sL = 13 - lhw - 1, sLw = lhw, sR = 14, sRw = lhw;
-    if (sk === 'boots') { rect(sL, ly + legLen - 2, sLw, 4, shoeC); rect(sR, ly + legLen - 2, sRw, 4, shoeC); }
+    if (sk === 'none') { rect(sL, ly + legLen, sLw, 1, shade(skin, 0.9)); rect(sR, ly + legLen, sRw, 1, shade(skin, 0.9)); }
+    else if (sk === 'boots') { rect(sL, ly + legLen - 2, sLw, 4, shoeC); rect(sR, ly + legLen - 2, sRw, 4, shoeC); }
     else if (sk === 'flats') { rect(sL + 1, ly + legLen, sLw - 1, 1, skin); rect(sR, ly + legLen, sRw - 1, 1, skin); rect(sL, ly + legLen + 1, sLw, 1, shoeC); rect(sR, ly + legLen + 1, sRw, 1, shoeC); }
     else { rect(sL, ly + legLen, sLw, 1, shoeC); rect(sR, ly + legLen, sRw, 1, shoeC); rect(sL, ly + legLen + 1, sLw, 1, '#eeeeee'); rect(sR, ly + legLen + 1, sRw, 1, '#e0e0e0'); }
 
@@ -139,7 +150,7 @@
     if (tk === 'hoodie') { for (var pk = 10; pk <= 15; pk++) px(pk, ty + 9, shade(topC, 0.8)); px(11, ty + 1, '#dddddd'); px(14, ty + 1, '#dddddd'); px(11, ty + 2, '#dddddd'); px(14, ty + 2, '#dddddd'); }
     if (bk === 'overalls') { for (var oy = 4; oy < 14; oy++) for (var ox = 10; ox <= 15; ox++) px(ox, ty + oy, botC); for (var st2 = 0; st2 < 4; st2++) { px(10, ty + st2, botC); px(15, ty + st2, botC); } px(10, ty + 4, '#c9b25a'); px(15, ty + 4, '#c9b25a'); }
     // arms / sleeves
-    var sleeve = { tank: 0, tee: 4 }[tk]; if (sleeve === undefined) sleeve = 11;
+    var sleeve = { tank: 0, tee: 4, bare: 0 }[tk]; if (sleeve === undefined) sleeve = 11;
     var outC = o.outer ? o.outer.color : null;
     if (outC) sleeve = 11;
     for (var a = 0; a < 13; a++) {
@@ -154,8 +165,23 @@
       px(11, ty, shade(outC, 1.15)); px(14, ty, shade(outC, 1.15));
     }
     // wear and tear
-    if ((o.integU != null && o.integU < 40)) { px(10, ty + 6, skin); px(15, ty + 10, skin); if (o.integU < 20) px(11, ty + 11, skin); }
-    if ((o.integL != null && o.integL < 40) && !skirtRows) { px(13 - lhw, ly + 6, skin); px(12 + lhw - 1, ly + 9, skin); }
+    // wear and tear by how much integrity is left (fraction of the item's maximum): frayed threads, then holes, then rags
+    function wearOn(d, spots, base) {
+      if (!d || d.f == null) return;
+      var f = d.f, n = f < 0.2 ? spots.length : f < 0.4 ? Math.ceil(spots.length * 0.6) : f < 0.7 ? Math.ceil(spots.length * 0.3) : 0;
+      for (var q = 0; q < n; q++) px(spots[q][0], spots[q][1], f < 0.4 ? skin : shade(base, 1.25));
+    }
+    if (o.top) wearOn(deg.top, [[10, ty + 6], [15, ty + 10], [11, ty + 11], [14, ty + 3], [9, ty + 9], [16, ty + 5]], topC);
+    if (o.bottom && !skirtRows) wearOn(deg.bottom, [[13 - lhw, ly + 6], [12 + lhw - 1, ly + 9], [11, ly + 3], [14, ly + 11], [13 - lhw + 1, ly + 10]], botC);
+    if (o.bottom && skirtRows) wearOn(deg.bottom, [[11, ly + 2], [14, ly + 4], [10, ly + 1]], botC);
+    if (outC) wearOn(deg.outer, [[13 - sh - 2, ty + 7], [12 + sh + 1, ty + 4], [13 - sh - 1, ty + 10], [12 + sh + 2, ty + 9]], outC);
+    // soaked through: darker drips at the hems
+    if (o.top && (o.wetU || 0) >= 90) { px(11, ty + 13, shade(topC, 0.7)); px(14, ty + 13, shade(topC, 0.7)); }
+    if (o.bottom && (o.wetL || 0) >= 90 && !skirtRows) { px(13 - lhw + 1, ly + legLen - 2, shade(botC, 0.7)); px(12 + lhw - 1, ly + legLen - 3, shade(botC, 0.7)); }
+    // soiled bottoms: a faint stain at the seat
+    if (o.bottom && deg.bottom && deg.bottom.soiled) { px(12, ly + 1, shade(botC, 0.72)); px(13, ly + 1, shade(botC, 0.72)); px(12, ly + 2, shade(botC, 0.8)); }
+    // grimy clothes worn for days look dull at the edges
+    if (o.top && deg.top && deg.top.days >= 2) { px(13 - tw[13], ty + 13, shade(topC, 0.85)); px(12 + tw[13], ty + 13, shade(topC, 0.7)); }
 
     // neck + head
     span(hy + 12, 2, shade(skin, 0.85)); span(hy + 13, 2, shade(skin, 0.85));
@@ -212,6 +238,9 @@
       });
     });
     Object.keys(out).forEach(function (k) { grid[k] = OUT; });
+    // censor bars: nothing covering your chest or your lower half
+    if (o.bareUpper && p.appearance !== 'male') for (var cy1 = ty + 3; cy1 <= ty + 6; cy1++) for (var cx1 = 13 - sh; cx1 <= 12 + sh; cx1++) grid[cx1 + ',' + cy1] = '#000000';
+    if (o.bareLower) for (var cy2 = ly - 2; cy2 <= ly + 2; cy2++) for (var cx2 = 13 - lhw; cx2 <= 12 + lhw; cx2++) grid[cx2 + ',' + cy2] = '#000000';
 
     // merge horizontal runs into rects
     var rects = '';

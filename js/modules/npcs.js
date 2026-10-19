@@ -710,6 +710,46 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       loc: 'church'
     }]
   }, {
+    id: 'dunn',
+    name: 'Officer Dunn',
+    group: 'Neighbors',
+    age: 46,
+    role: 'Town constable, on foot patrol around the town centre',
+    defaults: {
+      gender: 'penis',
+      appearance: 'male'
+    },
+    blurb: 'Rain cape, a notebook he actually writes in, and a Thermos of tea that has outlasted three police chiefs.',
+    likes: ['kindness', 'fitness'],
+    gifts: {
+      coffee: 2,
+      pastry: 2,
+      sandwich: 1,
+      chocolate: 1,
+      flowers: -1
+    },
+    schedule: [{
+      days: WEEKDAYS,
+      from: 9,
+      to: 13,
+      loc: 'town_square'
+    }, {
+      days: WEEKDAYS,
+      from: 13,
+      to: 17,
+      loc: 'main_street'
+    }, {
+      days: WEEKDAYS,
+      from: 17,
+      to: 20,
+      loc: 'park'
+    }, {
+      days: [5, 6],
+      from: 11,
+      to: 18,
+      loc: 'town_square'
+    }]
+  }, {
     id: 'fen',
     name: 'Fen',
     group: 'Non-Human',
@@ -3453,6 +3493,50 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     }
   });
   RELATIONS.push(['dot', 'rosa', 'friends', 'Rosa and Dot have done the Sunday crossword together for twenty years.'], ['dot', 'marcus', 'friends', 'Marcus owns the Grocer, but everyone knows Dot runs it. They bicker like an old married couple.'], ['dot', 'jules', 'friends', 'Jules bakes the bread Dot sells, and Dot pretends not to know Jules eats half of it.']);
+  // ---------- Officer Dunn, town constable ----------
+  Object.assign(SMALLTALK, {
+    dunn: {
+      cold: ['"Keep your nose clean and we\'ll get along fine."'],
+      neutral: ['"Afternoon. Mind the cobbles, they\'re slick after rain."', '"Student? Lock your bike. Twice."', '"Quiet day. I like quiet days."'],
+      friendly: ['"If anyone gives you bother on the late bus, you tell me."', 'He offers you a cup of tea from his Thermos. It is extremely strong.'],
+      friend: ['"Twenty years on this beat. Most of it is lost cats and parking. I wouldn\'t swap it."'],
+      close: ['"You\'re one of the good ones. Don\'t let this town tell you otherwise."']
+    }
+  });
+  Object.assign(DATING_LINES, {
+    dunn: ['"Shift ends at eight. I know a bench by the millpond with the best view in town."']
+  });
+  Object.assign(HEART, {
+    dunn: [{
+      prompt: '"People think the job is catching criminals. It\'s mostly listening."',
+      replies: [{
+        label: '"Listening to what?"',
+        text: '"Whatever people need to say before they feel better." He taps his notebook. "Then I write it down so they know it mattered."',
+        rep: 5,
+        aff: 2
+      }, {
+        label: '"Sounds boring."',
+        text: '"Boring is the goal," he says, not offended at all.',
+        rep: 2
+      }, {
+        label: 'Walk a lap of the square with him',
+        text: 'He nods to every shopkeeper by name. Every one of them nods back.',
+        rep: 5,
+        aff: 3
+      }]
+    }]
+  });
+  Object.assign(PET_REACT, {
+    dunn: {
+      like: 1,
+      line: 'He crouches, very seriously, and lets it sniff his glove. "Good dog. Law-abiding."'
+    }
+  });
+  Object.assign(BIRTHDAYS, {
+    dunn: ['Autumn', 9]
+  });
+  INVITE_SPOT.dunn = 'cafe';
+  RELATIONS.push(['dunn', 'dot', 'friends', 'Dunn buys his tea biscuits from Dot every morning and pretends it\'s a security check.'], ['dunn', 'wren', 'rivals', 'Dunn has never quite caught Wren at anything, and they both know it.']);
   var _loop2 = function _loop2() {
     var R = ROMANCE_PLUS[id],
       qid = 'rom_' + id;
@@ -5157,7 +5241,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         kind: d && d.kind,
         day: time().day
       };
-      if (d && d.witness && BY_ID[d.witness]) ns(s).sawYou = Object.assign(ns(s).sawYou || {}, (_Object$assign = {}, _Object$assign[d.witness] = {
+      if (d && !d.contained && !d.absorbed && d.witness && BY_ID[d.witness]) ns(s).sawYou = Object.assign(ns(s).sawYou || {}, (_Object$assign = {}, _Object$assign[d.witness] = {
         kind: 'accident',
         day: time().day
       }, _Object$assign));
@@ -5174,6 +5258,188 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       if (sk === 'hostile' || sk === 'cold' || sk === 'neutral') _changeRep(s, d.by, -2, true);
     });
   }
+  // ---------- Undressed in public (Lucy: G.wardrobe.exposed(); Ron: G.world.isPublic()) ----------
+  var PRIVATE_LOCS = /^(dorm_room|home_|restroom|bathroom|fitting_room|changing_room)/;
+  function exposedNow(state) {
+    try {
+      var Wd = window.G.wardrobe || window.Wardrobe;
+      if (Wd && typeof Wd.exposed === 'function') {
+        var e = Wd.exposed();
+        return Array.isArray(e) ? e.length > 0 : e && typeof e === 'object' ? Object.keys(e).some(function (k) {
+          return e[k];
+        }) : !!e;
+      }
+    } catch (e) {}
+    try {
+      var w = state.wardrobe;
+      if (!w || !w.starter || !w.worn) return false;
+      var v = w.worn;
+      return v.bottom == null && v.under_bottom == null || v.top == null && v.under_top == null && v.outer == null;
+    } catch (e) {
+      return false;
+    }
+  }
+  function publicNow(state) {
+    try {
+      var W_ = window.G.world;
+      if (W_ && typeof W_.isPublic === 'function') return !!W_.isPublic();
+      if (W_ && typeof W_.isPrivate === 'function') return !W_.isPrivate();
+    } catch (e) {}
+    return !PRIVATE_LOCS.test(loc(state));
+  }
+  function coverScale(state) {
+    var m = 1;
+    try {
+      var St = window.G.stats;
+      if (St && typeof St.noticeMult === 'function') m = St.noticeMult();else {
+        var f = state.stats && state.stats.flags;
+        if (f && (f.covering || f.coverUp)) m = 0.5;
+      }
+    } catch (e) {}
+    try {
+      if (window.G.world.isSecluded && window.G.world.isSecluded()) m *= 0.4;
+    } catch (e) {}
+    return typeof m === 'number' ? m : 1;
+  }
+  var EXPOSE_TXT = {
+    kind: [function (id) {
+      return nm(id) + " steps in front of you without a word, shrugs off a layer and holds it out. \"Here. Let's get you somewhere private.\"";
+    }, function (id) {
+      return nm(id) + " keeps " + pronouns(id).pos + " eyes on your face. \"Okay. You're okay. Take my coat.\"";
+    }],
+    look: [function (id) {
+      return nm(id) + " turns sharply to study a shop window until you've passed.";
+    }, function (id) {
+      return nm(id) + " goes red and looks anywhere but at you.";
+    }],
+    callout: [function (id) {
+      return nm(id) + ": \"Seriously? Get some clothes on!\"";
+    }, function (id) {
+      return nm(id) + " makes a show of shielding " + pronouns(id).pos + " eyes.";
+    }]
+  };
+  function exposeReact(state, id) {
+    var r = rel(state, id),
+      sk = _stage(state, id).key;
+    var kind = r.romance >= 3 || sk === 'close' || sk === 'friend' ? 'kind' : sk === 'hostile' || sk === 'cold' || ['theo', 'dee'].includes(id) ? 'callout' : 'look';
+    if (BY_ID[id].group === 'Non-Human') kind = 'look';
+    var d = {
+      kind: 0,
+      look: -2,
+      callout: -4
+    }[kind];
+    if (d) _changeRep(state, id, d, true);
+    spotted(id, 'exposed', {
+      reaction: kind
+    });
+    return "<p class=\"scene exposed\">" + pick(EXPOSE_TXT[kind])(id) + "</p>";
+  }
+  function dunnStep(state) {
+    var N = ns(state),
+      t = time();
+    N.dunnWarn = N.dunnWarn || -99;
+    spotted('dunn', 'exposed', {
+      reaction: 'officer'
+    });
+    if (t.day - N.dunnWarn > 7) {
+      N.dunnWarn = t.day;
+      _changeRep(state, 'dunn', -2, true);
+      return "<p class=\"scene exposed\">" + nm('dunn') + " unclips his rain cape and drapes it over your shoulders in one practised move. \"First and last warning. Home, or somewhere with a door. Now, please.\"</p>";
+    }
+    _changeRep(state, 'dunn', -5, true);
+    safeChange('money', -25);
+    safeChange('stats.status.crime', 2);
+    return "<p class=\"scene exposed\">" + nm('dunn') + " sighs and gets out his notebook. \"We've talked about this.\" He writes you a $25 fine for indecency and walks you to the nearest restroom.</p>";
+  }
+  function exposeTick(state, minutes) {
+    var N = ns(state),
+      t = time();
+    var inPub = null;
+    try {
+      var Wd = window.G.wardrobe || window.Wardrobe;
+      if (Wd && typeof Wd.exposedInPublic === 'function') {
+        var e = Wd.exposedInPublic();
+        inPub = Array.isArray(e) ? e.length > 0 : e && typeof e === 'object' ? Object.keys(e).some(function (k) {
+          return e[k];
+        }) : !!e;
+      }
+    } catch (e) {}
+    if (inPub === null) inPub = exposedNow(state) && publicNow(state);
+    if (!inPub) {
+      N.exposedSince = null;
+      return;
+    }
+    if (N.exposedSince == null) N.exposedSince = t.day * 1440 + t.hour * 60 + (t.minute || 0);
+    N.exposedSeen = N.exposedSeen || {};
+    var hr = t.day * 24 + t.hour,
+      f = Math.min(1, (minutes || 10) / 30) * coverScale(state),
+      here = present(state);
+    var out = '';
+    if (here.includes('dunn') && N.exposedSeen.dunn !== hr && Math.random() < 0.8 * f) {
+      N.exposedSeen.dunn = hr;
+      out += dunnStep(state);
+    }
+    here.forEach(function (id) {
+      if (id === 'dunn' || N.exposedSeen[id] === hr) return;
+      if (Math.random() < 0.7 * f) {
+        N.exposedSeen[id] = hr;
+        out += exposeReact(state, id);
+      }
+    });
+    // Word gets around town: everyone you know cools a little for each hour you stay out like this
+    if (N.exposedGossip !== hr && Math.random() < f * crowdScale(0.5)) {
+      N.exposedGossip = hr;
+      ROSTER.forEach(function (n) {
+        if (n.group !== 'Non-Human' && rel(state, n.id).met && !here.includes(n.id)) _changeRep(state, n.id, -1, true);
+      });
+    }
+    if (!here.length && N.exposedSeen.stranger !== hr && Math.random() < 0.5 * f * crowdScale(0.6)) {
+      N.exposedSeen.stranger = hr;
+      out += "<p class=\"scene exposed\">" + pick(onCampusHere() ? ['A group of students stops talking all at once.', 'Someone in the hallway hurriedly holds a folder up between you.'] : ['A passer-by steers their kid across the street.', 'Somebody mutters that they are calling the police.', 'A shopkeeper pulls their blind down.']) + "</p>";
+      spotted(null, 'exposed');
+    }
+    if (out && window.G.appendStory) window.G.appendStory(out);
+  }
+  // Bagginess (Lucy): name none..maximum or 0..4; tight lower/outer clothes may let a worn brief show.
+  var BAG = {
+    none: 0,
+    low: 1,
+    normal: 2,
+    high: 3,
+    maximum: 4,
+    max: 4
+  };
+  function bagOf(slot) {
+    try {
+      var l = G_.wardrobe && G_.wardrobe.layer && G_.wardrobe.layer(slot);
+      if (!l) return null;
+      var b = l.bagginess != null ? l.bagginess : l.baggyness;
+      if (b == null) return null;
+      return typeof b === 'number' ? b : BAG[String(b).toLowerCase()] != null ? BAG[String(b).toLowerCase()] : 2;
+    } catch (e) {
+      return null;
+    }
+  }
+  function briefShows(state, id) {
+    var c = state.stats && state.stats.clothing;
+    if (!c || !c.diaper) return '';
+    var lo = bagOf('lower'),
+      ja = bagOf('jacket'),
+      cover = Math.max(lo == null ? 2 : lo, ja == null ? 0 : ja);
+    if (cover >= 2) return '';
+    var N = ns(state);
+    N.briefSeen = N.briefSeen || {};
+    var t = time();
+    if (N.briefSeen[id] != null && t.day - N.briefSeen[id] < 7) return '';
+    if (Math.random() >= (cover === 0 ? 0.08 : 0.04)) return '';
+    N.briefSeen[id] = t.day;
+    var sk = _stage(state, id).key;
+    if (sk === 'hostile' || sk === 'cold') {
+      _changeRep(state, id, -1, true);
+      return "<p>" + nm(id) + "'s eyes drop to your waistband for a second. " + pronouns(id).Sub + " " + (pronouns(id).be === 'are' ? 'don\'t' : 'doesn\'t') + " say anything, which is somehow worse.</p>";
+    }
+    return "<p>" + nm(id) + "'s glance catches your waistband, then moves politely on. Nothing is said.</p>";
+  }
   function sightGreet(state, id) {
     var N = ns(state),
       sw = N.sawYou && N.sawYou[id],
@@ -5187,6 +5453,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       if (sk === 'hostile' || sk === 'cold') out += "<p>" + nm(id) + ": \"" + (acc ? 'Dry today?' : 'Found a proper bathroom yet?') + "\" " + P.Sub + " look" + (P.be === 'are' ? '' : 's') + " pleased with " + (P.sub === 'they' ? 'themself' : P.sub === 'she' ? 'herself' : 'himself') + ".</p>";else if (sk === 'neutral') out += "<p>" + nm(id) + " is a little awkward with you, like " + P.sub + " " + P.be + " trying not to mention something.</p>";else out += "<p>" + nm(id) + ": \"" + (acc ? 'Hey. About the other day. It happens to everyone, okay? I mean it.' : 'You okay? Rough day the other day.') + "\"</p>";
     }
     if (_smellLevel() && N.smelled && N.smelled[id] !== t.day) out += smellReact(state, id, _smellLevel());
+    out += briefShows(state, id);
     if (N.flags.dee_gossip_smell !== undefined && id !== 'dee' && t.day - N.flags.dee_gossip_smell <= 2 && Math.random() < 0.3 && rel(state, 'dee').met) {
       N.flags.dee_gossip_smell = -99;
       out += "<p>" + nm(id) + ": \"Dee was telling everyone some story about you. I didn't believe half of it.\"</p>";
@@ -5229,6 +5496,11 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       ensureRels(state);
       hookSightings();
       if (!ns(state).talking) smellTick(state, minutes);
+      if (!ns(state).talking) {
+        try {
+          exposeTick(state, minutes);
+        } catch (e) {}
+      }
       smellAftercare(state);
       // Gentle reputation drift toward 0 once per day for people you ignore.
       var t = time();

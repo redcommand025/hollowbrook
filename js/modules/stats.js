@@ -249,6 +249,7 @@
       if (sleeping && n.fatigue <= 0) s.flags.sleeping = false;
     }
     illnessTick(minutes, sleeping, wx, hr);
+    exposureTick(minutes, sleeping);
     // general wear
     c.upperIntegrity -= minutes * 0.001; c.lowerIntegrity -= minutes * 0.0012;
     clampNeeds();
@@ -387,7 +388,12 @@
     if (n.bladder >= th) kind = 'bladder'; else if (n.bowels >= th) kind = 'bowels';
     if (!kind) return;
     n[kind] = 0;
-    s.clothing.lowerWetness = clamp(s.clothing.lowerWetness + (kind === 'bladder' ? 70 : 30), 0, 100);
+    // A worn incontinence brief (wardrobe.js) catches it first: no wet clothes, nothing to see. Smell from a soiled brief is wardrobe/npcs' job.
+    if (wardrobeAbsorb(kind)) { containedAccident(kind); return; }
+    // Ordinary underwear soaks up part of it before it reaches the outer layer.
+    var under = wardrobeLayer('underLower'), soak = kind === 'bladder' ? 70 : 30;
+    if (under && under.integrity > 0) soak = Math.round(soak * (kind === 'bladder' ? 0.75 : 0.5));
+    s.clothing.lowerWetness = clamp(s.clothing.lowerWetness + soak, 0, 100);
     s.flags.dirty = true;
     s.flags.accidentToday++;
     var sc = accidentScene(kind);
@@ -405,6 +411,65 @@
       var by = sc.witness || (sc.busy && sc.pk !== 'secluded' ? (onCampusNow() ? 'student' : 'stranger') : null);
       if (by) spotted(by, 'accident', { what: kind });
     }
+  }
+
+  // ---------- incontinence briefs (worn via wardrobe.js) ----------
+  function WR() { return G.wardrobe || window.Wardrobe || null; }
+  function wardrobeAbsorb(kind) { try { var w = WR(); return !!(w && typeof w.absorb === 'function' && w.absorb(kind)); } catch (e) { return false; } }
+  function wardrobeLayer(id) { try { var w = WR(); return w && typeof w.layer === 'function' ? w.layer(id) : null; } catch (e) { return null; } }
+  function wearingBrief() { try { var w = WR(); return !!(w && w.wearingBrief && w.wearingBrief() && !(w.briefFull && w.briefFull())); } catch (e) { return false; } }
+  function containedAccident(kind) {
+    var s = S(), n = s.needs, st = kind === 'bowels' ? 25 : 10;
+    s.flags.accidentToday++;
+    var r = rec(s); r.contained = (r.contained || 0) + 1;
+    n.stress = clamp(n.stress + st, 0, MAX); n.control = clamp(n.control - 15, 0, MAX);
+    var t = kind === 'bowels' ? 'You can\'t hold it any longer and go in your brief. It holds, and nobody notices, but you should change it soon.' : 'You can\'t hold it any longer and wet your brief. It holds, and nobody notices.';
+    if (G.appendStory) G.appendStory('<p class="scene">' + t + '</p>'); else note(t, 'info');
+    note('Stress +' + st, 'up'); note('Control -15', 'down');
+    if (G.emit) G.emit('accident', { kind: kind, type: kind, where: here().id, witness: null, contained: true, absorbed: true });
+  }
+  function briefOption() {
+    var s = S(), n = s.needs, both = n.bowels >= 300;
+    return opt(both ? 'Go in your brief' : 'Pee in your brief', function () {
+      var kinds = n.bladder >= 150 ? ['bladder'] : [];
+      if (both) kinds.push('bowels');
+      var done = kinds.filter(function (k) { if (wardrobeAbsorb(k)) { n[k] = 0; return true; } return false; });
+      if (!done.length) return { text: '<p>Your brief is already full. You need a restroom, or a fresh brief.</p>', minutes: 1 };
+      var r = rec(s); r.briefUsed = (r.briefUsed || 0) + 1;
+      n.stress = clamp(n.stress - 15, 0, MAX);
+      if (G.emit) done.forEach(function (k) { G.emit('accident', { kind: k, type: k, where: here().id, witness: null, contained: true, absorbed: true, chosen: true }); });
+      return { text: '<p>You go discreetly in your brief. Nobody around you can tell.' + (done.indexOf('bowels') >= 0 ? ' Change it soon, before anyone notices the smell.' : '') + '</p>', minutes: 2 };
+    }, { time: 2, hint: 'Nobody sees, but a soiled brief can be smelled' });
+  }
+
+  // ---------- undressed in public (wardrobe.js says what's uncovered; npcs.js/school.js handle reputation) ----------
+  function exposedNow() {
+    try { var w = WR(); if (!w) return false;
+      if (typeof w.exposed !== 'function') { if (typeof w.exposure !== 'function') return false; var x = w.exposure() || {}; return !!(x.lower || x.upper === 'bare'); }
+      var e = w.exposed();
+      if (!e) return false; if (typeof e === 'object') { if (e.length !== undefined) return e.length > 0; for (var k in e) if (e[k]) return true; return false; } return true; } catch (x) { return false; }
+  }
+  function inPublic() {
+    try { if (G.world && typeof G.world.isPublic === 'function') return !!G.world.isPublic(); } catch (e) {}
+    var h = here(); if (h.restroom || /fitting/.test(h.id || '')) return false;
+    return placeKind() !== 'private';
+  }
+  function covering() { var f = S().flags; return !!(f.covering && exposedNow() && inPublic()); }
+  function exposureTick(minutes, sleeping) {
+    var s = S(), f = s.flags, n = s.needs;
+    if (sleeping || !exposedNow() || !inPublic()) { f.covering = false; f.exposedWarned = false; return; }
+    var ex = null; try { ex = WR().exposed(); } catch (e) {}
+    var sev = ex && typeof ex === 'object' ? ((ex.lower === 'bare' || ex.naked) ? 1 : ex.lower === 'under' ? 0.5 : 0) + (ex.upper === 'bare' ? 0.5 : 0) : 1;
+    n.stress = clamp(n.stress + minutes * 0.35 * Math.max(0.5, sev) * (f.covering ? 0.5 : 1), 0, MAX);
+    var r = rec(s); r.exposedMinutes = (r.exposedMinutes || 0) + minutes;
+    if (!f.exposedWarned) { f.exposedWarned = true; note('You aren\'t properly dressed, and people can see. Cover up, or get somewhere private and change.', 'down'); }
+  }
+  function coverOption() {
+    return opt('Cover yourself as best you can', function () {
+      var s = S(); s.flags.covering = true; s.needs.stress = clamp(s.needs.stress - 10, 0, MAX);
+      if (G.emit) G.emit('covered', { where: here().id });
+      return { text: '<p>You hold your bag in front of you and keep your arms in close. It isn\'t much, but fewer people will notice. You need proper clothes, or somewhere private, soon.</p>', minutes: 1 };
+    }, { time: 1, hint: 'People notice less often, but it doesn\'t fix it' });
   }
 
   // ---------- being seen: relieving yourself where there's no restroom ----------
@@ -685,6 +750,8 @@
       }, { time: function () { return 3 + (n.bowels >= 300 ? 7 : 0); } }));
     }
     if (rr === false && !home && (n.bladder >= 400 || n.bowels >= 400)) out.actions.push(reliefOption());
+    if (exposedNow() && inPublic() && !S().flags.covering) out.actions.push(coverOption());
+    if (!home && wearingBrief() && (n.bladder >= 300 || n.bowels >= 300)) out.actions.push(briefOption());
     if (isSoiled() && canRestroom) {
       out.actions.push(opt('Rinse out your soiled clothes at the sink', function () {
         s.flags.dirty = false; c.lowerSoiled = false; c.lowerWetness = Math.max(c.lowerWetness, 60);
@@ -954,6 +1021,8 @@
     fame: function (kind, d) { chg('status.' + kind + 'Fame', d); },
     crime: function (d) { chg('status.crime', d); },
     soiled: isSoiled,
+    // undressed in public: covering() is true after "Cover yourself"; multiply notice chances by noticeMult() (0.5 while covering)
+    exposed: function () { return exposedNow() && inPublic(); }, covering: covering, noticeMult: function () { return covering() ? 0.5 : 1; },
     money: money, addMoney: addMoney,
     panelHTML: panelHTML,
     tabs: { Characteristics: tabCharacteristics, Status: tabStatus, Clothing: tabClothing },

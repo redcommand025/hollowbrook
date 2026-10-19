@@ -71,3 +71,14 @@ Every option should declare `minutes` (aliases `mins`, `time`; a number or a fun
 - Builds on Jimmy's `G.groceries`, and sets `G.groceries.limit` to 24 portions, or 36 with a canvas tote bag ($8 at the grocer).
 - The Bag tab lists `G.groceries.list()` with counts and anything gone off.
 - `G.inventory.limit()`, `used()`, `room()` and `hasTote()`.
+
+## Clothing layers and stats (Lucy, wardrobe.js)
+- Slots: under_top, under_bottom, top, bottom, shoes, outer (jacket), plus head/face/ears/neck. stats.clothing.upper*/lower* = outer top/bottom (unchanged).
+- Mirrored: stats.clothing.underUpperWetness/Integrity, underLowerWetness/Integrity, jacketWetness/Integrity, diaper.
+- Every item: integrity (current/max; cheap thin pieces have a lower max), warmth 0-4 (scaled by integrity), bagginess 0-4, absorption in ml.
+- Integrity 0 = ruined: no wash, no mend, only "Throw away". 100% wetness costs ~1/hour; soiling costs 15.
+- G.wardrobe: absorb(kind), soak(slot, ml) -> overflow ml, layer(name) -> {wetness, integrity, maxIntegrity, warmth, warmthLevel, bagginess, absorption, soiled},
+  conceal('lower'|'chest'|'stash') -> 0-4, briefVisible(), warmth(), stats(id), LEVEL, soiled(), wearingBrief(), briefFull(), briefs().
+- Undressing (Lucy): any slot can be taken off at home or in the fitting room ("Get undressed" removes all). G.wardrobe.exposure() -> {upper, lower} each null | 'under' | 'bare'; isNaked(); exposedInPublic() (false at home, in the fitting room, or while hiding).
+- In public while exposed: stress, and every 30 min a crowd-weighted chance of `spotted {kind:'exposed', by:'students'|'public', src:'wardrobe', severity}` plus an `exposed` event. "Find somewhere out of sight to hide" stops it until you move.
+- Paperdoll: tears/holes by integrity fraction, darker when soaked, stain when soiled, underwear shown when bottoms are off, black censor bars when bare.

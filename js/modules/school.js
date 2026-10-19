@@ -235,12 +235,25 @@
     library: { name: 'the library\'s lost-property box', loot: [2, 15], risk: 0.15, witnesses: 'a librarian' },
     main_street: { name: 'a distracted shopper on the busy street', loot: [10, 45], risk: 0.35, witnesses: 'the stallholder' }
   };
+  // baggy outer clothes (wardrobe.js layer().bagginess/baggyness/baggy, as a name or 0-4) help hide things
+  var BAG_LV = { none: 0, low: 1, normal: 2, high: 3, maximum: 4, max: 4 };
+  function baggyLevel() {
+    var best = 0;
+    try { ['jacket', 'upper', 'lower'].forEach(function (k) {
+      var l = G.wardrobe && G.wardrobe.layer && G.wardrobe.layer(k); if (!l) return;
+      var b = l.bagginess != null ? l.bagginess : (l.baggyness != null ? l.baggyness : l.baggy);
+      var n = typeof b === 'number' ? b : BAG_LV[String(b || '').toLowerCase()] || 0;
+      if (n > best) best = n;
+    }); } catch (e) {}
+    return clamp(best, 0, 4);
+  }
+  function baggyBonus() { return [0, 0.02, 0.04, 0.07, 0.1][baggyLevel()]; }
   function pickpocket() {
     var t = TARGETS[loc()]; if (!t) return { text: 'Nothing worth taking here.', minutes: 1 };
     var sk = skill('skulduggery'), aw = statVal('awareness');
     var weather = (G.state.world && G.state.world.weather) || '';
     var crowd = /rain|storm|snow/.test(weather) ? -0.05 : 0; // fewer people around in bad weather
-    var p = clamp(0.35 + sk / 1600 + aw / 4000 - t.risk + crowd, 0.08, 0.95);
+    var p = clamp(0.35 + sk / 1600 + aw / 4000 - t.risk + crowd + baggyBonus() / 2, 0.08, 0.95);
     var s = S(); s.thefts++;
     need('stats.needs.stress', 30);
     if (chance(p)) {
@@ -619,13 +632,13 @@
     var sh = SHOPS[loc()], s = S();
     var sk = skill('skulduggery'), aw = statVal('awareness');
     var lf = G.stats && G.stats.hasTrait && G.stats.hasTrait('lightFingers') ? 0.08 : 0;
-    var p = clamp(0.3 + sk / 1500 + aw / 4000 + lf - sh.risk, 0.06, 0.92);
+    var p = clamp(0.3 + sk / 1500 + aw / 4000 + lf + baggyBonus() - sh.risk, 0.06, 0.92);
     need('stats.needs.stress', 35); s.thefts++;
     var item = pick(sh.items);
     if (chance(p)) {
       s.loot.push({ name: item, value: rnd(sh.value[0], sh.value[1]) + Math.floor(sk / 150) });
       gainSkill('skulduggery', rnd(10, 18)); crime(rnd(8, 15));
-      return { text: '<p>You browse, unhurried, and ' + item + ' ends up in your pocket. Nobody at ' + sh.name + ' looks up. You\'ll need someone to sell it to.</p>', minutes: 15 };
+      return { text: '<p>You browse, unhurried, and ' + item + ' ends up ' + (baggyLevel() >= 3 ? 'tucked under your baggy layers' : 'in your pocket') + '. Nobody at ' + sh.name + ' looks up. You\'ll need someone to sell it to.</p>', minutes: 15 };
     }
     gainSkill('skulduggery', rnd(3, 6)); crime(rnd(25, 45)); need('stats.needs.stress', 70);
     var fine = Math.min(money(), rnd(20, 50)); if (fine) cash(-fine);
@@ -908,7 +921,7 @@
   }
   function onCampusHere() { return typeof onCampus === 'function' ? onCampus() : false; }
   function inClassNow() { var c = currentClass(); return !!(c && at('classroom')); }
-  var REP_HIT = { accident: [80, 45, 25], relieved: [0, 30, 15], smell: [12, 10, 6] }; // [in class, on campus, elsewhere]
+  var REP_HIT = { accident: [80, 45, 25], relieved: [0, 30, 15], smell: [12, 10, 6], exposed: [50, 20, 10] }; // [in class, on campus, elsewhere]
   function repHit(kind, bySomeoneNamed) {
     var row = REP_HIT[kind] || REP_HIT[/relie|pee|poo|toilet|outdoor/.test(kind || '') ? 'relieved' : 'smell'];
     var hit = inClassNow() ? row[0] || row[1] : onCampusHere() ? row[1] : row[2];
@@ -919,15 +932,37 @@
     var kind = d.kind || 'smell', t = time(), stamp = t.day * 1440 + t.hour * 60 + t.minute;
     if (kind === 'accident' && s._classAccidentAt && stamp - s._classAccidentAt < 30) return; // already counted by the class
     if (kind === 'smell') { if (s._lastSmellAt && stamp - s._lastSmellAt < 60) return; s._lastSmellAt = stamp; }
+    if (kind === 'exposed') { if (s._lastExposedAt && stamp - s._lastExposedAt < 30) return; s._lastExposedAt = stamp; }
     var named = !!(window.NPCS && NPCS.byId && NPCS.byId[d.by]);
-    studentRep(-repHit(kind, named), kind === 'smell' ? 'a classmate noticed the smell' : kind === 'accident' ? 'a classmate saw your accident' : 'a classmate saw you go outdoors');
+    studentRep(-repHit(kind, named), kind === 'smell' ? 'a classmate noticed the smell' : kind === 'exposed' ? 'classmates saw you undressed' : kind === 'accident' ? 'a classmate saw your accident' : 'a classmate saw you go outdoors');
     s.repIncidents = (s.repIncidents || 0) + 1;
   }
   function onAccident(d) {
     var s = S(); if (!s || !inClassNow()) return;
+    // an accident absorbed by an under-layer (e.g. adult briefs) is not seen; any smell arrives later as a 'spotted' smell event
+    if (d && (d.contained || d.hidden || d.absorbed || d.visible === false)) return;
     var t = time(); s._classAccidentAt = t.day * 1440 + t.hour * 60 + t.minute;
     studentRep(-REP_HIT.accident[0], 'an accident in class');
     s.repIncidents = (s.repIncidents || 0) + 1;
+  }
+  // undressed somewhere public on campus: unnamed students notice, every 30 minutes until covered
+  function exposedNow() { try { if (G.wardrobe && typeof G.wardrobe.exposedInPublic === 'function') return !!G.wardrobe.exposedInPublic(); if (G.stats && typeof G.stats.exposed === 'function') return !!G.stats.exposed(); return !!(G.wardrobe && typeof G.wardrobe.exposed === 'function' && G.wardrobe.exposed()); } catch (e) { return false; } }
+  function publicHere() {
+    try { if (G.world && G.world.isPublic) return !!G.world.isPublic(); if (G.world && G.world.isPrivate) return !G.world.isPrivate(); } catch (e) {}
+    return ['dorm_room', 'restroom'].indexOf(loc()) < 0;
+  }
+  function exposedTick() {
+    var s = S(); if (!s || !exposedNow() || !onCampusHere() || !publicHere()) return;
+    var t = time(), stamp = t.day * 1440 + t.hour * 60 + t.minute;
+    if (s._lastExposedAt && stamp - s._lastExposedAt < 30) return;
+    var crowd = 0.5; try { if (G.world && G.world.crowd) crowd = G.world.crowd(); } catch (e) {}
+    var mult = 1; try { if (G.stats && G.stats.noticeMult) mult = G.stats.noticeMult(); if (G.world && G.world.isSecluded && G.world.isSecluded()) mult *= 0.3; } catch (e) {}
+    if (!inClassNow() && !chance(clamp(crowd, 0.15, 1) * mult)) return;
+    s._lastExposedAt = stamp;
+    var hit = Math.ceil(repHit('exposed', false) * (inClassNow() ? 1 : clamp(0.4 + crowd, 0.4, 1)));
+    studentRep(-hit, 'students saw you undressed on campus');
+    s.repIncidents = (s.repIncidents || 0) + 1;
+    if (G.notify && hit >= 5) G.notify('People are looking away. Cover up or get somewhere private.', 'info');
   }
   function repNewDay() { var r = srep(); if (r < 500) studentRep(r < 250 ? 3 : 5); }
   var WHISPERS = [
@@ -1193,7 +1228,7 @@
       name: "Dean's Office", district: 'Campus', indoor: true, open: [8, 17], restroom: false,
       desc: 'A wood-panelled waiting room in the admin wing: a ticking clock, a potted fern, and a secretary who sees everything.'
     }, [['quad', 2]]);
-    if (G.on) { G.on('newDay', newDay); G.on('newDay', repNewDay); G.on('spotted', onSpotted); G.on('accident', onAccident); G.on('arrive', repArrive); }
+    if (G.on) { G.on('newDay', newDay); G.on('newDay', repNewDay); G.on('spotted', onSpotted); G.on('accident', onAccident); G.on('arrive', repArrive); G.on('tick', exposedTick); G.on('action', exposedTick); }
     if (G.on) G.on('arrive', function (d) {
       var prev = S().lastLoc; S().lastLoc = d && d.location;
       if ((prev === 'industrial_alley' || prev === 'alley') && d && d.location === 'quad') fenceClimb();

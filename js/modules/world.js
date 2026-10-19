@@ -488,7 +488,7 @@
       if (num(G.state, 'money') < BUS_FARE) return { text: '<p>You pat your pockets at the bus stop. Not even $' + BUS_FARE + ' for the fare.</p>', minutes: 1 };
       G.change('money', -BUS_FARE);
       var from = w.location; w.busOpen = null;
-      w.location = dest; w.visited[dest] = true;
+      w.privacy = null; w.location = dest; w.visited[dest] = true;
       var a = onArrive(); if (G.emit) G.emit('arrive', { location: dest });
       var crowd = G.time.hour >= 8 && G.time.hour < 9 || G.time.hour >= 17 && G.time.hour < 18 ? ' It is rush hour, and you stand the whole way, wedged against a rucksack.' : ' You get a window seat and watch Hollowbrook slide past.';
       var line = OUTSKIRTS_STOPS.indexOf(dest) >= 0 || OUTSKIRTS_STOPS.indexOf(from) >= 0 ? '12' : '7';
@@ -968,6 +968,7 @@
   travelTo = function (dest) {
     var base = _travelTo(dest);
     return function (state) {
+      W().privacy = null;
       var r = base(state), a = onArrive();
       if (G.emit) G.emit('arrive', { location: dest });
       return { text: r.text + a.html, minutes: r.minutes + a.minutes };
@@ -1013,6 +1014,17 @@
     isDark: function () { return isDark(G.time.hour); },
     isIndoors: function () { return !!loc().indoor; },
     hasRestroom: function () { return !!loc().restroom; },
+    // Privacy. Private: your dorm room, any location with private:true, or a spot another module has marked
+    // with setPrivate (a restroom stall, a fitting room). That mark lasts until you leave the location or it's cleared.
+    isPrivate: function (id) {
+      var w = W(); id = resolve(id || w.location); var l = LOCATIONS[id]; if (!l) return false;
+      if (id === 'dorm_room' || l.private) return true;
+      return !!(w.privacy && w.privacy.at === id && id === w.location);
+    },
+    isPublic: function (id) { return !G.world.isPrivate(id); },
+    // Out of sight but not private (woods, the old mill, an empty alley at night): crowd under 0.1.
+    isSecluded: function (id) { return !G.world.isPrivate(id) && crowd(id) < 0.1; },
+    setPrivate: function (on, why) { var w = W(); w.privacy = on ? { at: w.location, why: why || '' } : null; },
     crowd: crowd,   // 0..1 how busy a place is right now (default: here); scales witness/smell odds
     weather: function () { return W().weather; },
     temp: function () { return W().temp; },
@@ -1021,7 +1033,7 @@
     distance: function (a, b) { a = resolve(a); b = resolve(b); return (ADJ[a] && ADJ[a][b]) || null; },
     neighbours: function (id) { return Object.keys(ADJ[id || W().location]); },
     // Move the player without walking (e.g. passing out, being escorted). Returns nothing.
-    teleport: function (id) { id = resolve(id); if (LOCATIONS[id]) { W().location = id; W().visited[id] = true; if (G.emit) G.emit('arrive', { location: id }); } },
+    teleport: function (id) { id = resolve(id); if (LOCATIONS[id]) { W().privacy = null; W().location = id; W().visited[id] = true; if (G.emit) G.emit('arrive', { location: id }); } },
     // Let other modules add events: same shape as EVENTS entries.
     addEvent: function (e) { EVENTS.push(e); },
     // Let other modules add locations: addLocation('greenhouse', {...}, [['campus_farm', 3]])

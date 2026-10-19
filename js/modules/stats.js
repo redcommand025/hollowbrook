@@ -395,7 +395,7 @@
     var under = wardrobeLayer('underLower'), soak = kind === 'bladder' ? 70 : 30;
     if (held > 0) soak = Math.max(5, Math.round(soak * (1 - held)));
     else if (under && under.integrity > 0) soak = Math.round(soak * (kind === 'bladder' ? 0.75 : 0.5));
-    // (wardrobe.js already says when a brief overflows)
+    if (lastBriefText && wearingBriefAny()) note(lastBriefText, 'down'); // partial hold or "already full and overflows"
     s.clothing.lowerWetness = clamp(s.clothing.lowerWetness + soak, 0, 100);
     s.flags.dirty = true;
     s.flags.accidentToday++;
@@ -420,21 +420,24 @@
   function WR() { return G.wardrobe || window.Wardrobe || null; }
   // Each pee is 400 ml and each poo 0.5 lb. absorb(kind, amount, unit) may return true (all of it), false (none),
   // or a number = how much it held; the rest overflows onto your clothes. wardrobeAbsorb returns the fraction held (0..1).
+  var lastBriefText = ''; // wardrobe.js lastUse(): "You used your ... diaper, filling it to N%." (+ grow line)
   var VOLUME = { bladder: { amount: 400, unit: 'ml' }, bowels: { amount: 0.5, unit: 'lb' } };
   function wardrobeAbsorbPart(kind) {
     try { var w = WR(); if (!w || typeof w.absorb !== 'function') return 0;
       var v = VOLUME[kind], r = w.absorb(kind, v.amount, v.unit);
+      lastBriefText = ''; try { var u = typeof w.lastUse === 'function' ? w.lastUse() : null; if (u && u.text) lastBriefText = u.text + (u.growText ? ' ' + u.growText : ''); } catch (e2) {}
       if (r === true) return 1; if (typeof r === 'number' && r > 0) return clamp(r / v.amount, 0, 1); return 0; } catch (e) { return 0; }
   }
   function wardrobeAbsorb(kind) { return wardrobeAbsorbPart(kind) >= 1; }
   function wardrobeLayer(id) { try { var w = WR(); return w && typeof w.layer === 'function' ? w.layer(id) : null; } catch (e) { return null; } }
+  function wearingBriefAny() { try { var w = WR(); return !!(w && w.wearingBrief && w.wearingBrief()); } catch (e) { return false; } }
   function wearingBrief() { try { var w = WR(); return !!(w && w.wearingBrief && w.wearingBrief() && !(w.briefFull && w.briefFull())); } catch (e) { return false; } }
   function containedAccident(kind) {
     var s = S(), n = s.needs, st = kind === 'bowels' ? 25 : 10;
     s.flags.accidentToday++;
     var r = rec(s); r.contained = (r.contained || 0) + 1;
     n.stress = clamp(n.stress + st, 0, MAX); n.control = clamp(n.control - 15, 0, MAX);
-    var t = 'You can\'t hold it any longer. Nobody around you notices.'; // wardrobe.js reports the fill level
+    var t = lastBriefText || 'You can\'t hold it any longer, but your brief catches it. Nobody notices.';
     if (G.appendStory) G.appendStory('<p class="scene">' + t + '</p>'); else note(t, 'info');
     note('Stress +' + st, 'up'); note('Control -15', 'down');
     if (G.emit) G.emit('accident', { kind: kind, type: kind, where: here().id, witness: null, contained: true, absorbed: true, amount: VOLUME[kind].amount, unit: VOLUME[kind].unit });
@@ -444,12 +447,13 @@
     return opt(both ? 'Go in your brief' : 'Pee in your brief', function () {
       var kinds = n.bladder >= 150 ? ['bladder'] : [];
       if (both) kinds.push('bowels');
-      var done = kinds.filter(function (k) { if (wardrobeAbsorb(k)) { n[k] = 0; return true; } return false; });
+      var said = [];
+      var done = kinds.filter(function (k) { var ok = wardrobeAbsorb(k); if (ok) { n[k] = 0; if (lastBriefText) said.push(lastBriefText); } return ok; });
       if (!done.length) return { text: '<p>Your brief is already full. You need a restroom, or a fresh brief.</p>', minutes: 1 };
       var r = rec(s); r.briefUsed = (r.briefUsed || 0) + 1;
       n.stress = clamp(n.stress - 15, 0, MAX);
       if (G.emit) done.forEach(function (k) { G.emit('accident', { kind: k, type: k, where: here().id, witness: null, contained: true, absorbed: true, chosen: true, amount: VOLUME[k].amount, unit: VOLUME[k].unit }); });
-      return { text: '<p>You go discreetly. Nobody around you can tell.' + (done.indexOf('bowels') >= 0 ? ' Change soon, before anyone notices the smell.' : '') + '</p>', minutes: 2 };
+      return { text: '<p>' + (said.length ? said.join(' ') : 'You go discreetly.') + ' Nobody around you can tell.' + (done.indexOf('bowels') >= 0 ? ' Change soon, before anyone notices the smell.' : '') + '</p>', minutes: 2 };
     }, { time: 2, hint: 'Nobody sees, but a soiled brief can be smelled' });
   }
 

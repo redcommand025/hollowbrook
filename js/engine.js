@@ -1,6 +1,6 @@
 /* engine.js: core loop, state, rendering, save/load.  Owner: Jenny
  * Load order in index.html: engine.js first, then every module. Modules call G.register(mod) on load.
- * Option shape: { label, run(state) -> { text, minutes } , disabled?: bool, hint?: string }
+ * Option shape: { label, run(state) -> { text, minutes } , disabled?: bool, hint?: string, effects?, reason? } (see CONTRACT.md)
  */
 (function () {
   'use strict';
@@ -38,7 +38,7 @@
 
   var G = window.G = {
     store: store,
-    version: 'v26.10.19.0',
+    version: 'v26.10.19.1',
     state: {},
     time: { day: 1, hour: 7, minute: 30, weekday: 'Monday', clock: '07:30' },
     limits: {},          // path -> [min, max]; modules may add their own
@@ -345,22 +345,83 @@
     return 'chk-other';
   }
   G.checkClass = checkClass;
+  /* ---------- option previews, locks, collapsible sections (v26.10.19.1) ---------- */
+  var SET_KEY = 'hollowbrook_settings_v1'; // same key extras.js uses, so G.settings persists in one place
+  function settingsObj() {
+    if (!G.settings) { var s0 = {}; try { s0 = JSON.parse(store.get(SET_KEY) || '{}') || {}; } catch (e) { s0 = {}; } G.settings = s0; }
+    return G.settings;
+  }
+  function persistSettings() { try { store.set(SET_KEY, JSON.stringify(settingsObj())); } catch (e) { console.error('settings', e); } }
+  function stripTags(s) { return String(s == null ? '' : s).replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, ''); }
+  function valOf(v) { if (typeof v === 'function') { try { return v(G.state); } catch (e) { console.error('option field', e); return null; } } return v; }
+  var TIME_TOKEN = /^\(?\d+:\d\d\)?$|^~?\d+(\.\d+)?\s*(h|hr|hrs|hours?|m|min|mins|minutes?)(\s+\d+\s*(m|min|mins|minutes?))?$/i;
+  /* Option `effects`: string | [strings] | function(state) -> either. Tokens split on '·' or '|'. '!' prefix = bad (red), '^' = good (green). */
+  function effectTokens(o, timeShown) {
+    var v = valOf(o.effects); if (v == null || v === false || v === '') return [];
+    var raw = Object.prototype.toString.call(v) === '[object Array]' ? v : [v], out = [];
+    raw.forEach(function (x) {
+      if (x == null || x === false) return;
+      stripTags(x).split(/\s*[\u00b7|]\s*/).forEach(function (t) {
+        t = t.replace(/^\s+|\s+$/g, ''); if (!t) return;
+        var tone = '';
+        if (t.charAt(0) === '!') { tone = 'bad'; t = t.slice(1); } else if (t.charAt(0) === '^') { tone = 'good'; t = t.slice(1); }
+        t = t.replace(/^\s+/, ''); if (!t) return;
+        if (timeShown && TIME_TOKEN.test(t)) return; // the engine already shows the time
+        var c0 = t.charAt(0), dir = '';
+        if (c0 === '+') dir = 'up';
+        else if (c0 === '-' || c0 === '\u2212' || c0 === '\u2013') { dir = 'down'; t = '\u2212' + t.slice(1); }
+        out.push({ text: t, dir: dir, tone: tone });
+      });
+    });
+    return out;
+  }
+  G.effectTokens = effectTokens;
+  function effectsHtml(toks) {
+    if (!toks.length) return '';
+    return ' <span class="fx">' + toks.map(function (t) {
+      return '<span class="fx-tok' + (t.dir ? ' fx-' + t.dir : '') + (t.tone ? ' fx-' + t.tone : '') + '">' + esc(t.text) + '</span>';
+    }).join('<span class="fx-sep" aria-hidden="true"> \u00b7 </span>') + '</span>';
+  }
+  /* Option `reason`: string | function(state). Shown under a disabled option. */
+  function reasonOf(o) { var r = valOf(o.reason); r = r == null || r === false ? '' : stripTags(r); return r.replace(/^\uD83D\uDD12\s*/, ''); }
+  G.reasonOf = reasonOf;
+  function collapsedMap() { var s = settingsObj(); if (!s.collapsed || typeof s.collapsed !== 'object') s.collapsed = {}; return s.collapsed; }
+  function isCollapsed(id) { if (id === 'now' || !G.settings || !G.settings.collapsed) return false; return !!G.settings.collapsed[id]; }
+  G.isSectionCollapsed = isCollapsed;
+  G.toggleSection = function (id, on) {
+    if (!id || id === 'now') return false;
+    var c = collapsedMap(); on = on === undefined ? !c[id] : !!on;
+    if (on) c[id] = true; else delete c[id];
+    persistSettings(); render(); return on;
+  };
+  G.expandAllSections = function () { settingsObj().collapsed = {}; persistSettings(); render(); };
+
   function render() {
     if (!started) return;
     renderBanners();
     current = collectOptions();
-    var html = '', visibleN = 0, hints = !G.settings || G.settings.numberHints !== false, icons = !G.settings || G.settings.icons !== false;
+    var S = G.settings || {};
+    var html = '', visibleN = 0, hints = S.numberHints !== false, icons = S.icons !== false, showFx = S.showEffects !== false, showLocked = S.showLocked !== false;
     var buckets = {}; SECTIONS.forEach(function (sec) { buckets[sec[0]] = []; });
     ['dialogue', 'actions', 'other', 'travel'].forEach(function (k) {
       current[k].forEach(function (o, i) {
         if (dormOnly(o) && !inDorm()) return;
+        if (o.disabled && !showLocked) return;
         var sec = sectionOf(o, k); (buckets[sec] || buckets.here).push({ o: o, k: k, i: i });
       });
     });
     SECTIONS.forEach(function (sec) {
       var list = buckets[sec[0]]; if (!list.length) return;
       list = list.map(function (it, n) { it.n = n; return it; }).sort(function (a, b) { var pa = typeof a.o.priority === 'number' ? a.o.priority : 0, pb = typeof b.o.priority === 'number' ? b.o.priority : 0; return pb - pa || a.n - b.n; });
-      html += '<section class="optgroup sec-' + sec[0] + '"><h3>' + sec[1] + ':</h3><ul>';
+      var sid = sec[0], canFold = sid !== 'now', folded = canFold && isCollapsed(sid);
+      html += '<section class="optgroup sec-' + sid + (folded ? ' collapsed' : '') + '">';
+      if (canFold) {
+        html += '<h3><button type="button" class="sec-tog" data-sec="' + sid + '" aria-expanded="' + (folded ? 'false' : 'true') + '" aria-controls="opts-' + sid + '">' +
+          '<span class="sec-name">' + sec[1] + '</span>' + (folded ? ' <span class="sec-n">(' + list.length + ')</span>' : '') +
+          ' <span class="caret" aria-hidden="true">' + (folded ? '\u25b8' : '\u25be') + '</span></button></h3>';
+      } else html += '<h3>' + sec[1] + ':</h3>';
+      if (folded) { html += '<div id="opts-' + sid + '" hidden></div></section>'; return; } // collapsed: not rendered, so number keys skip it
+      html += '<div id="opts-' + sid + '" class="optbody"><ul>';
       var lastSub = null;
       list.forEach(function (it) {
         var o = it.o, k = it.k, i = it.i;
@@ -368,14 +429,23 @@
         var lbl = o.label, tv = [o.time, o.mins, o.minutes].filter(function (v) { return v !== undefined && v !== null; })[0], tm = null;
         if (typeof tv === 'function') { try { tv = tv(G.state); } catch (e) { tv = null; } }
         tm = typeof tv === 'number' ? tv : guessTime(o);
-        if (tm !== null && tm > 0 && !/\(\d+:\d\d\)/.test(String(lbl))) lbl += ' <span class="tm">' + G.fmtTime(tm) + '</span>';
+        var timeShown = /\(\d+:\d\d\)/.test(String(lbl));
+        if (tm !== null && tm > 0 && !timeShown) { lbl += ' <span class="tm">' + G.fmtTime(tm) + '</span>'; timeShown = true; }
         var ck = checkOf(o); if (ck) lbl += ' <span class="chk ' + checkClass(ck) + '">' + esc(ck) + '</span>';
+        if (showFx && o.effects != null) lbl += effectsHtml(effectTokens(o, timeShown));
         if (o.icon && icons) lbl = '<span class="ico" aria-hidden="true">' + esc(o.icon) + '</span>' + lbl;
+        var why = o.disabled ? reasonOf(o) : '';
+        if (why) {
+          // locked: greyed out, not clickable, reason underneath
+          html += '<li class="locked"><a href="#" class="opt disabled locked" aria-disabled="true" tabindex="-1" data-g="' + k + '" data-i="' + i + '"' +
+            (o.hint ? ' title="' + esc(o.hint) + '"' : '') + '>' + lbl + '</a><span class="why"><span class="ico-lock" aria-hidden="true">\uD83D\uDD12 </span>' + esc(why) + '</span></li>';
+          return;
+        }
         html += '<li><a href="#" class="opt' + (o.disabled ? ' disabled' : '') + '" data-g="' + k + '" data-i="' + i + '"' +
           (o.hint ? ' title="' + esc(o.hint) + '"' : '') + '>' + (hints && !o.disabled && visibleN < 9 ? '<span class="num">' + (visibleN + 1) + '</span>' : '') + lbl + '</a></li>';
         if (!o.disabled) visibleN++;
       });
-      html += '</ul></section>';
+      html += '</ul></div></section>';
     });
     el('options').innerHTML = html;
     renderPanel();
@@ -625,9 +695,31 @@
     pendingNotes = []; renderNotes(); render(); G.save(true);
   };
 
+  /* Engine display settings, added to the Settings sheet extras.js builds (Display group). data-set buttons go through extras.js's own handler. */
+  function onoff(key, on, off) {
+    var cur = settingsObj()[key] !== false;
+    return '<button data-set="' + key + '" data-v="1"' + (cur ? ' class="on"' : '') + '>' + on + '</button> <button data-set="' + key + '" data-v="0"' + (!cur ? ' class="on"' : '') + '>' + off + '</button>';
+  }
+  function injectSettings() {
+    var o = el('overlay'); if (!o || o.hidden) return;
+    var h2 = o.querySelector('.sheet h2'); if (!h2 || !/^\s*Settings\s*$/.test(h2.textContent)) return;
+    var old = o.querySelector('.hb-engset'); if (old) old.parentNode.removeChild(old);
+    var nC = Object.keys(collapsedMap()).filter(function (k) { return G.settings.collapsed[k]; }).length;
+    var box = document.createElement('div'); box.className = 'hb-engset';
+    box.innerHTML = '<p><b>Effect previews on choices</b> <span class="flavor">(e.g. +Fatigue \u00b7 \u2212$12)</span><br>' + onoff('showEffects', 'On', 'Off') + '</p>' +
+      '<p><b>Locked choices</b> <span class="flavor">(greyed out, with the reason)</span><br>' + onoff('showLocked', 'Show', 'Hide') + '</p>' +
+      '<p><b>Choice sections</b> <span class="flavor">(click a heading to fold it; ' + (nC ? nC + ' folded' : 'none folded') + ')</span><br><button data-hb="expandall"' + (nC ? '' : ' disabled') + '>Expand all sections</button></p>';
+    var hs = o.querySelectorAll('.sheet h3'), game = null;
+    for (var i = 0; i < hs.length; i++) if (/^\s*Game\s*$/.test(hs[i].textContent)) { game = hs[i]; break; }
+    if (game) game.parentNode.insertBefore(box, game); else o.querySelector('.sheet').appendChild(box);
+  }
+  G.injectEngineSettings = injectSettings;
+
   /* ---------- boot ---------- */
   document.addEventListener('DOMContentLoaded', function () {
     document.body.addEventListener('click', function (e) {
+      var tg = e.target.closest('.sec-tog');
+      if (tg) { e.preventDefault(); var sid = tg.getAttribute('data-sec'); G.toggleSection(sid); var nb = document.querySelector('#options .sec-tog[data-sec="' + sid + '"]'); if (nb) try { nb.focus(); } catch (x) {} return; }
       var a = e.target.closest('.opt');
       if (a) { e.preventDefault(); var o = current[a.dataset.g][+a.dataset.i]; G.act(o, { k: a.dataset.g }); return; }
       if (e.target.closest('#mbar')) { document.body.classList.toggle('panel-open'); var mb = el('mbar'); if (mb) mb.setAttribute('aria-expanded', document.body.classList.contains('panel-open') ? 'true' : 'false'); return; }
@@ -657,6 +749,13 @@
         return;
       }
     });
+    // Runs after extras.js's document listener has (re)built the Settings sheet.
+    document.addEventListener('click', function (e) {
+      if (e.target.closest && e.target.closest('[data-hb="expandall"]')) G.expandAllSections();
+      injectSettings();
+    });
+    if (typeof G.openSettings === 'function') { var openSet0 = G.openSettings; G.openSettings = function () { var r = openSet0.apply(this, arguments); injectSettings(); return r; }; }
+    settingsObj();
     document.body.addEventListener('change', function (e) { if (e.target && e.target.id === 'savefile-in') readFileInput(e.target); });
     document.addEventListener('keydown', function (e) {
       if (e.target && e.target.id === 'mbar' && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); e.target.click(); return; }

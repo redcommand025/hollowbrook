@@ -118,3 +118,22 @@ table.ledger td { padding:3px 6px; border-bottom:1px solid #2a2e37; } table.ledg
 table.ledger tr.tot td { font-weight:600; border-top:1px solid #3a3f4a; }
 b.up { color:var(--up); } b.down { color:var(--down); }
 @media (max-width:480px) { .title { padding:16px 8px; } .title h1 { font-size:40px; letter-spacing:2px; } .title button { width:100%; max-width:280px; } }
+
+/* ---------- v26.10.19.1: effect previews, locked choices, collapsible sections ---------- */
+.opt .fx { display:inline-block; margin-left:6px; color:var(--dim); font:12px/1.5 system-ui, sans-serif; text-decoration:none; }
+.opt .fx-sep { color:#5f5b53; }
+.opt .fx-up { color:#c9c3b6; } .opt .fx-down { color:#a9a397; }
+.opt .fx-good { color:var(--up); } .opt .fx-bad { color:var(--down); }
+.optgroup li.locked { margin:1px 0 3px; }
+.opt.locked { color:var(--dim); opacity:.7; cursor:not-allowed; }
+.opt.locked .fx-tok, .opt.locked .tm { color:inherit; }
+.optgroup .why { display:block; margin:0 0 0 1.9em; color:var(--dim); font:italic 12px/1.4 system-ui, sans-serif; }
+.hb-noicons .optgroup .why .ico-lock { display:none; }
+.optgroup h3 .sec-tog { all:unset; cursor:pointer; color:inherit; font:inherit; border-radius:4px; padding:0 2px; -webkit-tap-highlight-color:transparent; }
+.optgroup h3 .sec-tog:hover .sec-name { text-decoration:underline; }
+.optgroup h3 .sec-tog:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.optgroup h3 .caret { color:var(--dim); font-size:.85em; }
+.optgroup h3 .sec-n { color:var(--dim); font-weight:normal; }
+.optgroup.collapsed h3 { opacity:.85; }
+@media (max-width:720px) { .opt .fx { display:block; margin:0 0 0 1.9em; } .optgroup h3 .sec-tog { padding:4px 2px; } }
+.hb-engset button[disabled] { opacity:.5; cursor:default; }

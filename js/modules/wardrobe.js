@@ -287,6 +287,7 @@
   function briefBulk() { var b = wornItem('under_bottom'), d = def(b); if (!b || !d || !d.absorb) return 0; var f = bfill(b), grow = ((b.ml || 0) >= GROW_ML || (b.lb || 0) >= GROW_LB ? 1 : 0) + (f >= 0.85 ? 1 : 0); if (d.cat === 'cloth') grow = Math.min(grow, 1); return Math.min(4, (d.bulk || 0) + grow); }
   function briefNoise() { var b = wornItem('under_bottom'), d = def(b); if (!b || !d || !d.absorb) return 0; return Math.min(4, (d.noise || 0) + (d.cat === 'plastic' && bfill(b) >= 0.5 ? 1 : 0)); }
   function briefWeight() { var b = wornItem('under_bottom'), d = def(b); if (!b || !d || !d.absorb) return 0; return Math.round(((b.ml || 0) / 453.6 + (b.lb || 0)) * 10) / 10; }
+  function wearingBriefUsed() { var b = wornItem('under_bottom'); return !!(b && def(b).absorb && (b.ml || b.lb || b.soiled)); }
   function stock() { var w = W(); if (!w) return {}; if (!w.stock) w.stock = {}; if (w.briefs) { w.stock.inc_brief = (w.stock.inc_brief || 0) + w.briefs; w.briefs = 0; } return w.stock; }
   function supplies(id) { var st = stock(); if (id) return st[id] || 0; var n = 0; for (var k in st) n += st[k]; return n; }
   function freshBrief(id) {
@@ -509,6 +510,41 @@
     });
   }
 
+  /* Laundry in steps: load the washer, wait or leave it running, then dryer or drying rack. */
+  function finishLaundry(w, hang) {
+    var L = w.laundry, n = 0; w.laundry = null;
+    w.items.forEach(function (it) { if (L.uids.indexOf(it.uid) >= 0 && SLOTS.every(function (s) { return w.worn[s] !== it.uid; })) { it.clean = true; it.wet = 0; it.days = 0; it.soiled = false; it.soiledAt = null; it.ml = 0; it.lb = 0; it.grew = false; n++; } });
+    if (G_().stats && G_().stats.trainSkill) G_().stats.trainSkill('housekeeping', hang ? 7 : 6);
+    syncSpare(); return n;
+  }
+  function laundryOptions(out, dirty) {
+    var w = W(), L = w.laundry;
+    if (!L) {
+      if (!dirty.length) return;
+      out.actions.push(opt('Do laundry: ' + dirty.length + ' item' + (dirty.length > 1 ? 's' : '') + ' ($3)', function () {
+        if (money() < 3) return { text: '<p>The machines want quarters you don\'t have.</p>', minutes: 1 };
+        G_().change('money', -3); logMoney('spend', 'Laundry', 3);
+        w.laundry = { stage: 'wash', uids: dirty.map(function (it) { return it.uid; }), until: absMin() + 45 };
+        return { text: '<p>' + line('laundryLoad', ['You haul the laundry bag down to the basement machines, load a washer and feed it quarters. It starts to churn.', 'The basement laundry room hums. Someone has left a single sock on top of the dryer with a note: "Is this yours?" It is not.', 'You claim the one washer that doesn\'t walk across the floor on spin. Ninety minutes and two podcast episodes later, you have a warm armful of clean clothes.', 'A floormate is folding at the next table and you trade complaints about the dryer that eats quarters. Your clothes come out soft and smelling faintly of lemon.']) + '</p><p class="hint">The wash takes about 45 minutes. You can wait, or leave it running.</p>', minutes: 5 };
+      }, { time: 5, disabled: money() < 3, reason: money() < 3 ? 'Needs $3' : '', effects: ['!−$3', 'Starts a 45-minute wash'] }));
+      return;
+    }
+    var left = Math.max(0, L.until - absMin());
+    if (L.stage === 'wash' && left > 0) {
+      out.actions.push(opt('Wait out the wash cycle', function () { L.stage = 'washed'; return { text: '<p>' + line('lwait', ['You sit on the folding table with a textbook while the machine thumps through its spin.', 'You scroll your phone and watch the suds go round. It is strangely calming.', 'Someone comes in, sighs at the full machines, and leaves again.']) + '</p>', minutes: left }; }, { time: left, effects: ['^Finishes the wash'] }));
+      out.actions.push(opt('Leave it running', function () { w.mode = null; return { text: '<p>You leave the washer churning. Your laundry will be waiting when you come back.</p>', minutes: 1 }; }, { time: 1 }));
+      return;
+    }
+    out.actions.push(opt('Put it in the dryer ($2)', function () {
+      if (money() < 2) return { text: '<p>You\'re out of quarters for the dryer.</p>', minutes: 1 };
+      G_().change('money', -2); logMoney('spend', 'Laundry', 2); var n = finishLaundry(w, false);
+      return { text: '<p>Forty minutes in the dryer. ' + n + ' item' + (n === 1 ? '' : 's') + ' come out warm, soft and smelling of cheap detergent.</p>', minutes: 40 };
+    }, { time: 40, disabled: money() < 2, reason: money() < 2 ? 'Needs $2' : '', effects: ['!−$2', '^Clean, dry clothes'] }));
+    out.actions.push(opt('Hang it on the drying rack', function () {
+      var n = finishLaundry(w, true);
+      return { text: '<p>You drape ' + n + ' damp item' + (n === 1 ? '' : 's') + ' over the rack in your room. It takes a while, but it\'s free and nothing shrinks.</p>', minutes: 15 };
+    }, { time: 15, effects: ['^Clean clothes', '^Free', '^+Housekeeping'] }));
+  }
   function wardrobeOptions(out, where) {
     var w = W(), home = where === 'home';
     SLOTS.forEach(function (slot) {
@@ -539,19 +575,13 @@
       dead.forEach(function (it) { w.items.splice(w.items.indexOf(it), 1); }); syncSpare();
       return { text: '<p>Some things are past saving. You bag them up and drop them in the bin.</p>', minutes: 2 };
     }, { time: 2 }));
-    if (home && dirty.length) out.actions.push(opt('Do laundry: ' + dirty.length + ' item' + (dirty.length > 1 ? 's' : '') + ' ($3)', function () {
-      if (money() < 3) return { text: '<p>The machines want quarters you don\'t have.</p>', minutes: 1 };
-      G_().change('money', -3); logMoney('spend', 'Laundry', 3);
-      dirty.forEach(function (it) { it.clean = true; it.wet = 0; it.days = 0; it.soiled = false; it.soiledAt = null; it.ml = 0; it.lb = 0; it.grew = false; });
-      if (G_().stats && G_().stats.trainSkill) G_().stats.trainSkill('housekeeping', 6);
-      syncSpare();
-      return { text: '<p>' + line('laundry', ['You haul the laundry bag down to the basement machines and wait out the spin cycle with a textbook. Everything comes out warm and smelling of cheap detergent.', 'The basement laundry room hums. Someone has left a single sock on top of the dryer with a note: "Is this yours?" It is not.', 'You claim the one washer that doesn\'t walk across the floor on spin. Ninety minutes and two podcast episodes later, you have a warm armful of clean clothes.', 'A floormate is folding at the next table and you trade complaints about the dryer that eats quarters. Your clothes come out soft and smelling faintly of lemon.']) + '</p>', minutes: 90 };
-    }, { time: 90 }));
+    if (home) laundryOptions(out, dirty);
     if (w.mode === 'wardrobe:acc' || w.mode === 'wardrobe:under') out.actions.push(opt('Back to your clothes', function () { w.mode = 'wardrobe'; return { text: '<p>You close the drawer.</p>', minutes: 0 }; }));
     else out.actions.push(opt('Open the underwear drawer', function () { w.mode = 'wardrobe:under'; return { text: '<p>Underwear and undershirts, folded more neatly than anything else you own.' + (supplies() ? ' Your briefs are at the back (' + supplies() + ' left).' : '') + '</p>', minutes: 1 }; }));
     if (w.mode !== 'wardrobe:acc' && w.mode !== 'wardrobe:under' && w.items.some(function (it) { return ACC.indexOf(def(it).slot) >= 0; })) out.actions.push(opt('Open the accessories drawer', function () { w.mode = 'wardrobe:acc'; return { text: '<p>Hats, glasses, earrings and scarves, in a tangle that is almost organised.</p>', minutes: 1 }; }));
     pullLive();
     var mend = w.items.filter(function (it) { return it.integ < maxOf(it) * 0.8 && !ruined(it) && !def(it).disposable && CLOTH.indexOf(def(it).slot) >= 0; }).sort(function (a, b) { return a.integ - b.integ; }).slice(0, 3);
+    if (home && !w.sewingKit && mend.length) out.actions.push(opt('Mend your clothes', function () { return { text: '', minutes: 0 }; }, { disabled: true, reason: 'Needs a sewing kit from Threadbare', time: 45 }));
     if (home && w.sewingKit && mend.length) out.actions.push(opt('Mend your clothes (' + mend.map(function (it) { return def(it).name; }).join(', ') + ')', function () {
       var skill = 0; try { var sk = G_().state.stats.skills.housekeeping; skill = (typeof sk === 'object' ? sk.value : sk) || 0; } catch (e) {}
       var fix = 30 + Math.round(skill / 40);
@@ -646,7 +676,7 @@
 
       if (w.mode && w.mode.indexOf('wardrobe') === 0) { wardrobeOptions(out, home ? 'home' : 'fitting'); return out; }
       if (hid === STORE) {
-        if (!isOpen(STORE)) return out;
+        if (!isOpen(STORE)) { out.actions.push(opt('Browse the racks', function () { return { text: '', minutes: 0 }; }, { disabled: true, reason: 'Closed. Open 9am to 7pm', section: 'shop', icon: '👀' })); return out; }
         storeOptions(out);
         if (!w.mode) out.other.push(opt('Use the fitting room', function () { w.mode = 'wardrobe'; return { text: '<p>' + line('fit', ['You pull the velvet curtain across. The mirror is kind; the lighting is not.', 'The fitting room smells of cedar and someone else\'s perfume. A hook, a stool, a long mirror.', 'You tug the curtain shut. It stops two inches short of the wall, as fitting room curtains always do.']) + '</p>', minutes: 1 }; }));
       }
@@ -657,7 +687,9 @@
       }, { time: 5 }));
       var hr = G_().world && G_().world.here ? G_().world.here() : null;
       if (hr && hr.restroom && !home && supplies()) changeBriefOption(out);
+      else if (hr && hr.restroom && !home && wearingBriefUsed()) out.actions.push(opt('Change your brief', function () { return { text: '', minutes: 0 }; }, { disabled: true, reason: 'No spare briefs. Buy a pack at the market or Threadbare', time: 4 }));
       if (hid === 'market' && isOpen('market')) briefPackOption(out, 'market', 'Groceries');
+      if (home && w.laundry && w.mode !== 'wardrobe') out.actions.push(opt(w.laundry.until <= absMin() ? 'Collect your laundry' : 'Check on your laundry', function () { w.mode = 'wardrobe'; return { text: '<p>You head down to the laundry room.</p>', minutes: 2 }; }, { time: 2, icon: '🧺' }));
       if (home) out.other.push(opt('Open your wardrobe', function () {
         w.mode = 'wardrobe';
         var n = w.items.length, dirty = w.items.filter(function (it) { return !it.clean; }).length;
@@ -677,8 +709,20 @@
       desc: 'A narrow clothing shop with creaky floorboards, racks sorted by colour, and a velvet-curtained fitting room. The owner hums along to the radio.'
     }, [['shopping_centre', 1]]);
 
+  function autoFx(o) {
+    var l = o.label || '', m = /\(\$(\d+)\)/.exec(l);
+    if (!o.effects) { var fx = [];
+      if (m) fx.push(/^Sell/.test(l) ? '^+$' + m[1] : '!−$' + m[1]);
+      if (/fresh .*brief|Put on a .*brief/i.test(l)) fx.push('^Fresh brief');
+      if (/out of sight/.test(l)) fx.push('^Out of sight', '^Stops the reputation loss');
+      if (/^Mend your clothes \(/.test(l)) fx.push('^Repairs clothes', '^+Housekeeping');
+      if (/^Have your/.test(l)) fx.push('^Repairs clothes');
+      if (/^Throw away/.test(l)) fx.push('Removes ruined clothes');
+      if (fx.length) o.effects = fx; }
+    if (o.disabled && !o.reason && m && money() < +m[1]) o.reason = 'Needs $' + m[1];
+  }
   var ICON = function (o) { var l = o.label || ''; return /brief|diaper/i.test(l) ? (/^Buy/.test(l) ? '📦' : '🩲') : /out of sight|hide/i.test(l) ? '🫣' : /laundry/i.test(l) ? '🧺' : /^(Mend|Have your|Buy a sewing)/.test(l) ? '🪡' : /^(Sell|Throw away)/.test(l) ? '♻️' : /^Buy/.test(l) ? '🛍️' : /^(Browse|Check the clearance)/.test(l) ? '👀' : /fitting room/i.test(l) ? '🚪' : /wardrobe|drawer|Back to your clothes/i.test(l) ? '🚪' : /undressed|^Take off/.test(l) ? '👕' : /^Wear/.test(l) ? '👕' : /Step back/.test(l) ? '↩️' : '👕'; };
-  (function (gofn, pick) { mod.getOptions = function (state) { var out = gofn.apply(this, arguments); if (out) ['actions', 'other', 'dialogue'].forEach(function (k) { (out[k] || []).forEach(function (o) { if (o && !o.section) o.section = pick(o, state); if (o && !o.icon) o.icon = ICON(o); }); }); return out; }; })(mod.getOptions, function (o, st) { var l = o.label || '', m = (st.wardrobe && st.wardrobe.mode) || ''; if (/^Buy /.test(l)) return 'shop'; if (/brief|diaper|hide|out of sight/i.test(l)) return 'needs'; if (m.indexOf('shop') === 0 || /^(Browse|Check the clearance|Sell|Have your|Step back|Use the fitting room|Leave the fitting room)/.test(l)) return 'shop'; return 'self'; });
+  (function (gofn, pick) { mod.getOptions = function (state) { var out = gofn.apply(this, arguments); if (out) ['actions', 'other', 'dialogue'].forEach(function (k) { (out[k] || []).forEach(function (o) { if (o && !o.section) o.section = pick(o, state); if (o && !o.icon) o.icon = ICON(o); autoFx(o); }); }); return out; }; })(mod.getOptions, function (o, st) { var l = o.label || '', m = (st.wardrobe && st.wardrobe.mode) || ''; if (/^Buy /.test(l)) return 'shop'; if (/brief|diaper|hide|out of sight/i.test(l)) return 'needs'; if (m.indexOf('shop') === 0 || /^(Browse|Check the clearance|Sell|Have your|Step back|Use the fitting room|Leave the fitting room)/.test(l)) return 'shop'; return 'self'; });
     g.register(mod);
     if (g.on) {
       g.on('start', function (state) { ensure(state); giveStarter(state); });

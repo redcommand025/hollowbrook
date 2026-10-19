@@ -3114,11 +3114,238 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
   };
   // ---------- Dialogue trees (topics) ----------
   // Each topic: { label, need(state,id)->bool, run(state,id)->{text,minutes} }
+  function askOutLock(state, id) {
+    var r = rel(state, id);
+    if (!r || r.romance !== 1 && r.romance !== 2 || !QUESTS['rom_' + id]) return null;
+    var a = (ns(state).askOut || {})[id],
+      t = time();
+    if (!a) return null;
+    if (typeof a.coolUntil === 'number' && t.day < a.coolUntil) {
+      var n = a.coolUntil - t.day;
+      return "Ask again in " + n + " day" + (n > 1 ? 's' : '');
+    }
+    if (a.day === t.day) return 'Already asked today';
+    return null;
+  }
+  // ---------- Multi-step scenes (hangouts, dates) ----------
+  // ns.scene = { kind: 'hang'|'date', id, step, max, loc }
+  var HANG_MAX = 3,
+    SCENE_LOCK = 'npcs-scene';
+  function openScene(state, sc) {
+    var G = window.G;
+    if (G.state.lock && G.state.lock.reason !== SCENE_LOCK) return false;
+    sc.t = nowMin();
+    ns(state).scene = sc;
+    ns(state).talking = null;
+    G.state.lock = {
+      reason: SCENE_LOCK,
+      allow: []
+    };
+    return true;
+  }
+  function endScene(state) {
+    ns(state).scene = null;
+    var G = window.G;
+    if (G.state.lock && G.state.lock.reason === SCENE_LOCK) G.state.lock = null;
+  }
+  function sceneValid(state) {
+    var sc = ns(state).scene,
+      G = window.G,
+      lk = G.state.lock,
+      sf = G.state.stats && G.state.stats.flags || {};
+    if (sc && (loc(state) !== sc.loc || !present(state).includes(sc.id) || nowMin() - (sc.t || 0) > 120 || sf.sleeping || sf.collapse || lk && lk.reason !== SCENE_LOCK)) {
+      ns(state).scene = null;
+      if (lk && lk.reason === SCENE_LOCK) G.state.lock = null;
+      return null;
+    }
+    if (!sc && lk && lk.reason === SCENE_LOCK) G.state.lock = null;
+    return sc;
+  }
+  function canHang(state, id) {
+    var r = rel(state, id);
+    if (ns(state).scene || window.G.state.lock && window.G.state.lock.reason !== SCENE_LOCK) return 'Already busy';
+    if (r.rep < 15 && r.romance < 3) return false;
+    if (r.rep < 40 && r.romance < 3) return 'Needs Friend standing';
+    if (r.hangDay === time().day) return 'Already hung out today';
+    var h = time().hour;
+    if (h < 7 || h >= 23) return 'Too late for that';
+    return true;
+  }
+  function startHang(state, id) {
+    if (!openScene(state, {
+      kind: 'hang',
+      id: id,
+      step: 0,
+      max: HANG_MAX,
+      loc: loc(state)
+    })) return {
+      text: 'Not right now.',
+      minutes: 0
+    };
+    rel(state, id).hangDay = time().day;
+    _changeRep(state, id, 1, true);
+    return {
+      text: pick([nm(id) + " " + verb(id, 'grin') + ". \"Yeah, go on then. I've got a bit of time.\"", "\"Sure, I could use the company.\" " + nm(id) + " " + verb(id, 'fall') + " into step beside you.", nm(id) + " " + verb(id, 'check') + " the time, then " + verb(id, 'shrug') + ". \"Why not.\""]),
+      minutes: 5
+    };
+  }
+  var HANG_TALK = [function (id) {
+    return "You and " + nm(id) + " trade stories about the week. " + pronouns(id).Sub + " " + (pronouns(id).be === 'are' ? 'laugh' : 'laughs') + " at the right parts.";
+  }, function (id) {
+    return "The conversation wanders from nothing to everything and back again. Neither of you notices the time.";
+  }, function (id) {
+    return nm(id) + " tells you something " + pronouns(id).sub + " " + (pronouns(id).be === 'are' ? 'don\'t' : 'doesn\'t') + " usually tell people. You keep it safe.";
+  }, function (id) {
+    return "You argue cheerfully about something that doesn't matter at all. " + nm(id) + " " + verb(id, 'win') + ", mostly.";
+  }];
+  var HANG_SNACK = [function (id) {
+    return "You split something warm from a street stall. " + nm(id) + " " + verb(id, 'steal') + " the last bite and " + verb(id, 'look') + " unrepentant.";
+  }, function (id) {
+    return "Two paper cups and a shared bag of something salty. It's simple, and it's nice.";
+  }];
+  var HANG_WALK = [function (id) {
+    return "You take a slow loop of the neighbourhood. " + nm(id) + " " + verb(id, 'point') + " out things you'd never noticed.";
+  }, function (id) {
+    return "A long, easy walk. Somewhere along the way the silence stops needing filling.";
+  }];
+  var DATE_DESSERT = [function (id) {
+    return "You order one dessert and two spoons. " + nm(id) + " " + verb(id, 'pretend') + " to fight you for it.";
+  }, function (id) {
+    return "Something chocolate arrives. " + nm(id) + " " + verb(id, 'feed') + " you the first bite, laughing.";
+  }];
+  var DATE_WALK = [function (id) {
+    return "You take the long way home on purpose. " + nm(id) + "'s hand finds yours and stays there.";
+  }, function (id) {
+    return "Streetlights, cold air, and " + nm(id) + " leaning into your shoulder. Nobody hurries.";
+  }];
+  function sceneStepOpt(label, icon, mins, effects, cost, fn) {
+    return {
+      label: label,
+      icon: icon,
+      time: mins,
+      effects: effects,
+      cost: cost,
+      fn: fn
+    };
+  }
+  function sceneOptions(state) {
+    var sc = sceneValid(state);
+    if (!sc) return null;
+    var id = sc.id,
+      out = [],
+      done = sc.step >= sc.max;
+    var step = function step(label, icon, mins, effects, cost, fn) {
+      var o = {
+        label: label,
+        icon: icon,
+        time: mins,
+        effects: effects,
+        section: 'now',
+        always: true,
+        sub: sc.kind === 'date' ? 'Date' : 'Hanging out'
+      };
+      if (done) {
+        o.disabled = true;
+        o.reason = sc.kind === 'date' ? 'The evening is winding down' : 'You\'re both winding down';
+      } else if (cost && money(state) < cost) {
+        o.disabled = true;
+        o.reason = "Needs $" + cost;
+      }
+      o.run = function (s) {
+        var c = ns(s).scene;
+        if (!c || o.disabled) return {
+          text: o.reason || 'Nothing happens.',
+          minutes: 0
+        };
+        if (cost) safeChange('money', -cost);
+        c.step++;
+        return {
+          text: fn(s),
+          minutes: mins
+        };
+      };
+      out.push(o);
+    };
+    if (sc.kind === 'hang') {
+      step('Keep chatting', '💬', 30, ['^+Rep', '^−Stress'], 0, function (s) {
+        _changeRep(s, id, 2, true);
+        safeChange('stats.needs.stress', -15);
+        return pick(HANG_TALK)(id);
+      });
+      step('Grab a snack together ($4)', '🍩', 20, ['^Less hungry', rel(state, id).romance >= 1 ? '^+Affection' : '^+Rep', '!−$4'], 4, function (s) {
+        safeChange('stats.needs.hunger', 100);
+        if (rel(s, id).romance >= 1) changeAff(s, id, 2);else _changeRep(s, id, 1, true);
+        return pick(HANG_SNACK)(id);
+      });
+      step('Go for a walk', '🚶', 30, ['^−Stress', '!+Fatigue'], 0, function (s) {
+        safeChange('stats.needs.stress', -25);
+        safeChange('stats.needs.fatigue', 20);
+        _changeRep(s, id, 1, true);
+        return pick(HANG_WALK)(id);
+      });
+      out.push({
+        label: 'Head off',
+        icon: '👋',
+        time: 1,
+        section: 'now',
+        always: true,
+        sub: 'Hanging out',
+        run: function run(s) {
+          endScene(s);
+          if (sc.step >= 2) _changeRep(s, id, 1, true);
+          return {
+            text: sc.step >= 2 ? "\"This was good,\" " + nm(id) + " " + verb(id, 'say') + ". \"Let's do it again.\"" : "You say a quick goodbye to " + nm(id) + ".",
+            minutes: 1
+          };
+        }
+      });
+    } else {
+      step('Share a dessert ($6)', '🍰', 30, ['^+Affection', '!−$6'], 6, function (s) {
+        changeAff(s, id, 3);
+        return pick(DATE_DESSERT)(id);
+      });
+      step('Take the long way home', '🌙', 40, ['^+Affection', '^−Stress', '!+Fatigue'], 0, function (s) {
+        changeAff(s, id, 2);
+        safeChange('stats.needs.stress', -40);
+        safeChange('stats.needs.fatigue', 20);
+        return pick(DATE_WALK)(id);
+      });
+      out.push({
+        label: 'Say goodnight',
+        icon: '❤️',
+        time: 10,
+        effects: ['^+Affection', '^−Stress'],
+        section: 'now',
+        always: true,
+        sub: 'Date',
+        run: function run(s) {
+          endScene(s);
+          changeAff(s, id, 3);
+          _changeRep(s, id, 2);
+          safeChange('stats.needs.stress', -30);
+          var r = rel(s, id);
+          var up = '';
+          if (r.romance === 3 && r.aff >= 90) {
+            r.romance = 4;
+            window.G.notify("You and " + BY_ID[id].name + " are now partners.", 'up');
+          }
+          return {
+            text: pick(["A long kiss goodnight under a streetlamp, and then a fade into the rest of the night.", nm(id) + " " + verb(id, 'linger') + " at the door. \"Same time next week?\" Then a kiss, and the evening fades out.", "You walk " + nm(id) + " home. The goodbye takes a lot longer than it needs to."]) + up,
+            minutes: 10
+          };
+        }
+      });
+    }
+    return out;
+  }
   var TOPICS = [{
     label: 'Chat',
     icon: '💬',
     need: function need() {
       return true;
+    },
+    effects: function effects(s, id) {
+      return rel(s, id).lastChatDay !== time().day ? ['^+Rep'] : [];
     },
     run: function run(state, id) {
       var st = _stage(state, id).key;
@@ -3187,6 +3414,9 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     need: function need(s, id) {
       return rel(s, id).rep >= 0;
     },
+    effects: function effects(s, id) {
+      return rel(s, id).lastCompDay === time().day ? ['!−Rep (twice in a day)'] : rel(s, id).rep >= 15 ? ['^+Rep', '^+Affection'] : ['^+Rep'];
+    },
     run: function run(state, id) {
       var r = rel(state, id),
         t = time();
@@ -3209,8 +3439,12 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     label: 'Flirt',
     icon: '❤️',
     need: function need(s, id) {
-      return rel(s, id).rep >= 15;
+      return rel(s, id).rep >= 15 && rel(s, id).lastFlirtDay !== time().day;
     },
+    lock: function lock(s, id) {
+      return rel(s, id).rep >= 15 && rel(s, id).lastFlirtDay === time().day ? 'Already flirted today' : null;
+    },
+    effects: ['^+Affection if it lands', '!−Rep, +Stress if it doesn\'t'],
     run: function run(state, id) {
       var r = rel(state, id),
         t = time();
@@ -3242,7 +3476,26 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       var k = rel(s, id).heart || 0;
       return HEART[id] && k < 3 && rel(s, id).rep >= [15, 40, 70][k] && rel(s, id).heartDay !== time().day;
     },
-    heart: true
+    heart: true,
+    lock: function lock(s, id) {
+      var k = rel(s, id).heart || 0;
+      return HEART[id] && k < 3 && rel(s, id).rep >= [15, 40, 70][k] && rel(s, id).heartDay === time().day ? 'Once a day' : null;
+    }
+  }, {
+    label: 'Hang out',
+    icon: '☕',
+    time: 5,
+    need: function need(s, id) {
+      return canHang(s, id) === true;
+    },
+    lock: function lock(s, id) {
+      var c = canHang(s, id);
+      return c === true ? null : c;
+    },
+    effects: ['^+Rep', '^−Stress'],
+    run: function run(state, id) {
+      return startHang(state, id);
+    }
   }, {
     label: 'Give a gift',
     icon: '🎁',
@@ -3256,7 +3509,10 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     label: 'Ask on a date',
     icon: '❤️',
     need: function need(s, id) {
-      return rel(s, id).romance >= 3;
+      return rel(s, id).romance >= 3 && !(ns(s).dates[id] && ns(s).dates[id].day === time().day);
+    },
+    lock: function lock(s, id) {
+      return rel(s, id).romance >= 3 && ns(s).dates[id] && ns(s).dates[id].day === time().day ? 'Already planned for today' : null;
     },
     run: function run(state, id) {
       var t = time();
@@ -3283,6 +3539,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     need: function need(s, id) {
       return rel(s, id).romance >= 3;
     },
+    effects: ['!−15 Rep', '!+Stress'],
     run: function run(state, id) {
       var r = rel(state, id);
       r.romance = 1;
@@ -3301,6 +3558,10 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     time: 60,
     need: function need(s, id) {
       return canAskOut(s, id);
+    },
+    effects: ['^+Affection, −Stress if yes', '!−Affection if no'],
+    lock: function lock(s, id) {
+      return askOutLock(s, id);
     },
     check: function check(s, id) {
       return SOCIAL_STAT + ": " + diffLabel(askOutChance(s, id));
@@ -3343,6 +3604,13 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     need: function need(s, id) {
       return rel(s, id).rep >= 15 && (rel(s, id).favourDay === undefined || time().day - rel(s, id).favourDay >= 7);
     },
+    effects: ['^A small gift or cash', '!−Rep if they say no'],
+    lock: function lock(s, id) {
+      var r = rel(s, id);
+      if (r.rep < 15 || r.favourDay === undefined) return null;
+      var left = 7 - (time().day - r.favourDay);
+      return left > 0 ? "Ask again in " + left + " day" + (left > 1 ? 's' : '') : null;
+    },
     check: function check(s, id) {
       return SOCIAL_STAT + ": " + diffLabel(favourChance(s, id));
     },
@@ -3375,6 +3643,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     need: function need() {
       return true;
     },
+    effects: ['!−10 Rep'],
     run: function run(state, id) {
       _changeRep(state, id, -10);
       if (rel(state, id).aff > 0) changeAff(state, id, -8);
@@ -5284,6 +5553,24 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       }
     };
   });
+  function retryLocked(state, label, key) {
+    var f = ns(state).persuadeFail || {},
+      m = Math.max(1, Math.ceil(f[key] - nowMin()));
+    var why = "Try again in " + (m >= 60 ? '1 hour' : m + ' min');
+    return {
+      label: label,
+      icon: '📌',
+      time: 10,
+      disabled: true,
+      reason: why,
+      run: function run() {
+        return {
+          text: why + '.',
+          minutes: 0
+        };
+      }
+    };
+  }
   function qxTalkOptions(state, id) {
     var out = [];
     QX.forEach(function (Q) {
@@ -5301,10 +5588,12 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
             };
           }
         });
+        if (st.kind === 'talk' && st.to === id && isPersuade(st) && !persuadeReady(state, qxFlag(Q.id, i))) out.push(retryLocked(state, st.label, qxFlag(Q.id, i)));
         if (st.kind === 'talk' && st.to === id && isPersuade(st) && persuadeReady(state, qxFlag(Q.id, i))) out.push({
           label: st.label,
           icon: '📌',
           time: 10,
+          effects: ['!−Rep if it fails'],
           check: function check(s) {
             return "Persuasion: " + diffLabel(persuadeChance(s || state, id));
           },
@@ -5363,11 +5652,22 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         }
         var key = qxFlag(Q.id, i),
           pers = isPersuade(st);
-        if (pers && !persuadeReady(state, key)) return;
+        if (pers && !persuadeReady(state, key)) {
+          out.push(retryLocked(state, st.label, key));
+          return;
+        }
+        var fx = [];
+        if (st.cost) fx.push('!−$' + st.cost);
+        if (st.fatigue > 0) fx.push('!+Fatigue');
+        if (st.thirst < 0) fx.push('!+Thirst');
+        if (st.stress > 0) fx.push('!+Stress');
+        if (st.stress < 0) fx.push('^−Stress');
+        if (st.crime) fx.push('!+Crime');
         var o = {
           label: st.label,
           icon: '📌',
           time: st.minutes,
+          effects: fx.length ? fx : undefined,
           run: function run(s) {
             if (st.cost && money(s) < st.cost) return {
               text: 'You check your wallet. Not enough.',
@@ -5399,6 +5699,10 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         if (pers) o.check = function (s) {
           return "Persuasion: " + diffLabel(persuadeChance(s || state, Q.giver));
         };
+        if (st.cost && money(state) < st.cost) {
+          o.disabled = true;
+          o.reason = "Needs $" + st.cost;
+        }
         out.push(o);
       });
     });
@@ -5448,9 +5752,13 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     var _loop3 = function _loop3(it) {
       var I = ITEMS[it];
       if (I.shop !== here) return 1; // continue
+      var short = money(state) < I.price;
       out.push({
         label: "Buy a " + I.name + " ($" + I.price + ")",
         icon: '🎁',
+        effects: ['!−$' + I.price],
+        disabled: short || undefined,
+        reason: short ? "Needs $" + I.price : undefined,
         run: function run(s) {
           if (money(s) < I.price) return {
             text: 'You check your wallet. Not enough.',
@@ -5468,10 +5776,11 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     for (var it in ITEMS) {
       if (_loop3(it)) continue;
     }
-    var A = function A(label, cond, fn) {
+    var A = function A(label, cond, fn, fx) {
       if (cond) out.push({
         label: label,
-        run: fn
+        run: fn,
+        effects: fx
       });
     };
     A('Ask at the pharmacy counter for Rosa\'s pills', here === 'market' && questStatus(state, 'rosa_meds') === 'active' && !flag(state, 'rosa_meds_got'), function (s) {
@@ -5493,7 +5802,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         text: 'You search for half an hour. Nothing yet.',
         minutes: 30
       };
-    });
+    }, ['Might take a few tries']);
     A('Count crates with Marcus (2 hours)', here === 'market' && questStatus(state, 'marcus_stock') === 'active' && !flag(state, 'marcus_stock_done') && whereIs('marcus') === 'market', function (s) {
       setFlag(s, 'marcus_stock_done');
       safeChange('stats.needs.fatigue', 80);
@@ -5501,7 +5810,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         text: 'Two hours of crates, clipboards, and Marcus muttering numbers. Your back aches. It\'s honest work.',
         minutes: 120
       };
-    });
+    }, ['!+Fatigue', '^+$30 when Marcus pays']);
     A('Drop off Wren\'s parcel', here === 'old_mill' && questStatus(state, 'wren_parcel') === 'active' && !flag(state, 'wren_parcel_done') && t.hour >= 20, function (s) {
       setFlag(s, 'wren_parcel_done');
       safeChange('stats.needs.stress', 40);
@@ -5509,7 +5818,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         text: 'A figure in a raincoat takes the parcel without a word. Your heart doesn\'t slow down for a while.',
         minutes: 15
       };
-    });
+    }, ['!+Stress', '^+$25 from Wren']);
     A('Run laps for Coach Okafor', here === 'park' && questStatus(state, 'okafor_laps') === 'active' && t.hour === 6 && ns(state).counters.okafor_lastDay !== t.day, function (s) {
       var c = ns(s).counters;
       c.okafor_laps = (c.okafor_laps || 0) + 1;
@@ -5520,7 +5829,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         text: "You run until your lungs burn. Coach Okafor, across the field, gives a single nod. (" + c.okafor_laps + "/3)",
         minutes: 45
       };
-    });
+    }, ['^+Physique progress', '!+Fatigue', '!+Thirst']);
     A('Look for Biscuit the ferret', (here === 'shopping_centre' || here === 'park') && questStatus(state, 'hazel_ferret') === 'active' && !flag(state, 'hazel_ferret_got'), function (s) {
       if (Math.random() < 0.45) {
         setFlag(s, 'hazel_ferret_got');
@@ -5533,7 +5842,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         text: 'You check under benches and behind planters. No ferret. Yet.',
         minutes: 20
       };
-    });
+    }, ['Might take a few tries']);
     // Romance quest meetings
     A('Sit for Sam\'s portrait', here === 'park' && questStatus(state, 'rom_sam') === 'active' && flag(state, 'rom_sam_gift') && t.hour >= 16 && t.hour < 19 && whereIs('sam') === 'park', function (s) {
       setFlag(s, 'rom_sam_sat');
@@ -5780,6 +6089,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         label: o.label,
         icon: '🎁',
         time: 5,
+        effects: giftFx(id, o.it),
         run: function run(s) {
           var res = o.run(s);
           if (isBirthday(id) && rel(s, id).bdayGiftDay !== time().day) {
@@ -5793,6 +6103,13 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       };
     });
   }
+  function giftFx(id, it) {
+    if (!it) return undefined;
+    var known = flag(S(), 'likes_' + id),
+      v = BY_ID[id].gifts[it] || 0;
+    if (!known) return ['+Rep (depends on taste)'];
+    return v >= 2 ? ['^+Rep', '^+Affection'] : v < 0 ? ['!−Rep'] : ['^+Rep'];
+  }
   function giftOptionsBase(state, id) {
     var n = BY_ID[id];
     return Object.keys(ITEMS).filter(function (it) {
@@ -5800,6 +6117,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     }).map(function (it) {
       return {
         label: "Give the " + ITEMS[it].name,
+        it: it,
         run: function run(s) {
           ns(s).items[it]--;
           var v = n.gifts[it] || 0;
@@ -5895,7 +6213,23 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     }
     var opts = questTopics(state, id);
     TOPICS.forEach(function (tp) {
-      if (!tp.need(state, id)) return;
+      if (!tp.need(state, id)) {
+        var why = tp.lock ? tp.lock(state, id) : null;
+        if (why) opts.push({
+          label: tp.label,
+          icon: tp.icon,
+          time: tp.time || guessMins(tp.run) || 5,
+          disabled: true,
+          reason: why,
+          run: function run() {
+            return {
+              text: why + '.',
+              minutes: 0
+            };
+          }
+        });
+        return;
+      }
       if (tp.heart) opts.push({
         label: tp.label,
         icon: tp.icon,
@@ -5935,6 +6269,9 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         if (tp.check) o.check = function (s) {
           return tp.check(s || state, id);
         };
+        if (tp.effects) o.effects = typeof tp.effects === 'function' ? function (s) {
+          return tp.effects(s || state, id);
+        } : tp.effects;
         opts.push(o);
       }
     });
@@ -5947,32 +6284,74 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       t = time(),
       here = loc(state);
     var _loop5 = function _loop5(_id) {
-      var d = ns(state).dates[_id];
-      if (d.day !== t.day || d.loc !== here || d.done) return 1; // continue
-      if (t.hour >= d.hour && t.hour < d.hour + 3) {
-        out.push({
-          label: "Go on your date with " + BY_ID[_id].name,
-          icon: '❤️',
-          run: function run(s) {
-            d.done = true;
-            changeAff(s, _id, 6);
-            _changeRep(s, _id, 4);
-            safeChange('stats.needs.stress', -80);
-            var r = rel(s, _id);
-            if (r.romance === 3 && r.aff >= 90) {
-              r.romance = 4;
-              window.G.notify("You and " + BY_ID[_id].name + " are now partners.", 'up');
+        var d = ns(state).dates[_id];
+        if (d.day !== t.day || d.loc !== here || d.done) return 0; // continue
+        if (t.hour < d.hour) {
+          out.push({
+            label: "Go on your date with " + BY_ID[_id].name,
+            icon: '❤️',
+            time: 60,
+            disabled: true,
+            reason: "Starts at " + d.hour + ":00",
+            run: function run() {
+              return {
+                text: "Your date starts at " + d.hour + ":00.",
+                minutes: 0
+              };
             }
-            return {
-              text: pick(["You and " + nm(_id) + " lose track of time talking. The walk home is slow on purpose.", nm(_id) + " steals a bite of your food and grins. It is, somehow, the best evening all week.", "A shared umbrella, a long kiss under a streetlamp, and then a fade into the rest of the night."]),
-              minutes: 120
-            };
+          });
+          return 0; // continue
+        }
+        if (t.hour >= d.hour && t.hour < d.hour + 3) {
+          if (!present(state).includes(_id)) {
+            out.push({
+              label: "Go on your date with " + BY_ID[_id].name,
+              icon: '❤️',
+              time: 60,
+              disabled: true,
+              reason: "Waiting for " + BY_ID[_id].name,
+              run: function run() {
+                return {
+                  text: 'Not here yet.',
+                  minutes: 0
+                };
+              }
+            });
+            return 0; // continue
           }
-        });
-      }
-    };
+          if (ns(state).scene) return 0; // continue
+          out.push({
+            label: "Go on your date with " + BY_ID[_id].name,
+            icon: '❤️',
+            time: 60,
+            effects: ['^+Affection', '^+Rep', '^−Stress'],
+            run: function run(s) {
+              if (!openScene(s, {
+                kind: 'date',
+                id: _id,
+                step: 0,
+                max: 2,
+                loc: here
+              })) return {
+                text: 'Not right now.',
+                minutes: 0
+              };
+              d.done = true;
+              changeAff(s, _id, 3);
+              _changeRep(s, _id, 2);
+              safeChange('stats.needs.stress', -30);
+              return {
+                text: pick(["You and " + nm(_id) + " lose track of time talking over dinner.", nm(_id) + " steals a bite of your food and grins. It is, somehow, the best evening all week.", "A corner table, low light, and " + nm(_id) + " looking at you like there's nobody else in the room."]),
+                minutes: 60
+              };
+            }
+          });
+        }
+      },
+      _ret2;
     for (var _id in ns(state).dates) {
-      if (_loop5(_id)) continue;
+      _ret2 = _loop5(_id);
+      if (_ret2 === 0) continue;
     }
     return out;
   }
@@ -6686,6 +7065,9 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     onTick: function onTick(minutes, state) {
       ensureRels(state);
       hookSightings();
+      try {
+        sceneValid(state);
+      } catch (e) {}
       if (!ns(state).talking) smellTick(state, minutes);
       if (!ns(state).talking) {
         try {
@@ -6734,8 +7116,19 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         if (o.sub) w.sub = o.sub;
         if (o.icon) w.icon = o.icon;
         if (o.check) w.check = o.check;
+        if (o.effects) w.effects = o.effects;
+        if (o.always) w.always = true;
+        if (o.disabled) {
+          w.disabled = true;
+          w.reason = o.reason || '';
+        }
         return w;
       };
+      var sc = sceneOptions(state);
+      if (sc) {
+        res.dialogue = sc.map(wrap);
+        return res;
+      }
       if (ns(state).talking) {
         var t = talkingOptions(state);
         if (t) {

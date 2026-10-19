@@ -187,7 +187,7 @@
       G_().change('money', -12); logMoney('spend', 'Hair salon', 12); var lost = cutTo(Math.min(h.length, cur.ideal)); h.scruffyTold = false;
       G_().change('stats.needs.stress', -8); train(3); emit('cut');
       return { text: '<p>' + esc(stylistLine()) + '</p><p>A neat tidy-up that keeps your ' + esc(cur.label) + ' looking sharp.' + (lost ? ' The dyed ends are gone.' : '') + '</p>', minutes: 30 };
-    }, { time: 30, disabled: !grown || money() < 12, hint: grown ? 'Tidies your current cut.' : 'Your cut still looks fresh.' }));
+    }, { time: 30, disabled: !grown || money() < 12, reason: !grown ? 'Your cut still looks fresh' : '', hint: grown ? 'Tidies your current cut.' : 'Your cut still looks fresh.' }));
     out.actions.push(opt('Get a new haircut', function () { h.mode = 'cut'; return { text: '<p>The stylist hands you a dog-eared binder of styles. "Shorter is easy," she says. "Longer takes patience, or extensions."</p><p>' + esc(hairNote()) + '</p>', minutes: 2 }; }));
     out.actions.push(opt('Look at hair colours', function () { h.mode = 'dye'; return { text: '<p>' + ['A fan of swatches, from honest browns to a blue the stylist calls "mermaid".', 'The stylist fans out a ring of dyed hair samples. "Bold is fun," she says, "but brown forgives you."', 'A laminated colour chart, a little faded at the edges where people keep pointing at the reds.'][Math.floor(Math.random() * 3)] + '</p>', minutes: 2 }; }));
     out.actions.push(opt('Get clip-in extensions ($70)', function () {
@@ -208,12 +208,35 @@
     }, { time: 3, disabled: money() < 25, hint: 'Do your own makeup at home or at any mirror.' }));
     out.actions.push(opt('Wash and blow-dry ($15)', function () {
       if (money() < 15) return { text: '<p>You can wash it at home for free.</p>', minutes: 1 };
-      G_().change('money', -15); logMoney('spend', 'Hair salon', 15); G_().change('stats.needs.stress', -25); train(3);
-      var s = G_().state.stats; if (s && s.flags) s.flags.dirty = false;
-      return { text: '<p>Warm water, a scalp massage that nearly puts you to sleep, and a blow-dry with real volume. You walk out feeling expensive.</p>', minutes: 40 };
-    }, { time: 40, disabled: money() < 15 }));
+      G_().change('money', -15); logMoney('spend', 'Hair salon', 15); G_().change('stats.needs.stress', -10);
+      var s = G_().state.stats; if (s && s.flags) s.flags.dirty = false; h.treat = false; startWash();
+      return { text: '<p>You lean back over the basin. Warm water, a scalp massage that nearly puts you to sleep, and a towel wrapped round your head.</p>', minutes: 15 };
+    }, { time: 15, disabled: money() < 15, effects: ['!−$15', '^−Stress', '^Clean hair'] }));
   }
 
+  // Wash scene: holds G.state.lock (reason 'salon-scene') so only its steps show; ends on leaving, closing, sleep or after 2h.
+  function nowT() { return (G.time && G.time.total) || 0; }
+  function startWash() { var h = H(); h.mode = 'wash'; h.washT = nowT(); if (!G_().state.lock) G_().state.lock = { reason: 'salon-scene', allow: [] }; }
+  function endWash() { var h = H(); if (h.mode === 'wash') h.mode = null; var st = G_().state; if (st.lock && st.lock.reason === 'salon-scene') st.lock = null; }
+  function washValid(atSalon) {
+    var h = H(), f = (G_().state.stats || {}).flags || {};
+    if (h.mode === 'wash' && (!atSalon || nowT() - (h.washT || 0) > 120 || f.sleeping || f.collapse)) endWash();
+    if (h.mode !== 'wash') { var st = G_().state; if (st.lock && st.lock.reason === 'salon-scene') st.lock = null; }
+  }
+  function washStep(label, run, extra) { var o = opt(label, run, extra); o.always = true; o.section = 'now'; return o; }
+  function washOptions(out) {
+    var h = H();
+    out.actions.push(washStep('Get the blow-dry', function () {
+      endWash(); G_().change('stats.needs.stress', -15); train(3);
+      return { text: '<p>' + esc(stylistLine()) + '</p><p>A round brush, a lot of heat, and real volume. You walk out feeling expensive.</p>', minutes: 25 };
+    }, { time: 25, effects: ['^−Stress', '^Styled hair'] }));
+    if (!h.treat) out.actions.push(washStep('Add a deep-conditioning treatment ($8)', function () {
+      if (money() < 8) return { text: '<p>Maybe next time.</p>', minutes: 0 };
+      G_().change('money', -8); logMoney('spend', 'Hair salon', 8); h.treat = true; G_().change('stats.needs.stress', -5);
+      return { text: '<p>A cool, mint-scented mask and ten quiet minutes under a warm towel.</p>', minutes: 15 };
+    }, { time: 15, disabled: money() < 8, reason: money() < 8 ? 'Needs $8' : '', effects: ['!−$8', '^−Stress'] }));
+    out.actions.push(washStep('Leave with damp hair', function () { endWash(); return { text: '<p>You thank the stylist, towel your hair one last time and head out with it still damp.</p>', minutes: 1 }; }, { time: 1, icon: '🚪' }));
+  }
   function styleOptions(out) {
     var h = H(), p = P(), cur = STYLES[p.hairStyle];
     function downStyle() { return h.length >= 33 ? 'long' : h.length >= 18 ? 'shoulder' : h.length >= 9 ? 'bob' : 'short'; }
@@ -237,7 +260,11 @@
       var atSalon = hid === SALON && isOpen(SALON), mirror = tags.indexOf('home') >= 0;   // mirror actions only in your dorm room
       if ((h.mode === 'cut' || h.mode === 'dye') && !atSalon) h.mode = null;
       if ((h.mode === 'style' || h.mode === 'makeup') && !mirror) h.mode = null;
+      washValid(atSalon);
+      if (h.mode === 'wash') { washOptions(out); return out; }
       if (h.mode === 'makeup') { makeupOptions(out); return out; }
+      if (mirror && !h.makeupKit) out.other.push(opt('Put on makeup', function () { return { text: '', minutes: 0 }; }, { disabled: true, reason: 'Needs a makeup kit from the salon', time: 10 }));
+      if (hid === SALON && !isOpen(SALON)) out.actions.push(opt('Book a haircut', function () { return { text: '', minutes: 0 }; }, { disabled: true, reason: 'Closed. Open 9am to 6pm', section: 'shop' }));
       if (atSalon && h.mode !== 'style') salonOptions(out);
       if (mirror && h.mode !== 'cut' && h.mode !== 'dye') { styleOptions(out); if (h.mode !== 'style') makeupOptions(out); }
       return out;
@@ -252,7 +279,7 @@
       desc: 'Three chairs, a wall of mirrors, a shelf of dye swatches in every shade, and a radio tuned to golden oldies.'
     }, [['shopping_centre', 1]]);
   var ICON = function (o) { var l = o.label || ''; return /makeup|makeover/i.test(l) ? '💄' : /colour|dye/i.test(l) ? '🎨' : /ponytail|Braid|down|Restyle|Leave it/.test(l) ? '💇' : /Never mind|Put the makeup bag/.test(l) ? '↩️' : /Wash/.test(l) ? '🚿' : '✂️'; };
-  (function (gofn, pick) { mod.getOptions = function (state) { var out = gofn.apply(this, arguments); if (out) ['actions', 'other', 'dialogue'].forEach(function (k) { (out[k] || []).forEach(function (o) { if (o && !o.section) o.section = pick(o, state); if (o && !o.icon) o.icon = ICON(o); }); }); return out; }; })(mod.getOptions, function (o, st) { return /\(\$\d+\)|binder|colours|haircut|Never mind/.test(o.label || '') ? 'shop' : 'self'; });
+  (function (gofn, pick) { mod.getOptions = function (state) { var out = gofn.apply(this, arguments); if (out) ['actions', 'other', 'dialogue'].forEach(function (k) { (out[k] || []).forEach(function (o) { if (o && !o.section) o.section = pick(o, state); if (o && !o.icon) o.icon = ICON(o); var mm = /\(\$(\d+)\)/.exec(o.label || ''); if (mm && !o.effects) o.effects = ['!−$' + mm[1]].concat(/makeover/i.test(o.label) ? ['^+Style', '^−Stress'] : /trim/i.test(o.label) ? ['^Neat hair'] : []); if (o.disabled && !o.reason && mm && money() < +mm[1]) o.reason = 'Needs $' + mm[1]; }); }); return out; }; })(mod.getOptions, function (o, st) { return /\(\$\d+\)|binder|colours|haircut|Never mind/.test(o.label || '') ? 'shop' : 'self'; });
     g.register(mod);
     if (g.on) {
       g.on('start', function () { if (P()) H(); });

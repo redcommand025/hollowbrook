@@ -372,8 +372,11 @@
         if (g.id === 'yoga') il.sore = Math.max(0, il.sore - 600);
         if (sore) extra += ' <span class="flavor">Your sore muscles hold you back today.</span>';
         if (gymPlan() !== before) note('Training level: ' + gymPlan() + '. Your routine is getting easier.', 'up');
+        if (g.id !== 'yoga') startScene('gym', { id: g.id });
         return { text: '<p>' + g.text + extra + '</p>', minutes: g.min };
-      }, { time: g.min, disabled: !!dis, hint: dis || 'Training level: ' + gymPlan() + ' (' + r.workouts + ' workouts)' }));
+      }, { time: g.min, disabled: !!dis, reason: dis ? (n.fatigue >= 850 ? 'Too tired' : 'Needs $' + g.cost) : null,
+        hint: dis || 'Training level: ' + gymPlan() + ' (' + r.workouts + ' workouts)',
+        effects: ['^+Physique', '^+Athletics'].concat(g.will ? ['^+Willpower'] : [], g.stress ? ['^−Stress'] : [], ['!+Fatigue', '!+Thirst'], g.cost ? ['!−$' + g.cost] : []) }));
     });
   }
 
@@ -573,7 +576,7 @@
       n.stress = clamp(n.stress - 15, 0, MAX);
       if (G.emit) done.forEach(function (k) { G.emit('accident', { kind: k, type: k, where: here().id, witness: null, contained: true, absorbed: true, chosen: true, amount: VOLUME[k].amount, unit: VOLUME[k].unit }); });
       return { text: '<p>' + (said.length ? said.join(' ') : 'You go discreetly.') + ' Nobody around you can tell.' + (done.indexOf('bowels') >= 0 ? ' Change soon, before anyone notices the smell.' : '') + '</p>', minutes: 2 };
-    }, { time: 2, hint: 'Nobody sees, but a soiled brief can be smelled' });
+    }, { time: 2, hint: 'Nobody sees, but a soiled brief can be smelled', effects: both ? ['^−Bladder', '^−Bowels', '!Smell'] : ['^−Bladder', '!Brief fills'] });
   }
 
   // ---------- undressed in public (wardrobe.js says what's uncovered; npcs.js/school.js handle reputation) ----------
@@ -659,7 +662,7 @@
       }
       if (relief) chg('needs.stress', -30); else addStress(10);
       return { text: '<p>' + lead + 'Nobody sees. You walk away relieved and a little guilty.</p>', minutes: both ? 6 : 3 };
-    }, { time: both ? 6 : 3, hint: 'Chance of being seen: ' + riskWord(r) });
+    }, { time: both ? 6 : 3, hint: 'Chance of being seen: ' + riskWord(r), effects: [both ? '^−Bladder, −Bowels' : '^−Bladder', '!Risk: ' + riskWord(r)] });
   }
 
   function checkCollapse() {
@@ -840,8 +843,31 @@
     [/medicine/i, '💊'], [/meditate/i, '🧘'], [/people-watch/i, '👀'], [/appearance/i, '💄'], [/laundry/i, '🧺'], [/mend/i, '🪡'],
     [/fresh clothes/i, '👕'], [/swim/i, '🏊'], [/jog|treadmill/i, '🏃'], [/weights/i, '🏋️'], [/yoga/i, '🧘']
   ];
+  // Default effects (shown under the label by the engine): ^ good, ! bad. Options may set their own.
+  var EFFECT_RX = [
+    [/^Drink some water/i, ['^−Thirst', '!+Bladder']],
+    [/^Take a shower/i, ['^+Hygiene', '^−Stress', '^+Beauty']],
+    [/^Rinse out your soiled/i, ['^Removes the smell', '!Clothes left wet']],
+    [/^Clean yourself up/i, ['^+Hygiene']],
+    [/^Sleep/i, ['^−Fatigue', '^−Stress']],
+    [/^Nap/i, ['^−Fatigue (a little)']],
+    [/^Change into fresh clothes/i, ['^Dry, clean clothes', '^−Stress']],
+    [/^Do laundry/i, ['^Clean outfits', '^+Housekeeping', '!−$3']],
+    [/^Mend your clothes/i, ['^+Clothing integrity', '^+Housekeeping']],
+    [/^Go for a jog/i, ['^+Physique', '^+Athletics', '^−Stress', '!+Fatigue', '!+Thirst']],
+    [/^Meditate/i, ['^+Willpower', '^−Stress']],
+    [/^Take time on your appearance/i, ['^+Beauty', '^−Stress']],
+    [/^People-watch/i, ['^+Awareness', '^−Stress']],
+    [/honey-lemon tea/i, ['^Eases your cold', '^−Thirst', '^−Stress', '!−$2']],
+    [/cold medicine/i, ['^Cold clears faster', '!−$6']],
+    [/^Cover yourself/i, ['^Noticed less often', '^−Stress']]
+  ];
   function tagSections(out) {
+    // During another module's step scene (shift, date, shopping...) keep toilet options reachable so a long scene can't force an accident.
+    var lk = G.state.lock, otherScene = lk && lk.reason !== 'stats-scene' && /-scene$|^world-shop$/.test(lk.reason || '');
     ['actions', 'other'].forEach(function (k) { (out[k] || []).forEach(function (o) {
+      if (o && otherScene && /^(Use the restroom|Pee in your brief|Go in your brief|Cover yourself)/.test(o.label)) o.always = true;
+      if (o && !o.effects) for (var e = 0; e < EFFECT_RX.length; e++) if (EFFECT_RX[e][0].test(o.label)) { o.effects = EFFECT_RX[e][1]; break; }
       if (o && !o.icon) for (var j = 0; j < ICON_RX.length; j++) if (ICON_RX[j][0].test(o.label)) { o.icon = ICON_RX[j][1]; break; }
       if (!o || o.section || o.sub === 'Groceries' || /cold medicine/i.test(o.label)) return;
       for (var i = 0; i < SECTION_RX.length; i++) if (SECTION_RX[i][0].test(o.label)) { o.section = SECTION_RX[i][1]; return; }
@@ -849,7 +875,8 @@
   }
   function groceryOptions(out, n, home) {
     var hid = here().id;
-    if (hid === 'market') {
+    // Ron's basket scene (world.js) is the market's way to shop and fills the Bag via G.groceries.add; keep this list only as a fallback.
+    if (hid === 'market' && !(G.world && typeof G.world.isOpen === 'function')) {
       var full = grocTotal(), lim = grocLimit();
       Object.keys(GROCERIES).forEach(function (k) {
         var d = GROCERIES[k], tooMany = full + d.qty > lim, broke = money() < d.price;
@@ -857,7 +884,7 @@
           addMoney(-d.price); grocAdd(k, d.qty); attitude('spending', 1);
           if (G.emit) G.emit('groceriesBought', { id: k, qty: d.qty, price: d.price });
           return { text: '<p>You pop the ' + d.label.toLowerCase() + ' in your basket and pay at the till. (' + grocName(k, d.qty) + ')</p>', minutes: 2 };
-        }, { sub: 'Groceries', time: 2, disabled: tooMany || broke, hint: broke ? 'Not enough money' : tooMany ? 'You can\'t carry any more groceries' : d.verb ? d.verb + ': ' + (d.hunger ? 'hunger +' + d.hunger + ' ' : '') + (d.thirst > 0 ? 'thirst +' + d.thirst : '') : 'Cooking ingredient' }));
+        }, { sub: 'Groceries', time: 2, disabled: tooMany || broke, reason: broke ? 'Needs $' + d.price : tooMany ? 'Your bag is full' : null, effects: ['!−$' + d.price], hint: broke ? 'Not enough money' : tooMany ? 'You can\'t carry any more groceries' : d.verb ? d.verb + ': ' + (d.hunger ? 'hunger +' + d.hunger + ' ' : '') + (d.thirst > 0 ? 'thirst +' + d.thirst : '') : 'Cooking ingredient' }));
       });
     }
     // Eat or drink what you're carrying
@@ -875,7 +902,7 @@
         if (d.thirst > 100) n.bladder = clamp(n.bladder + 40, 0, MAX);
         if (off) { maybePoison(0.5); return { text: '<p>' + (k === 'milk' ? 'One sip and you know. The milk has gone off.' : 'It tastes stale and a bit off. You finish it anyway.') + '</p>', minutes: d.mins }; }
         return { text: '<p>' + (GROC_ALT[k] && Math.random() < 0.6 ? pick(GROC_ALT[k]) : d.text) + flavorTint() + '</p>', minutes: d.mins };
-      }, { sub: 'Your groceries', time: d.mins }));
+      }, { sub: 'Your groceries', time: d.mins, effects: [].concat(d.hunger ? ['^−Hunger'] : [], d.thirst > 0 ? ['^−Thirst'] : d.thirst < 0 ? ['!+Thirst'] : []) }));
     });
     // Cook a proper meal from ingredients
     if ((home || hid === 'dorm_hall') && n.hunger < 800) {
@@ -890,26 +917,110 @@
         if (hasTrait('homeCook')) { chg('needs.hunger', 110); chg('needs.stress', -20); }
         if (anyOff) maybePoison(0.4);
         return { text: '<p>You cook ' + recipe[2] + ' in the shared kitchen and eat it while it\'s hot. Proper food, and cheaper than eating out. ' + flav('cook') + (anyOff ? ' One of the ingredients smelled a little past it.' : '') + '</p>', minutes: 30 };
-      }, { sub: 'Your groceries', time: 30 }));
+      }, { sub: 'Your groceries', time: 30, effects: ['^−Hunger', '^−Stress', '^+Cooking'] }));
     }
+  }
+
+  // ---------- short multi-step scenes (restroom, meals, gym) ----------
+  // State lives in stats.flags.scene = { kind, loc, t, ... }. While one is open we hold G.state.lock
+  // (reason 'stats-scene') so only the scene's steps show; the last step is always a way out.
+  function nowMin() { return (G.state.world && G.state.world.minutes) || 0; }
+  function startScene(kind, data) {
+    var sc = { kind: kind, loc: here().id, t: nowMin() };
+    if (data) for (var k in data) sc[k] = data[k];
+    S().flags.scene = sc;
+    if (!G.state.lock) G.state.lock = { reason: 'stats-scene', allow: [] };
+  }
+  function endScene() {
+    S().flags.scene = null;
+    if (G.state.lock && G.state.lock.reason === 'stats-scene') G.state.lock = null;
+  }
+  function sceneValid() {
+    var sc = S().flags.scene;
+    if (sc && (sc.loc !== here().id || nowMin() - sc.t > 120 || S().flags.collapse || S().flags.sleeping)) { endScene(); sc = null; }
+    if (!sc && G.state.lock && G.state.lock.reason === 'stats-scene') G.state.lock = null;
+    return sc;
+  }
+  function step(label, run, extra) {
+    var o = opt(label, run, extra); o.always = true; o.section = 'now'; return o;
+  }
+  function leaveStep(label, text, mins) {
+    return step(label, function () { endScene(); return { text: '<p>' + text + '</p>', minutes: mins || 1 }; }, { time: mins || 1, icon: '🚪' });
+  }
+  function sceneOptions(sc) {
+    var s = S(), n = s.needs, list = [];
+    if (sc.kind === 'restroom') {
+      if (n.bowels >= 300) list.push(step('Stay a bit longer', function () {
+        n.bowels = 0; sc.relief = true;
+        return { text: '<p>' + pick(['You take your time. Better now.', 'It takes a few minutes, but you\'re done.', 'You sit a while longer and finish up.']) + '</p>', minutes: 7 };
+      }, { time: 7, icon: '🚻', effects: ['^−Bowels'] }));
+      if (n.stress >= 300 && !sc.breather) list.push(step('Take a quiet minute', function () {
+        sc.breather = true; chg('needs.stress', -25);
+        return { text: '<p>' + pick(['You lean on the stall door and just breathe for a moment.', 'A minute to yourself, away from everyone. It helps.']) + '</p>', minutes: 3 };
+      }, { time: 3, icon: '🫧', effects: ['^−Stress'] }));
+      list.push(step('Wash your hands and go', function () {
+        endScene(); if (sc.relief) chg('needs.stress', -30);
+        return { text: '<p>' + pick(['You wash your hands and head out.', 'A quick rinse at the sink and you\'re back out.', 'Hands washed, you step back out.']) + (sc.relief ? ' The relief is enormous.' : '') + '</p>', minutes: 1 };
+      }, { time: 1, icon: '🚪', effects: sc.relief ? ['^−Stress'] : null }));
+    } else if (sc.kind === 'cafmeal') {
+      if (!sc.finished) list.push(step('Finish your plate', function () {
+        sc.finished = true; chg('needs.hunger', 200); chg('needs.thirst', 60); n.bowels = clamp(n.bowels + 30, 0, MAX); chg('needs.stress', -15);
+        return { text: '<p>' + pick(['You clear the plate.', 'You finish every last bite.', 'You eat the rest more slowly.']) + '</p>', minutes: 10 };
+      }, { time: 10, icon: '🍽️', effects: ['^−Hunger', '^−Stress'] }));
+      if (!sc.drink) list.push(step('Get a glass of water', function () {
+        sc.drink = true; chg('needs.thirst', 150); n.bladder = clamp(n.bladder + 30, 0, MAX);
+        return { text: '<p>You fill a glass at the dispenser and drink it.</p>', minutes: 2 };
+      }, { time: 2, icon: '💧', effects: ['^−Thirst', '!+Bladder'] }));
+      list.push(leaveStep('Clear your tray and leave', sc.finished ? 'You stack your tray and head off.' : 'You leave the rest and head off.', 1));
+    } else if (sc.kind === 'cook') {
+      var eat = function (slow) {
+        return function () {
+          endScene(); var bonus = hasTrait('homeCook') ? 110 : 0;
+          chg('needs.hunger', 450 + bonus); chg('needs.thirst', 40); n.bowels = clamp(n.bowels + 40, 0, MAX);
+          chg('needs.stress', (slow ? -35 : 0) - (bonus ? 20 : 0));
+          return { text: '<p>' + (slow ? pick(['You sit down and eat slowly. It\'s nice to stop for a while.', 'You eat by the window and let your mind wander.']) : pick(['You eat at your desk. Not fancy, but filling.', 'You eat straight from the pan. Filling enough.'])) + '</p>', minutes: slow ? 25 : 10 };
+        };
+      };
+      list.push(step('Eat at your desk', eat(false), { time: 10, icon: '🍽️', effects: ['^−Hunger'] }));
+      list.push(step('Sit down and eat slowly', eat(true), { time: 25, icon: '🍽️', effects: ['^−Hunger', '^−Stress'] }));
+      list.push(step('Eat a few bites and go', function () {
+        endScene(); chg('needs.hunger', 150);
+        return { text: '<p>You eat a few bites standing up and leave the rest.</p>', minutes: 3 };
+      }, { time: 3, icon: '🚪', effects: ['^−Hunger (a little)'] }));
+    } else if (sc.kind === 'gym') {
+      var g = null; GYM.forEach(function (x) { if (x.id === sc.id) g = x; });
+      if (g && !sc.extra && n.fatigue < 800) list.push(step('Push for one more set', function () {
+        sc.extra = true; train('physique', rnd(g.phys / 2)); trainSkill('athletics', Math.ceil(g.ath / 2));
+        chg('needs.fatigue', rnd(g.fat / 2 * (hasTrait('gymRat') ? 0.7 : 1))); chg('needs.thirst', rnd(g.thirst / 2));
+        return { text: '<p>' + pick(['One more round. It\'s harder this time, but you finish it.', 'You push through one more set. Your legs are shaking afterwards.']) + '</p>', minutes: 15 };
+      }, { time: 15, icon: '💪', effects: ['^+Physique', '^+Athletics', '!+Fatigue', '!+Thirst'] }));
+      if (!sc.cool) list.push(step('Cool down and stretch', function () {
+        sc.cool = true; chg('needs.stress', -20); S().illness.sore = Math.max(0, (S().illness.sore || 0) - 300);
+        return { text: '<p>You walk it off and stretch until your breathing settles.</p>', minutes: 10 };
+      }, { time: 10, icon: '🧘', effects: ['^−Stress', '^−Soreness'] }));
+      list.push(leaveStep('Grab your things and go', 'You pick up your bag and head out.', 1));
+    }
+    return list;
   }
 
   function getOptions() {
     var s = S(), n = s.needs, c = s.clothing;
     var out = { dialogue: [], actions: [], travel: [], other: [] };
     if (s.flags.collapse) { out.actions.push(collapseOption()); return out; }
+    var sc = sceneValid();
+    if (sc) { out.actions = sceneOptions(sc); return out; }
 
     var rr = hereHas('restroom'), water = hereHas('water'), food = hereHas('food'), home = hereHas('home');
     var canRestroom = rr === null ? true : rr;
 
     if (canRestroom && (n.bladder >= 150 || n.bowels >= 150)) {
       out.actions.push(opt('Use the restroom', function () {
-        var mins = 3 + (n.bowels >= 300 ? 7 : 0), relief = n.bladder >= 600 || n.bowels >= 600;
-        n.bladder = 0; if (n.bowels >= 300) n.bowels = 0;
+        var relief = n.bladder >= 600 || n.bowels >= 600, bowelsOnly = n.bladder < 150;
+        n.bladder = 0; if (bowelsOnly) n.bowels = 0;
         if (!home) attitude('publicRestroom', 2);
-        if (relief) chg('needs.stress', -30);
-        return { text: '<p>' + flav('restroom') + (relief ? ' The relief is enormous.' : '') + '</p>', minutes: mins };
-      }, { time: function () { return 3 + (n.bowels >= 300 ? 7 : 0); } }));
+        startScene('restroom', { relief: relief });
+        return { text: '<p>' + flav('restroom') + '</p>', minutes: bowelsOnly ? 8 : 3 };
+      }, { time: function () { return n.bladder < 150 ? 8 : 3; }, effects: function () { return n.bladder >= 150 ? ['^−Bladder'] : ['^−Bowels']; } }));
     }
     if (rr === false && !home && (n.bladder >= 400 || n.bowels >= 400)) out.actions.push(reliefOption());
     if (exposedNow() && inPublic() && !S().flags.covering) out.actions.push(coverOption());
@@ -933,31 +1044,40 @@
         return { text: '<p>' + flav('water') + '</p>', minutes: 2 };
       }));
     }
-    if (n.hunger < 850 && money() >= 4 && (food === null || food || home)) {
+    if (n.hunger < 850 && (food === null || food || home)) {
+      var mealCost = home ? 2 : 4, mealBroke = money() < mealCost;
       out.actions.push(opt(home ? 'Make a cheap meal ($2)' : 'Buy a snack ($4)', function () {
-        var cost = home ? 2 : 4; addMoney(-cost);
-        chg('needs.hunger', home ? 450 : 220); chg('needs.thirst', 40); n.bowels = clamp(n.bowels + 40, 0, MAX);
-        if (home) { trainSkill('cooking', 6); if (hasTrait('homeCook')) { chg('needs.hunger', 110); chg('needs.stress', -20); } }
-        else maybePoison(['market', 'bar', 'alley', 'docks'].indexOf(here().id) !== -1 ? 0.05 : 0.025);
-        if (!home) attitude('spending', 1);
-        return { text: home ? '<p>You cook something simple. Not fancy, but filling.</p>' : '<p>You grab something quick and eat it on the go.</p>', minutes: home ? 30 : 10 };
-      }, { time: home ? 30 : 10 }));
+        if (money() < mealCost) return { text: '<p>You don\'t have enough money.</p>', minutes: 1 };
+        addMoney(-mealCost);
+        if (home) {
+          trainSkill('cooking', 6); startScene('cook');
+          return { text: '<p>' + pick(['You cook something simple. It smells good.', 'Pasta, butter, a bit of cheese. Done.', 'You throw together what you have. It\'ll do.']) + '</p>', minutes: 20 };
+        }
+        chg('needs.hunger', 220); chg('needs.thirst', 40); n.bowels = clamp(n.bowels + 40, 0, MAX);
+        maybePoison(['market', 'bar', 'alley', 'docks'].indexOf(here().id) !== -1 ? 0.05 : 0.025);
+        attitude('spending', 1);
+        return { text: '<p>You grab something quick and eat it on the go.</p>', minutes: 10 };
+      }, { time: home ? 20 : 10, disabled: mealBroke, reason: mealBroke ? 'Needs $' + mealCost : null,
+        effects: home ? ['!−$2', '^+Cooking'] : ['^−Hunger', '!−$4'] }));
     }
     var hid = here().id;
     if (hid === 'cafeteria' && n.hunger < 850) {
       var swipes = s.flags.swipeDay === today() ? s.flags.swipes : 3;
-      if (swipes > 0) out.actions.push(opt('Eat a meal-plan meal (' + swipes + ' swipes left today)', function () {
+      out.actions.push(opt(swipes > 0 ? 'Eat a meal-plan meal (' + swipes + ' swipes left today)' : 'Eat a meal-plan meal', function () {
+        if (swipes <= 0) return { text: '<p>Your card is out of swipes for today.</p>', minutes: 1 };
         s.flags.swipeDay = today(); s.flags.swipes = swipes - 1;
-        chg('needs.hunger', 500); chg('needs.thirst', 120); n.bowels = clamp(n.bowels + 60, 0, MAX); chg('needs.stress', -15);
+        chg('needs.hunger', 300); chg('needs.thirst', 60); n.bowels = clamp(n.bowels + 30, 0, MAX);
+        startScene('cafmeal');
         var dish = ['shepherd\'s pie', 'a veggie curry', 'pasta bake', 'a turkey sandwich and soup', 'fish and chips'][Math.floor(Math.random() * 5)];
-        return { text: '<p>You swipe your student card and sit down with ' + dish + '. ' + pick(['It isn\'t gourmet, but it\'s hot and free.', 'The cafeteria is loud and steamy, and the food is better than its reputation.', 'You eat with one eye on the room, listening to three conversations at once.', 'Someone at the next table is arguing about philosophy with their mouth full.']) + '</p>', minutes: 25 };
-      }));
+        return { text: '<p>You swipe your student card and sit down with ' + dish + '. ' + pick(['It isn\'t gourmet, but it\'s hot and free.', 'The cafeteria is loud and steamy, and the food is better than its reputation.', 'You eat with one eye on the room, listening to three conversations at once.', 'Someone at the next table is arguing about philosophy with their mouth full.']) + '</p>', minutes: 15 };
+      }, { time: 15, disabled: swipes <= 0, reason: swipes <= 0 ? 'No swipes left today' : null, effects: ['^−Hunger', '^−Thirst'] }));
     }
-    if ((hid === 'cafe' || hid === 'cafeteria') && money() >= 3 && n.fatigue >= 300) {
+    if ((hid === 'cafe' || hid === 'cafeteria') && n.fatigue >= 300) {
       out.actions.push(opt('Buy a coffee ($3)', function () {
+        if (money() < 3) return { text: '<p>You don\'t have enough money.</p>', minutes: 1 };
         addMoney(-3); chg('needs.fatigue', -120); chg('needs.thirst', 80); n.bladder = clamp(n.bladder + 90, 0, MAX); n.bowels = clamp(n.bowels + 50, 0, MAX); chg('needs.stress', 10);
         return { text: '<p>' + flav('coffee') + '</p>', minutes: 10 };
-      }));
+      }, { time: 10, disabled: money() < 3, reason: money() < 3 ? 'Needs $3' : null, effects: ['^−Fatigue', '!+Bladder', '!−$3'] }));
     }
     if ((hid === 'dorm_hall' || hid === 'gym') && (s.flags.dirty || n.stress >= 200 || n.fatigue >= 400)) {
       out.actions.push(opt('Take a shower', function () {
@@ -973,7 +1093,7 @@
           chg('needs.stress', -80);
           return { text: '<p>' + flav(G.time && G.time.hour >= 7 && G.time.hour < 19 ? 'sleepDay' : 'sleepNight') + ' You sleep for about ' + hrs + ' hours.</p>', minutes: hrs * 60 };
         }, { time: function () { return clamp(Math.ceil(n.fatigue / 120), 2, 9) * 60; } }));
-      }
+      } else out.actions.push(opt('Sleep', function () { return { text: '<p>You lie down, but you\'re not tired enough to sleep.</p>', minutes: 1 }; }, { time: 1, disabled: true, reason: 'Not tired enough' }));
       out.actions.push(opt('Nap for an hour', function () {
         s.flags.sleeping = true;
         return { text: '<p>' + flav('nap') + '</p>', minutes: 60 };

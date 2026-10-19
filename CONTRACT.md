@@ -39,7 +39,7 @@ Put questions for the user as "@red [question]"; ask Jenny everything else.
 - G.get(path) / G.set(path, v) read/write state paths. G.change(path, delta, {silent:true}) skips the notice.
 - G.state.lock = { reason, allow: ['dialogue'] } hides other option groups (class in session, passed out). Options with always:true ignore locks. Clear with G.state.lock = null.
 - G.interrupt({ text, minutes }) forces a scene outside the normal option flow (e.g. passing out).
-- Option fields: label, run, disabled, hint (tooltip), always.
+- Option fields: label, run, disabled, hint (tooltip), always. Also time/icon/check/section/priority/sub (below), and `effects` / `reason` (see "Effect previews, locked choices, collapsible sections").
 - Tick order: world.onTick first (owns the clock), then the other modules. Autosave to localStorage after every action.
 - Number keys 1-9 pick visible options. Test harness: tests/engine-test.html.
 
@@ -144,4 +144,33 @@ Within a section, a numeric `priority` sorts higher first; `pin: true` or `prior
 - `G.TIPS` (array of short gameplay tips) and `G.randomTip()` (extras.js). One shows on the title screen and one at the end of each end-of-day summary. Add tips by pushing to `G.TIPS`; keep them short, grounded and true to the current game.
 
 ## Versioning
-`G.version` in engine.js uses the format `vYY.MM.DD.#`, where # is the hotfix number for that day (starting at 0), e.g. `v26.10.19.0`. It shows on the title screen and in the error bar. The `?v=` cache-bust in index.html uses the same string without the leading v (`?v=26.10.19.0`). Bump both on every deploy.
+`G.version` in engine.js uses the format `vYY.MM.DD.#`, where # is the hotfix number for that day (starting at 0), e.g. `v26.10.19.0`, then `v26.10.19.1` for the first hotfix that day. Current: `v26.10.19.1`. It shows on the title screen and in the error bar. The `?v=` cache-bust in index.html uses the same string without the leading v (`?v=26.10.19.0`). Bump both on every deploy.
+
+## Effect previews, locked choices, collapsible sections (engine, v26.10.19.1)
+### `effects`: what a choice will do
+- A string, an array of strings, or `function(state)` returning either. Shown as a small muted line after the label, time and check: `Wash up (0:20) +Hygiene · −$2`.
+- Tokens are the array items; a string is also split on `·` or `|`. HTML is stripped.
+- A token starting with `+` gets class `fx-up`, one starting with `−`, `-` or `–` gets `fx-down` (a leading `-` is shown as `−`). These are neutral on purpose: `+Stress` and `+Mood` both start with `+`.
+- Prefix `!` marks a token as bad (red, `fx-bad`), `^` as good (green, `fx-good`). The prefix is not shown: `['^+Mood', '!+Fatigue', '!−$12']`.
+- Don't put the duration in `effects`; declare `minutes`/`time` and the engine shows `(h:mm)`. If you do, a time-looking token (`1 hr`, `30 min`, `(0:30)`) is dropped when the engine already shows a time.
+- Only show what the action really does (or usually does). Keep it to 2-4 tokens. Player setting `showEffects` (Settings > Display, default on) hides them all.
+- Example: `{ label: 'Do a load of laundry', time: 45, effects: ['^Clean clothes', '!−$3'], run: ... }`
+
+### `reason`: why a choice is locked
+- A string or `function(state)`, used only when `disabled` is true. The option is greyed out, not clickable, skipped by the number keys, and the reason is shown under it in small italics with a 🔒: `🔒 Closed until 9am`. Don't add the 🔒 yourself (a leading one is stripped). HTML is stripped.
+- Disabled options without a `reason` look as before (greyed, no number, `hint` as tooltip). Prefer giving a reason: `{ label: 'Buy coffee ($3)', disabled: money() < 3, reason: 'Not enough money ($3)' }`.
+- Player setting `showLocked` (Settings > Display, default on): when off, every disabled option is hidden.
+
+### Collapsible sections
+- Every section heading except `now` (Right now) is a toggle button (`button.sec-tog`, `aria-expanded`). A folded section shows only its heading with a count, e.g. `Travel (6) ▸`; its options are not rendered, so number keys and hints skip them.
+- Folded state lives in `G.settings.collapsed` (`{ travel: true, ... }`), saved with the other settings through `G.store` (not in the save). Settings > Display has "Expand all sections".
+- `G.toggleSection(id, on?)`, `G.expandAllSections()`, `G.isSectionCollapsed(id)`. Modules shouldn't need these; use `section`/`priority` to place important choices, and urgent things in `now`, which never folds.
+
+### Multi-step scenes (guidance for modules)
+Long activities (washing up, laundry, a shopping trip, a job shift, a study session) should not be one click that eats three hours. Break them into short steps:
+- Keep progress in your own module state, e.g. `G.state.school.study = { step: 2, of: 4, gained: 6 }`, and show the in-progress options only while it is active (put them in `section: 'now'` so they stay on top and can't be folded away).
+- Each step is a normal option with its own `time` and `effects`, and its run() moves the step on and returns short text for that step.
+- Offer a small, consistent set, in this order: **Keep going** (next step), **Take a break** (short rest, small relief, the activity stays open), **Leave / Stop** (end now, keep what you earned so far). **Leave is always last.**
+- Example step options: `Keep studying (0:30) +Study · !+Fatigue`, `Take a break (0:10) ^−Stress`, `Stop studying`.
+- Let needs interrupt: if a need is critical, disable Keep going with a `reason` (`You need the restroom first`) rather than hiding it.
+- Clear the state when the activity finishes or the player leaves, travels, or sleeps, so a stale scene never comes back.

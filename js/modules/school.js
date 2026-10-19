@@ -187,12 +187,11 @@
     var subj = pick(Object.keys(SUBJECTS)), s = S();
     if (s.studiedToday >= 3) return { text: '<p>The words have started swimming. You\'ve done all the studying your brain will take today.</p>', minutes: 10 };
     s.studiedToday++; s.studiedTerm = (s.studiedTerm || 0) + 1;
-    grade(subj, rnd(1, 3));
-    need('stats.needs.fatigue', 50); need('stats.needs.stress', 20);
+    setScene({ kind: 'study', subj: subj, loc: loc(), day: time().day, step: 0, gained: 0, rested: false });
     var p = where === 'library'
       ? '<p>You claim a carrel on the library\'s second floor, where the radiators tick and someone is always sharpening a pencil. You work through your ' + SUBJECTS[subj].name + ' notes.</p>'
       : '<p>You spread your ' + SUBJECTS[subj].name + ' notes across the bed and work through them.</p>';
-    return { text: p, minutes: 90 };
+    return studyStep(p);
   }
 
   // ---------- exams (every 7th day if weekday, else next weekday) ----------
@@ -486,34 +485,101 @@
     s.jobs[id] = { refusedDay: time().day };
     return { text: '<p>The interview goes stiffly. ' + cap(j.boss) + ' says they\'ll "keep your details on file". Try again another day.</p>', minutes: 20 };
   }
+  // ---------- multi-step scenes: shifts, study, homework (S().scene) ----------
+  function setScene(sc) { sc.t = (G.state.world && G.state.world.minutes) || 0; S().scene = sc; if (!G.state.lock) G.state.lock = { reason: 'school-scene', allow: [] }; }
+  function clearScene() { S().scene = null; if (G.state.lock && G.state.lock.reason === 'school-scene') G.state.lock = null; }
+  var SHIFT_STEP = ['The next hour settles into a steady rhythm.', 'You find your pace, and the clock moves faster than you expect.', 'Another hour. Your feet notice, even if nobody else does.', 'A lull, then a rush, then a lull again.'];
+  function nd(k) { return (G.state.stats && G.state.stats.needs && G.state.stats.needs[k]) || 0; }
   function workShift(id) {
     var j = JOBS[id], m = S().jobs[id], t = time();
     if (m.lastDay === t.day) return { text: '<p>You\'ve already worked a shift here today.</p>', minutes: 1 };
-    var fat = (G.state.stats && G.state.stats.needs && G.state.stats.needs.fatigue) || 0;
+    var fat = nd('fatigue'), hrs = jobHrs(j);
     m.lastDay = t.day; m.shifts++;
-    var rate = j.pay + m.raise, hrs = jobHrs(j), out = '<p><b>' + (RANKS[id] ? RANKS[id][m.rank || 0] : j.title) + ' shift at ' + j.name + '</b></p><p>' + pick(j.shifts) + '</p>';
-    var perf = rnd(-5, 8) + Math.floor(statVal(j.needStat) / 250) - (fat > 700 ? 8 : 0);
-    var tips = 0;
-    var ev = Math.random();
-    if (ev < 0.15) { out += '<p>' + (id === 'library' ? 'A patron' : id === 'farm' ? 'A visitor on the farm tour' : 'A customer') + ' is rude for no reason at all. You keep smiling until your face aches.</p>'; need('stats.needs.stress', 60); perf -= 2; }
-    else if (ev < 0.27) { tips = rnd(5, 15); out += '<p>Someone you helped earlier comes back just to say thanks, and leaves a little extra.</p>'; fame('kindness', 2); }
-    else if (ev < 0.35) { out += '<p>You drop something with a crash that silences the room. ' + cap(j.boss.split(',')[0]) + ' just closes their eyes for a moment.</p>'; perf -= 5; need('stats.needs.stress', 30); }
-    if (id === 'cafe') tips += Math.floor(rnd(0, 6) * (1 + statVal('beauty') / 600));
-    if (srep() < 250) tips = Math.floor(tips * 0.6);
+    setScene({ kind: 'shift', id: id, loc: loc(), day: t.day, hrs: hrs, left: hrs, worked: 0, tips: 0, ev: false, rested: false,
+      perf: rnd(-5, 8) + Math.floor(statVal(j.needStat) / 250) - (fat > 700 ? 8 : 0) });
+    var out = '<p><b>' + (RANKS[id] ? RANKS[id][m.rank || 0] : j.title) + ' shift at ' + j.name + '</b></p><p>' + pick(j.shifts) + '</p>';
     if (fat > 700) out += '<p>You\'re running on fumes, and it shows in your work.</p>';
-    m.perf = clamp(m.perf + perf, 0, 100);
-    var pay = rate * hrs + tips; cash(pay);
-    logJob(id, hrs, pay, tips);
-    need('stats.needs.fatigue', 110); need('stats.needs.stress', 25); need('stats.needs.thirst', -60); need('stats.needs.hunger', -50);
-    fame(j.fame, 3); if (j.skill) gainSkill(j.skill, rnd(8, 14));
-    if (id === 'library') { var sj = pick(Object.keys(SUBJECTS)); if (chance(0.4)) grade(sj, 1); train('awareness', 6); }
-    if (id === 'farm') train('physique', 8);
-    if (id === 'cafe') train('beauty', 4);
-    if (id === 'grocer') { train('physique', 5); if (t.hour + hrs >= 19 && chance(0.5)) { need('stats.needs.hunger', 120); out += '<p>At closing, the manager lets staff take home the yellow-stickered bread. You eat a roll on the way out.</p>'; } }
-    out += '<p>You clock out with $' + pay + (tips ? ' ($' + tips + ' in tips)' : '') + '.</p>';
+    return shiftHour(out);
+  }
+  function shiftHour(pre) {
+    var sc = S().scene, id = sc.id, j = JOBS[id], h = sc.hrs, out = pre || '<p>' + pick(SHIFT_STEP) + '</p>';
+    sc.left--; sc.worked++;
+    var ev = sc.ev ? 1 : Math.random() * h;
+    if (ev < 0.15) { sc.ev = true; out += '<p>' + (id === 'library' ? 'A patron' : id === 'farm' ? 'A visitor on the farm tour' : 'A customer') + ' is rude for no reason at all. You keep smiling until your face aches.</p>'; need('stats.needs.stress', 60); sc.perf -= 2; }
+    else if (ev < 0.27) { sc.ev = true; sc.tips += rnd(5, 15); out += '<p>Someone you helped earlier comes back just to say thanks, and leaves a little extra.</p>'; fame('kindness', 2); }
+    else if (ev < 0.35) { sc.ev = true; out += '<p>You drop something with a crash that silences the room. ' + cap(j.boss.split(',')[0]) + ' just closes their eyes for a moment.</p>'; sc.perf -= 5; need('stats.needs.stress', 30); }
+    need('stats.needs.fatigue', Math.round(110 / h)); need('stats.needs.stress', Math.round(25 / h)); need('stats.needs.thirst', -Math.round(60 / h)); need('stats.needs.hunger', -Math.round(50 / h));
+    if (sc.left <= 0) out += finishShift(false);
+    else out += '<p>' + sc.left + ' hour' + (sc.left === 1 ? '' : 's') + ' left on your shift.</p>';
+    return { text: out, minutes: 60 };
+  }
+  function shiftBreak() {
+    var sc = S().scene; sc.rested = true; need('stats.needs.stress', -20); need('stats.needs.fatigue', -15); need('stats.needs.thirst', 30);
+    return { text: '<p>You take ten minutes in the back with a cup of water and your feet up on a crate.</p>', minutes: 10 };
+  }
+  function finishShift(early) {
+    var s = S(), sc = s.scene; clearScene(); if (!sc) return '';
+    var id = sc.id, j = JOBS[id], m = s.jobs[id], t = time(); if (!m) return '';
+    var w = sc.worked, f = w / sc.hrs, tips = sc.tips, rate = j.pay + m.raise;
+    if (id === 'cafe') tips += Math.floor(rnd(0, 6) * (1 + statVal('beauty') / 600) * f);
+    if (srep() < 250) tips = Math.floor(tips * 0.6);
+    m.perf = clamp(m.perf + sc.perf - (early ? 4 : 0), 0, 100);
+    var pay = rate * w + tips; if (pay > 0) cash(pay);
+    if (w > 0) logJob(id, w, pay, tips);
+    fame(j.fame, Math.max(1, Math.round(3 * f))); if (j.skill) gainSkill(j.skill, Math.round(rnd(8, 14) * f));
+    if (id === 'library') { if (chance(0.4 * f)) grade(pick(Object.keys(SUBJECTS)), 1); train('awareness', Math.round(6 * f)); }
+    if (id === 'farm') train('physique', Math.round(8 * f));
+    if (id === 'cafe') train('beauty', Math.round(4 * f));
+    var out = early ? '<p>You tell ' + j.boss.split(',')[0] + ' you need to head off early. They nod, a little tightly.</p>' : '';
+    if (id === 'grocer') { train('physique', Math.round(5 * f)); if (!early && t.hour >= 19 && chance(0.5)) { need('stats.needs.hunger', 120); out += '<p>At closing, the manager lets staff take home the yellow-stickered bread. You eat a roll on the way out.</p>'; } }
+    out += '<p>You clock out with $' + pay + ' for ' + w + ' hour' + (w === 1 ? '' : 's') + (tips ? ' ($' + tips + ' in tips)' : '') + '.</p>';
     out = checkPromotion(id, out);
-    if (m.perf < 15) { delete S().jobs[id]; out += '<p>At the end of the shift, ' + j.boss.split(',')[0] + ' tells you, kindly but firmly, not to come back.</p>'; G.notify('Fired from ' + j.name, 'down'); }
-    return { text: out, minutes: hrs * 60 };
+    if (m.perf < 15) { delete s.jobs[id]; out += '<p>At the end of the shift, ' + j.boss.split(',')[0] + ' tells you, kindly but firmly, not to come back.</p>'; G.notify('Fired from ' + j.name, 'down'); }
+    return out;
+  }
+  // study: 3 x 30 min; homework: 2 x 30 min with saved progress
+  function studyStep(pre) {
+    var s = S(), sc = s.scene, sj = SUBJECTS[sc.subj], out = pre || '<p>' + pick(['You work through another section of ' + sj.name + ' notes.', 'You test yourself on the last chapter, then check the answers.', 'You rewrite a messy page of ' + sj.name + ' notes into something readable.']) + '</p>';
+    sc.step++; if (chance(0.67)) { grade(sc.subj, 1); sc.gained++; }
+    need('stats.needs.fatigue', 17); need('stats.needs.stress', 7);
+    if (sc.step >= 3) { clearScene(); out += '<p>You close the books. That\'s a solid session of ' + sj.name + '.</p>'; }
+    return { text: out, minutes: 30 };
+  }
+  function hwStep(pre) {
+    var s = S(), sc = s.scene, k = sc.subj; s.hwProg = s.hwProg || {};
+    var out = pre || '<p>' + pick(['You push on to the next part.', 'You check your working so far, fix one silly mistake, and carry on.']) + '</p>';
+    s.hwProg[k] = (s.hwProg[k] || 0) + 1; need('stats.needs.fatigue', 25); need('stats.needs.stress', 8); train(SUBJECTS[k].stat, s.hwProg[k] >= 2 ? 3 : 2);
+    if (s.hwProg[k] >= 2) { clearScene(); delete s.hwProg[k]; delete s.homework[k]; s.homeworkDone++; grade(k, rnd(1, 3)); out += '<p>Done. You put the ' + SUBJECTS[k].name + ' homework in your bag for next lesson.</p>'; }
+    else out += '<p>About halfway there.</p>';
+    return { text: out, minutes: 30 };
+  }
+  function sceneBreak() { need('stats.needs.stress', -15); need('stats.needs.fatigue', -10); return { text: '<p>You stretch, get a drink of water and look out of the window for a few minutes.</p>', minutes: 10 }; }
+  function sceneOptions() {
+    var s = S(), sc = s && s.scene;
+    if (!sc) { if (G.state.lock && G.state.lock.reason === 'school-scene') G.state.lock = null; return null; }
+    var fl = (G.state.stats && G.state.stats.flags) || {}, lk = G.state.lock, mins = (G.state.world && G.state.world.minutes) || 0;
+    if (sc.loc !== loc() || sc.day !== time().day || fl.collapse || fl.sleeping || (lk && lk.reason !== 'school-scene' && lk.reason !== 'stats-scene') || (sc.t && mins - sc.t > 300)) {
+      if (sc.kind === 'shift') { var w = sc.worked; finishShift(true); G.notify('You left your shift early, paid for ' + w + ' hour' + (w === 1 ? '' : 's'), 'down'); }
+      else clearScene();
+      return null;
+    }
+    var o = { actions: [], other: [], dialogue: [] }, ic = sc.kind === 'shift' ? '💼' : '📚';
+    function add(label, mins, eff, pr, run) { o.actions.push({ label: label, mins: mins, effects: eff, section: 'now', priority: pr, pin: true, always: true, icon: pr === 93 ? '🚪' : ic, run: run }); }
+    if (sc.kind === 'shift') {
+      var j = JOBS[sc.id], m = s.jobs[sc.id], rate = j.pay + (m ? m.raise : 0);
+      add('Keep working (' + sc.left + 'h left)', 60, ['^+$' + rate, '!+Fatigue'], 95, function () { return shiftHour(); });
+      if (!sc.rested) add('Take a short break', 10, ['^−Stress', '^−Fatigue'], 94, shiftBreak);
+      add('Clock out early', 2, ['^+$' + (rate * sc.worked) + ' for hours worked', '!−Job performance'], 93, function () { return { text: finishShift(true), minutes: 2 }; });
+    } else if (sc.kind === 'study') {
+      add('Keep studying ' + SUBJECTS[sc.subj].name, 30, ['^+' + SUBJECTS[sc.subj].name + ' grade', '!+Fatigue'], 95, function () { return studyStep(); });
+      if (!sc.rested) add('Take a short break', 10, ['^−Stress', '^−Fatigue'], 94, function () { sc.rested = true; return sceneBreak(); });
+      add('Stop studying', 1, null, 93, function () { clearScene(); return { text: '<p>You pack your notes away.</p>', minutes: 1 }; });
+    } else if (sc.kind === 'homework') {
+      add('Finish the ' + SUBJECTS[sc.subj].name + ' homework', 30, ['^+Grade', '^Homework done', '!+Fatigue'], 95, function () { return hwStep(); });
+      if (!sc.rested) add('Take a short break', 10, ['^−Stress', '^−Fatigue'], 94, function () { sc.rested = true; return sceneBreak(); });
+      add('Put the homework away for now', 1, ['Progress is kept'], 93, function () { clearScene(); return { text: '<p>You tuck the half-finished homework into your bag.</p>', minutes: 1 }; });
+    }
+    return o;
   }
   // per-job earnings log for the Stats tab (survives quitting or being fired)
   function logJob(id, hrs, pay, tips) {
@@ -616,6 +682,7 @@
     });
     Object.keys(s.clubs).forEach(function (k) {
       if (clubNow(k) && s.clubs[k].lastDay !== t.day) o.actions.push({ label: 'Join in with ' + CLUBS[k].name, run: function () { return attendClub(k); } });
+      else if (loc() === CLUBS[k].loc) o.actions.push({ label: 'Join in with ' + CLUBS[k].name, disabled: true, reason: s.clubs[k].lastDay === t.day ? 'Already went today' : 'Meets ' + DAYN[CLUBS[k].day] + 's, ' + CLUBS[k].from + ':00 to ' + CLUBS[k].to + ':00', run: function () {} });
       if (at('quad')) o.other.push({ label: 'Leave ' + CLUBS[k].name, run: function () { return leaveClub(k); } });
     });
     // jobs
@@ -624,10 +691,14 @@
       if (here !== j.loc) return;
       var hrs = jobHrs(j), open = t.hour >= j.from && t.hour + hrs <= j.to;
       var clash = j.fitsClasses && m && m.hired && open && m.lastDay !== t.day ? classClash(hrs) : null;
-      if (!m || !m.hired) o.dialogue.push({ label: 'Ask about work as a ' + j.title.toLowerCase(), run: function () { return applyJob(k); } });
-      else {
-        if (open && m.lastDay !== t.day && !clash) o.actions.push({ label: 'Work a ' + hrs + '-hour ' + j.title.toLowerCase() + ' shift ($' + (j.pay + m.raise) + '/hr)', mins: hrs * 60, run: function () { return workShift(k); } });
-        if (clash) o.other.push({ label: 'Ask about a stocking shift', mins: 1, run: function () { return { text: '<p>The manager checks the rota. "You\'ve got ' + SUBJECTS[clash.subj].name + ' at ' + clash.start + ':00. Come back after class, we\'ll find you a slot."</p>', minutes: 1 }; } });
+      if (!m || !m.hired) {
+        if (m && m.refusedDay === t.day) o.dialogue.push({ label: 'Ask about work as a ' + j.title.toLowerCase(), disabled: true, reason: 'Try again tomorrow', run: function () {} });
+        else o.dialogue.push({ label: 'Ask about work as a ' + j.title.toLowerCase(), run: function () { return applyJob(k); } });
+      } else {
+        var lbl = 'Start a ' + hrs + '-hour ' + j.title.toLowerCase() + ' shift ($' + (j.pay + m.raise) + '/hr)';
+        var why = m.lastDay === t.day ? 'Already worked today' : t.hour < j.from ? 'Shifts start at ' + j.from + ':00' : !open ? 'Too late for a shift today' : clash ? 'Clashes with ' + SUBJECTS[clash.subj].name + ' at ' + clash.start + ':00' : null;
+        if (why) o.actions.push({ label: lbl, disabled: true, reason: why, run: function () {} });
+        else o.actions.push({ label: lbl, mins: 60, effects: ['^+$' + ((j.pay + m.raise) * hrs), '!+Fatigue', '!+Stress'], run: function () { return workShift(k); } });
         o.other.push({ label: 'Quit your job at ' + j.name, run: function () { return quitJob(k); } });
       }
     });
@@ -654,9 +725,9 @@
     pe: 'a training log and a page on recovery', agri: 'a soil-sampling report from the college plots'
   };
   function doHomework(subj) {
-    var s = S(); delete s.homework[subj]; s.homeworkDone++;
-    grade(subj, rnd(1, 3)); need('stats.needs.fatigue', 50); need('stats.needs.stress', 15); train(SUBJECTS[subj].stat, 5);
-    return { text: '<p>You work through ' + HW_FLAVOR[subj] + '. It takes a while, but it\'s done.</p>', minutes: 60 };
+    var s = S(), half = s.hwProg && s.hwProg[subj];
+    setScene({ kind: 'homework', subj: subj, loc: loc(), day: time().day, rested: false });
+    return hwStep(half ? '<p>You pick up the ' + SUBJECTS[subj].name + ' homework where you left off.</p>' : '<p>You start on ' + HW_FLAVOR[subj] + '.</p>');
   }
   function checkHomeworkDue() {
     var s = S(), d = time().day;
@@ -779,12 +850,13 @@
   function phase3Options(o) {
     var s = S(), t = time();
     if (at('home') || at('library')) Object.keys(s.homework).forEach(function (k) {
-      o.actions.push({ label: 'Do ' + SUBJECTS[k].name + ' homework (due day ' + s.homework[k] + ')', run: function () { return doHomework(k); } });
+      var hp = s.hwProg && s.hwProg[k];
+      o.actions.push({ label: (hp ? 'Finish ' : 'Do ') + SUBJECTS[k].name + ' homework (due day ' + s.homework[k] + (hp ? ', half done' : '') + ')', mins: 30, run: function () { return doHomework(k); } });
     });
     var banned = s.bannedFrom[loc()] && s.bannedFrom[loc()] > t.day;
     if (SHOPS[loc()] && !banned && skulUnlocked(91)) o.actions.push({ label: 'Pocket something while nobody\'s looking', run: shoplift });
     if (banned) o.other.push({ label: 'Notice the manager watching you', run: function () { return { text: '<p>The manager hasn\'t forgotten you. You\'re not welcome here until day ' + s.bannedFrom[loc()] + '.</p>', minutes: 1 }; } });
-    if (loc() === 'dorm_hall' && (t.hour >= 23 || t.hour < 5) && skulUnlocked(364)) o.actions.push({ label: 'Try the corridor lockers', run: lockers });
+    if (loc() === 'dorm_hall' && skulUnlocked(364)) o.actions.push((t.hour >= 23 || t.hour < 5) ? { label: 'Try the corridor lockers', run: lockers } : { label: 'Try the corridor lockers', disabled: true, reason: 'Only late at night (23:00 to 5:00)', run: function () {} });
     if (loc() === 'alley' && s.loot.length && (!window.NPCS || !NPCS.whereIs || NPCS.whereIs('wren') === 'alley')) o.dialogue.push({ label: 'Sell what you\'ve lifted to ' + npcName('wren', 'Wren') + ' (' + s.loot.length + ' items)', run: fenceLoot });
     if (at('farm') && s.serviceHours > 0 && t.hour >= 8 && t.hour < 17) o.actions.unshift({ label: 'Work off community service (' + s.serviceHours + 'h left)', run: communityService });
     if (at('farm') && !s.farm.greenhouse && skill('tending') >= 364) o.dialogue.push({ label: 'Ask Mr. Pell about fixing up the polytunnel ($120)', run: buildGreenhouse });
@@ -1064,7 +1136,7 @@
   ];
   // engine sections (CONTRACT.md: now|needs|here|people|shop|self|travel)
   var SECT = [
-    [/^(Attend |Focus hard in |Sit (the|your) |Work a \d-hour|Join in with |Take part in |Work off community service|Run a farmers|Run .*stall)/, 'now'],
+    [/^(Attend |Focus hard in |Sit (the|your) |(Work|Start) a \d-hour|Join in with |Take part in |Work off community service|Run a farmers|Run .*stall)/, 'now'],
     [/^(Join |Leave |Browse the club fair board)/, 'here', 'Clubs'],
     [/^Quit your job/, 'self'],
     [/^Sell your produce|^Sell .* to /, 'shop']
@@ -1086,21 +1158,43 @@
   }
   var CHECKS = [
     [/^Lift /, 'Skulduggery', pickP], [/^Pocket something/, 'Skulduggery', shopP], [/^Try the corridor lockers/, 'Skulduggery', lockerP],
-    [/^Sit your /, 'Exam', examP], [/^Work a \d-hour/, 'Shift', shiftP]
+    [/^Sit your /, 'Exam', examP], [/^(Work|Start) a \d-hour/, 'Shift', shiftP]
   ];
   var ICONS = [
     [/^Attend /, '🎓'], [/^Focus/, '📖'], [/^Sit your /, '📝'], [/homework|^Study/i, '📚'], [/extra credit/i, '✏️'],
-    [/^Work a \d-hour/, '💼'], [/^Ask about (work|a stocking)/, '💼'], [/^Quit your job/, '🚪'],
+    [/^(Work|Start) a \d-hour/, '💼'], [/^Ask about work/, '💼'], [/^Quit your job/, '🚪'],
     [/^Join in with|^Take part in/, '🎭'], [/^Join |^Leave /, '🎭'], [/club fair/i, '📌'], [/noticeboard/i, '📌'],
-    [/^Lift /, '🫳'], [/^Pocket /, '🫳'], [/lockers/i, '🔐'], [/^Sell /, '🧺'], [/stall/i, '🧺'], [/community service/i, '🧹'],
+    [/^Lift |^Rifle through/, '🫳'], [/^Pocket /, '🫳'], [/lockers/i, '🔐'], [/^Sell /, '🧺'], [/stall/i, '🧺'], [/community service/i, '🧹'],
     [/plot|plant|water the|harvest/i, '🌱'], [/gossip|whisper|chat/i, '💬']
   ];
+  // engine `effects:` (shown under the label); '^' good, '!' bad
+  var EFFECTS = [
+    [/^Attend /, ['^+Grade', '!+Fatigue']], [/^Focus hard in /, ['^++Grade', '!+Fatigue', '!+Stress']],
+    [/^Nap at the back/, ['^−Fatigue', '!Might get caught']], [/^Sit your /, ['!+Stress', '!+Fatigue']],
+    [/^Skip the exam/, ['!−6 all grades', '!+Delinquency', '!Probation']], [/extra credit$/, ['^+Grade', '!+Fatigue', '!+Stress']],
+    [/ homework \(due/, ['^+Grade', '!+Fatigue']], [/^Study /, ['^+Grade', '!+Fatigue', '!+Stress']],
+    [/^Join in with /, ['^−Stress', '^+Rep', '!+Fatigue']],
+    [/^Lift |^Pocket something|^Rifle through|^Try the corridor lockers/, ['^+Loot', '!Risk: +Crime']],
+    [/^Sell what you've lifted|^Find Gideon|^Sell your produce|^Check the hen coop/, ['^+$']], [/^Run a farmers/, ['^+$', '^+Business']],
+    [/^Lie low/, ['^−Crime', '^−Stress']], [/^Quit your job/, ['!Lose this job']], [/^Ask to see the dean/, ['^−Delinquency', '!+Stress']],
+    [/^Plant /, ['^+Tending', '!+Fatigue']], [/^Water the plots|^Pull weeds/, ['^+Tending', '!+Fatigue']], [/^Harvest/, ['^+Produce']],
+    [/^Spend time with the animals/, ['^−Stress', '^+Tending']]
+  ];
+  function tagEffects(o) {
+    if (o.effects) return;
+    var e = null;
+    for (var i = 0; i < EFFECTS.length; i++) if (EFFECTS[i][0].test(o.label)) { e = EFFECTS[i][1].slice(); break; }
+    var m = o.label.match(/\(\$(\d+)\)$/);
+    if (m) { e = e || []; e.unshift('!−$' + m[1]); if (!o.disabled && money() < +m[1]) { o.disabled = true; o.reason = 'Needs $' + m[1]; } }
+    if (e) o.effects = e;
+  }
   function tagSections(opts) {
     ['actions', 'other', 'dialogue'].forEach(function (g) {
       (opts[g] || []).forEach(function (o) {
         if (!o || typeof o.label !== 'string') return;
         if (!o.icon) for (var k = 0; k < ICONS.length; k++) if (ICONS[k][0].test(o.label)) { o.icon = ICONS[k][1]; break; }
-        if (o.check) return;
+        tagEffects(o);
+        if (o.check || o.disabled) return;
         for (var i = 0; i < CHECKS.length; i++) if (CHECKS[i][0].test(o.label)) { (function (c, opt) { opt.check = function () { try { return c[1] + ': ' + diffWord(c[2](opt)); } catch (e) { return null; } }; })(CHECKS[i], o); return; }
       });
     });
@@ -1174,10 +1268,10 @@
         }
       }
       if (at('library')) {
-        o.actions.push({ label: 'Study in a carrel', run: function () { return study('library'); } });
+        o.actions.push(s.studiedToday >= 3 ? { label: 'Study in a carrel', disabled: true, reason: 'Studied enough for today', run: function () {} } : { label: 'Study in a carrel', mins: 30, run: function () { return study('library'); } });
         o.actions.push({ label: 'Rifle through lost property', run: pickpocket });
       }
-      if (at('home')) o.actions.push({ label: 'Study at your desk', run: function () { return study('home'); } });
+      if (at('home')) o.actions.push(s.studiedToday >= 3 ? { label: 'Study at your desk', disabled: true, reason: 'Studied enough for today', run: function () {} } : { label: 'Study at your desk', mins: 30, run: function () { return study('home'); } });
       if (at('quad')) {
         o.actions.push({ label: 'Lift something from an unattended bag', run: pickpocket });
         o.other.push({ label: 'Check the timetable board', run: function () {
@@ -1205,7 +1299,7 @@
         if (s.farm.plots.some(function (p) { return p.weeds; })) o.actions.push({ label: 'Pull weeds', run: weed });
         if (s.farm.plots.some(function (p) { return p.crop && p.growth >= CROPS[p.crop].days; })) o.actions.push({ label: 'Harvest', run: harvest });
         o.actions.push({ label: 'Spend time with the animals', run: soothe });
-        if (!s.farm.eggsToday) o.actions.push({ label: 'Check the hen coop', run: collectEggs });
+        o.actions.push(s.farm.eggsToday ? { label: 'Check the hen coop', disabled: true, reason: 'Already checked today', run: function () {} } : { label: 'Check the hen coop', run: collectEggs });
         o.other.push({ label: 'Look over your plots', run: function () {
           return { text: '<p>Mr. Pell lets students work four plots behind the barn.</p><ul>' + s.farm.plots.map(function (p, i) { return '<li>Plot ' + (i + 1) + ': ' + plotDesc(p) + '</li>'; }).join('') + '</ul>', minutes: 3 };
         } });
@@ -1338,7 +1432,7 @@
 
   function boot() {
     if (!window.G || !G.register) return setTimeout(boot, 50);
-    var _go = mod.getOptions; mod.getOptions = function (st) { return tagSections(addMins(_go.call(mod, st) || {})); };
+    var _go = mod.getOptions; mod.getOptions = function (st) { var so = null; try { so = sceneOptions(); } catch (e) { clearScene(); } if (so) return tagSections(so); return tagSections(addMins(_go.call(mod, st) || {})); };
     G.register(mod);
     if (G.world && G.world.addLocation && !(G.world.location && G.world.location('deans_office'))) G.world.addLocation('deans_office', {
       name: "Dean's Office", district: 'Campus', indoor: true, open: [8, 17], restroom: false,

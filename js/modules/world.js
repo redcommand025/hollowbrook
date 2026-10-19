@@ -327,6 +327,17 @@
     return (G.time.hour >= f.from && G.time.hour < f.to) ? f : null;
   }
 
+  /* ---------------- Grocer basket items (aisle index matches AISLES: 0 produce, 1 bakery, 2 dairy, 3 drinks) ---------------- */
+  // Items go into Jimmy's Bag via G.groceries (stats.js), using his catalog ids, prices and pack sizes.
+  var GROCER = [{ id: 'fruit', aisle: 0 }, { id: 'bread', aisle: 1 }, { id: 'noodles', aisle: 1 }, { id: 'pasta', aisle: 1 },
+    { id: 'milk', aisle: 2 }, { id: 'eggs', aisle: 2 }, { id: 'water', aisle: 3 }, { id: 'snacks', aisle: 3 }];
+  function gcat(id) { return (G.groceries && G.groceries.CATALOG && G.groceries.CATALOG[id]) || null; }
+  function gprice(id) { var c = gcat(id); if (!c) return 0; return id === 'bread' && G.time.hour >= 18 ? Math.max(1, c.price - 1) : c.price; }
+  function basketTotal(sh) { return sh.basket.reduce(function (t, id) { return t + gprice(id); }, 0); }
+  function basketServings(sh) { return sh.basket.reduce(function (t, id) { var c = gcat(id); return t + (c ? c.qty || 1 : 0); }, 0); }
+  function bagRoom() { var g = G.groceries; if (!g || !g.total) return 99; var lim = 24; try { if (typeof g.limit === 'function') lim = g.limit(); } catch (e) {} return lim - g.total(); }
+  function endShop() { W().shop = null; if (G.state.lock && G.state.lock.reason === 'world-shop') G.state.lock = null; }
+
   /* ---------------- Menus (café, dining commons, pub) ----------------
    * fx are G.change deltas. Hunger/thirst are "fullness": higher is better. Drinks fill the bladder, meals the bowels.
    */
@@ -354,17 +365,41 @@
     var m = MENUS[id], out = [];
     m.items.forEach(function (it) {
       if (it.hours && (G.time.hour < it.hours[0] || G.time.hour >= it.hours[1])) return;
-      out.push({ label: it.name + ' ($' + it.price + ')', minutes: 15, run: function () {
+      out.push(afford({ label: it.name + ' ($' + it.price + ')', minutes: 15, effects: fxTags(it.fx, it.price), run: function () {
         W().menuOpen = null;
         if (num(G.state, 'money') < it.price) return { text: '<p>You count your change twice. Not enough for the ' + it.name.toLowerCase() + '.</p>', minutes: 1 };
         G.change('money', -it.price); applyFx(it.fx);
         return { text: '<p>You order the ' + it.name.toLowerCase() + '. ' + it.text + '</p>', minutes: 15 };
-      } });
+      } }, it.price));
     });
-    out.push({ label: 'Never mind', minutes: 0, section: 'shop', run: function () { W().menuOpen = null; return { text: '<p>You put the menu back.</p>', minutes: 0 }; } });
+    out.push({ label: 'Never mind', icon: '↩️', minutes: 0, section: 'shop', run: function () { W().menuOpen = null; return { text: '<p>You put the menu back.</p>', minutes: 0 }; } });
     return out;
   }
   function applyFx(fx) { Object.keys(fx || {}).forEach(function (k) { G.change(k, fx[k]); }); }
+  // Effects tags for the engine: '^' good, '!' bad. Hunger/thirst are fullness (up is good); the rest go up when they get worse.
+  var FX_NAME = { hunger: 'Food', thirst: 'Drink', fatigue: 'Fatigue', stress: 'Stress', bladder: 'Bladder', bowels: 'Bowels' };
+  function fxTags(fx, cost) {
+    var out = [];
+    if (cost) out.push('!−$' + cost);
+    Object.keys(fx || {}).forEach(function (k) {
+      var v = fx[k], n = k.split('.').pop(), name = FX_NAME[n];
+      if (!v) return;
+      if (k.indexOf('Wetness') >= 0) { if (v > 0) out.push('!Wet clothes'); return; }
+      if (k.indexOf('Fame') >= 0) { if (v > 0) out.push('^Fame'); return; }
+      if (!name) return;
+      var good = (n === 'hunger' || n === 'thirst') ? v > 0 : v < 0;
+      if (n === 'bladder' || n === 'bowels') { if (v >= 60) out.push('!+' + name); return; }
+      out.push((good ? '^' : '!') + (v > 0 ? '+' : '−') + name);
+    });
+    return out;
+  }
+  function money() { return num(G.state, 'money'); }
+  function afford(o, cost) { if (cost && money() < cost) { o.disabled = true; o.reason = 'Needs $' + cost; } return o; }
+  function closedReason(id) {
+    var wc = weatherClosure(id); if (wc) return 'Closed for the weather';
+    var l = LOCATIONS[id]; if (!l || !l.open) return 'Closed';
+    return 'Closed until ' + G.fmtH(l.open[0]);
+  }
 
   /* ---------------- More random events (phase two) ---------------- */
   [
@@ -508,9 +543,9 @@
       if (id === here) return;
       var twelve = hereOut || OUTSKIRTS_STOPS.indexOf(id) >= 0;
       if (twelve && !outskirtsRunning()) return;
-      out.push({ label: (twelve ? 'Number 12 bus to ' : 'Bus to ') + LOCATIONS[id].name + ' ($' + BUS_FARE + ')', minutes: busWait() + BUS_RIDE, run: busTo(id), locationId: id });
+      out.push(afford({ label: (twelve ? 'Number 12 bus to ' : 'Bus to ') + LOCATIONS[id].name + ' ($' + BUS_FARE + ')', icon: '🚌', minutes: busWait() + BUS_RIDE, effects: ['!−$' + BUS_FARE], run: busTo(id), locationId: id }, BUS_FARE));
     });
-    out.push({ label: 'Leave the bus stop', minutes: 0, run: function () { W().busOpen = null; return { text: '<p>You step away from the bus shelter.</p>' + locationBlurb(), minutes: 0 }; } });
+    out.push({ label: 'Leave the bus stop', icon: '↩️', minutes: 0, run: function () { W().busOpen = null; return { text: '<p>You step away from the bus shelter.</p>' + locationBlurb(), minutes: 0 }; } });
     return out;
   }
 
@@ -823,6 +858,7 @@
     };
   }
 
+  G.fmtH = G.fmtH || function (h) { if (G.fmtClock) return G.fmtClock(h, 0); return h + ':00'; };
   function fmtT(m) { return '(' + Math.floor(m / 60) + ':' + pad(m % 60) + ')'; }
   function isRoad(id) { var l = LOCATIONS[id]; return !!(l && (l.street || l.alleyway)); }
   function travelOptions() {
@@ -835,7 +871,10 @@
       if (w.bike && !w.bikeFlat && m >= 4 && w.weather !== 'storm' && w.weather !== 'snow' && (!LOCATIONS[here].indoor || !l.indoor)) m = Math.max(2, Math.ceil(m * 0.5));
       var special = LINK_LABEL[here + '>' + id], road = isRoad(id) || id === 'park';
       var label = special || (road ? 'Travel to ' : 'Go to ') + l.name;
-      (roadHere && road ? travel : goTo).push({ label: label + closed, icon: (LOCATIONS[id].indoor ? '🚪' : '🚶'), run: travelTo(id), locationId: id, mins: m, minutes: m, sub: roadHere ? (road ? 'Travel to' : 'Go to') : null });
+      var wxT = WEATHER[w.weather], outd = !LOCATIONS[here].indoor || !l.indoor, eff = [];
+      if (outd && wxT.wet && !w.umbrella && m >= 3) eff.push('!Wet clothes');
+      if (m >= 8) eff.push('!+Fatigue');
+      (roadHere && road ? travel : goTo).push({ label: label + closed, effects: eff, icon: (LOCATIONS[id].indoor ? '🚪' : '🚶'), run: travelTo(id), locationId: id, mins: m, minutes: m, sub: roadHere ? (road ? 'Travel to' : 'Go to') : null });
     });
     goTo.sort(function (a, b) { return a.mins - b.mins || (a.label < b.label ? -1 : 1); });
     travel.sort(function (a, b) { var ap = a.locationId === 'park' || LOCATIONS[a.locationId].alleyway, bp = b.locationId === 'park' || LOCATIONS[b.locationId].alleyway; return ap - bp || a.mins - b.mins; });
@@ -932,6 +971,7 @@
       var opts = { dialogue: [], actions: [], travel: w.busOpen ? busOptions() : travelOptions(), other: [] };
       if (w.menuOpen && (w.menuOpen !== w.location || !isOpen(w.location))) w.menuOpen = null;
       if (w.menuOpen) { opts.actions = menuOptions(w.menuOpen); return opts; }
+      if (MENUS[w.location] && !isOpen(w.location)) opts.actions.push({ label: 'Look at the menu', icon: '📋', minutes: 1, section: 'shop', disabled: true, reason: closedReason(w.location), run: function () { return {}; } });
       if (MENUS[w.location] && isOpen(w.location)) {
         opts.actions.push({ label: 'Look at the menu', icon: '📋', minutes: 1, section: 'shop', run: function () {
           w.menuOpen = w.location;
@@ -943,15 +983,15 @@
       var fest = festivalLive();
       if (fest && fest.where === w.location) {
         fest.acts.forEach(function (a) {
-          opts.actions.push({ label: a.label, minutes: a.minutes || 10, run: function () {
+          opts.actions.push(afford({ label: a.label, minutes: a.minutes || 10, effects: fxTags(a.fx, a.cost), run: function () {
             if (a.cost) { if (num(G.state, 'money') < a.cost) return { text: '<p>You don\'t have enough cash for that.</p>', minutes: 1 }; G.change('money', -a.cost); }
             applyFx(a.fx); return { text: '<p>' + a.text + '</p>', minutes: a.minutes || 10 };
-          } });
+          } }, a.cost));
         });
       }
 
-      if (w.location === 'residential') opts.actions.push({ label: 'Knock on one of the houses', icon: '🚪', minutes: 2, run: knockDoor });
-      opts.actions.push({ label: 'Look around', minutes: 2, run: function () {
+      if (w.location === 'residential') opts.actions.push({ label: 'Knock on one of the houses', icon: '🚪', minutes: 2, effects: function () { var h = G.time.hour; return h >= 21 || h < 8 ? ['!Late to be knocking'] : ['^Maybe a small job']; }, run: knockDoor });
+      opts.actions.push({ label: 'Look around', icon: '👀', minutes: 2, run: function () {
         var ev = tryEvent('idle');
         return { text: locationBlurb() + (ev ? '<p>' + ev.text + '</p>' : ''), minutes: 2 + ((ev && ev.minutes) || 0) };
       } });
@@ -962,32 +1002,75 @@
       } });
 
       if (!l.indoor && ['rain', 'storm', 'drizzle'].indexOf(w.weather) >= 0) {
-        opts.actions.push({ label: 'Shelter under an awning until it eases', minutes: 40, run: function () {
+        opts.actions.push({ label: 'Shelter under an awning until it eases', icon: '☔', minutes: 40, effects: ['^Stay dry', '!+Stress'], run: function () {
           var m = 40; G.change('stats.needs.stress', 10);
           return { text: '<p>You tuck yourself under the nearest overhang and watch the rain bounce off the pavement.</p>', minutes: m };
         } });
       }
 
+      var lk = G.state.lock;
+      if (w.shop && (w.location !== w.shop.at || !isOpen('market') || w.minutes - (w.shop.t || 0) > 120 || (lk && lk.reason !== 'world-shop'))) endShop();
+      if (!w.shop && lk && lk.reason === 'world-shop') G.state.lock = null;
+      if (w.location === 'market' && !isOpen('market')) opts.actions.push({ label: 'Do some grocery shopping', icon: '🛒', minutes: 2, section: 'shop', disabled: true, reason: closedReason('market'), run: function () { return {}; } });
       if (w.location === 'market' && isOpen('market')) {
         var hr = G.time.hour, sn = season(), busy = crowd('market');
         var PRODUCE = { spring: 'early rhubarb, bunches of radishes and the first strawberries, still pricey', summer: 'crates of tomatoes, punnets of berries and corn still in its husks',
           autumn: 'local apples by the sack, squash, and a basket of muddy potatoes from a farm up the valley', winter: 'clementines in net bags, parsnips, and sprouts on the stalk' };
         var AISLES = [
-          ['Produce', function () { return 'You wander the fruit and veg: ' + (PRODUCE[sn] || PRODUCE.autumn) + '. A hand-written sign says "Ask Marcus about the bruised box, half price."'; }],
-          ['Bakery', function () { var hr = G.time.hour; return hr < 10 ? 'The bakery shelf is still warm: crusty loaves, soft rolls and a tray of iced buns. The whole front of the shop smells of it.'
+          ['Produce', function () { return 'You wander the fruit and veg: ' + (PRODUCE[sn] || PRODUCE.autumn) + '. A hand-written sign says "Ask Marcus about the bruised box, half price."'; }, '🍎'],
+          ['Bakery and dry goods', function () { var hr = G.time.hour; return hr < 10 ? 'The bakery shelf is still warm: crusty loaves, soft rolls and a tray of iced buns. The whole front of the shop smells of it.'
             : hr >= 18 ? 'The bakery shelf is picked over, but what\'s left wears yellow discount stickers: a lopsided loaf, two rolls, a lonely croissant.'
-            : 'Sliced loaves, bagels and a few cakes under a plastic dome. The good stuff went this morning.'; }],
-          ['Dairy', function () { return 'The chiller hums. Milk in three sizes, local butter in paper, eggs from the campus farm, and a cheese wedge someone has clearly put back in the wrong place.'; }],
-          ['Drinks', function () { return 'Bottled water, fizzy drinks, juice cartons and a fridge of energy drinks with a "students: 2 for $3" sign taped crookedly to the door.'; }]
+            : 'Sliced loaves, bagels and a few cakes under a plastic dome. The good stuff went this morning.'; }, '🥖'],
+          ['Dairy', function () { return 'The chiller hums. Milk in three sizes, local butter in paper, eggs from the campus farm, and a cheese wedge someone has clearly put back in the wrong place.'; }, '🧀'],
+          ['Drinks and snacks', function () { return 'Bottled water, fizzy drinks, crisps by the multipack and a fridge of energy drinks with a "students: 2 for $3" sign taped crookedly to the door.'; }, '🥤']
         ];
-        opts.actions.push({ label: 'Browse the aisles', icon: '🛒', minutes: 5, section: 'shop', run: function () {
-          var two = AISLES.slice().sort(function () { return Math.random() - 0.5; }).slice(0, 2);
-          return { text: '<p>' + two[0][1]() + '</p><p>' + two[1][1]() + '</p><p>' + (busy > 0.5 ? 'The checkout queue snakes back past the magazines.' : busy > 0.2 ? 'A couple of people wait at the till.' : 'The till is quiet.') + '</p>', minutes: 5 };
+        var sh = w.shop;
+        if (!sh) opts.actions.push({ label: 'Do some grocery shopping', icon: '🛒', minutes: 2, section: 'shop', effects: ['^Groceries for your bag'], disabled: !!G.state.lock, reason: G.state.lock ? 'Already busy' : '', run: function () {
+          if (G.state.lock) return { text: '<p>You can\'t start shopping right now.</p>', minutes: 0 };
+          w.shop = { at: 'market', seen: [], basket: [], t: w.minutes }; G.state.lock = { reason: 'world-shop', allow: [] };
+          return { text: '<p>You grab a red plastic basket from the stack by the door.' + (busy > 0.5 ? ' The aisles are busy; you sidestep a trolley almost at once.' : busy > 0.2 ? ' A few other shoppers drift between the shelves.' : ' The shop is quiet, just you and the hum of the fridges.') + '</p>', minutes: 2 };
         } });
+        else {
+          opts.actions = []; opts.travel = [];   // the shopping scene holds G.state.lock (reason 'world-shop'); its steps are always:true
+          AISLES.forEach(function (ai, n) {
+            if (sh.seen.indexOf(n) >= 0) return;
+            opts.actions.push({ label: (sh.seen.length ? 'Keep going: ' : 'Start with the ') + ai[0].toLowerCase() + ' aisle', icon: ai[2], minutes: 3, section: 'now', run: function () { sh.seen.push(n); return { text: '<p>' + ai[1]() + '</p>', minutes: 3 }; } });
+          });
+          var room = bagRoom() - basketServings(sh);
+          if (gcat('water')) GROCER.forEach(function (it) {
+            var c = gcat(it.id), n = sh.basket.filter(function (x) { return x === it.id; }).length;
+            if (!c || sh.seen.indexOf(it.aisle) < 0 || n >= 3) return;
+            var price = gprice(it.id), o = { label: 'Put ' + (n ? 'another ' : '') + c.label.toLowerCase() + ' in your basket ($' + price + ')', icon: '🧺', minutes: 1, section: 'now',
+              effects: ['^+' + c.qty + ' ' + c.unit + (c.qty === 1 ? '' : /(sh|ch|ss|s)$/.test(c.unit) ? 'es' : 's') + ' for your bag'], run: function () {
+              sh.basket.push(it.id); return { text: '<p>' + c.label + ' goes in the basket.' + (it.id === 'bread' && G.time.hour >= 18 ? ' It has a yellow sticker.' : '') + '</p>', minutes: 1 };
+            } };
+            if ((c.qty || 1) > room) { o.disabled = true; o.reason = 'Your bag is full'; }
+            opts.actions.push(o);
+          });
+          var total = basketTotal(sh), q = busy > 0.5 ? 8 : busy > 0.2 ? 4 : 2;
+          var co = { label: 'Take a break at the till' + (sh.basket.length ? ' and pay ($' + total + ')' : ''), icon: '💳', minutes: q + 1, section: 'now',
+            effects: sh.basket.length ? ['!−$' + total, '^Groceries in your bag'] : [], run: function () {
+              var t = basketTotal(sh), counts = {}, names = [];
+              sh.basket.forEach(function (id) { counts[id] = (counts[id] || 0) + 1; });
+              Object.keys(counts).forEach(function (id) { var c = gcat(id); names.push((counts[id] > 1 ? counts[id] + ' × ' : '') + c.label.toLowerCase()); if (G.groceries && G.groceries.add) G.groceries.add(id, (c.qty || 1) * counts[id]); });
+              G.change('money', -t); endShop();
+              return { text: '<p>' + (q >= 8 ? 'The queue takes an age. ' : q >= 4 ? 'You wait behind two people. ' : '') + 'The cashier scans ' + names.join(', ') + '. $' + t + ' all told.</p><p>You pack it all into your bag.</p>', minutes: q + 1 };
+            } };
+          co.label = sh.basket.length ? 'Pay at the till ($' + total + ')' : 'Pay at the till';
+          if (!sh.basket.length) { co.disabled = true; co.reason = 'Your basket is empty'; }
+          else afford(co, total);
+          opts.actions.push(co);
+          opts.actions.push({ label: 'Put the basket back and leave', icon: '↩️', minutes: 1, section: 'now', run: function () {
+            var had = sh.basket.length; endShop();
+            return { text: '<p>' + (had ? 'You put everything back where you found it, mostly, and stack the basket by the door.' : 'You stack the empty basket back by the door.') + '</p>', minutes: 1 };
+          } });
+          opts.actions.forEach(function (o) { o.always = true; });
+          return opts;
+        }
       }
 
       if (w.location === 'market' && isOpen('market') && !w.umbrella) {
-        opts.actions.push({ label: 'Buy an umbrella ($12)', minutes: 3, run: function () {
+        opts.actions.push({ label: 'Buy an umbrella ($12)', icon: '☂️', minutes: 3, effects: ['!−$12', '^Less rain soaking'], disabled: money() < 12, reason: money() < 12 ? 'Needs $12' : '', run: function () {
           if (num(G.state, 'money') < 12) return { text: '<p>You turn the umbrella over, check the price tag, and check your wallet. Not today.</p>', minutes: 1 };
           G.change('money', -12); w.umbrella = true;
           return { text: '<p>You buy a sturdy black umbrella. It clicks open satisfyingly.</p>', minutes: 3 };
@@ -995,18 +1078,18 @@
       }
 
       if (w.location === MARKET_DAY.where && marketLive()) MARKET_DAY.acts.forEach(function (a) {
-        opts.actions.push({ label: a.label, minutes: a.minutes || 10, run: function () {
+        opts.actions.push(afford({ label: a.label, minutes: a.minutes || 10, effects: fxTags(a.fx, a.cost), run: function () {
           if (a.cost) { if (num(G.state, 'money') < a.cost) return { text: '<p>You don\'t have enough cash for that.</p>', minutes: 1 }; G.change('money', -a.cost); }
           applyFx(a.fx); return { text: '<p>' + a.text + '</p>', minutes: a.minutes || 10 };
-        } });
+        } }, a.cost));
       });
       if (w.location === 'shopping_centre' && isOpen('shopping_centre')) {
-        if (!w.bike) opts.actions.push({ label: 'Buy a second-hand bicycle from the cycle kiosk ($' + BIKE_PRICE + ')', minutes: 10, run: function () {
+        if (!w.bike) opts.actions.push({ label: 'Buy a second-hand bicycle from the cycle kiosk ($' + BIKE_PRICE + ')', icon: '🚲', minutes: 10, effects: ['!−$' + BIKE_PRICE, '^Faster trips'], disabled: money() < BIKE_PRICE, reason: money() < BIKE_PRICE ? 'Needs $' + BIKE_PRICE : '', run: function () {
           if (num(G.state, 'money') < BIKE_PRICE) return { text: '<p>The kiosk owner shows you a sturdy green bike with a basket. You check your wallet and sadly hand it back.</p>', minutes: 3 };
           G.change('money', -BIKE_PRICE); w.bike = true; w.bikeFlat = false;
           return { text: '<p>You wheel out a sturdy green bike with a wicker basket and a bell that dings a little sadly. Longer trips around town will take half the time now, unless the weather is foul.</p>', minutes: 10 };
         } });
-        else if (w.bikeFlat) opts.actions.push({ label: 'Get your puncture fixed ($6)', minutes: 15, run: function () {
+        else if (w.bikeFlat) opts.actions.push({ label: 'Get your puncture fixed ($6)', icon: '🔧', minutes: 15, effects: ['!−$6', '^Bike fixed'], disabled: money() < 6, reason: money() < 6 ? 'Needs $6' : '', run: function () {
           if (num(G.state, 'money') < 6) return { text: '<p>Not enough cash for the repair.</p>', minutes: 1 };
           G.change('money', -6); w.bikeFlat = false; return { text: '<p>The kiosk owner patches the tube in ten minutes flat, whistling.</p>', minutes: 15 };
         } });
@@ -1081,6 +1164,7 @@
     document.addEventListener('click', function (e) {
       var t = e.target && e.target.closest ? e.target.closest('[data-wgo]') : null; if (!t) return;
       e.preventDefault(); e.stopPropagation();
+      var lk = G.state && G.state.lock; if (lk && (lk.allow || []).indexOf('travel') < 0) { if (G.notify) G.notify('You can\'t travel right now.', 'info'); return; }
       var o = routeOption(t.getAttribute('data-wgo')); if (o && G.act) G.act(o);
     }, true);
     var css = '.wmap{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;margin:6px 0 10px}' +

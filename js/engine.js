@@ -17,9 +17,12 @@
   // Show script errors on screen so players can report them.
   window.addEventListener('error', function (e) {
     try {
+      // Ignore errors from the browser itself or extensions (no file, or not one of our scripts), e.g. window.onSsModeChange.
+      var f = String(e.filename || '');
+      if (!f || f.indexOf('/js/') < 0 || /onSsModeChange/.test(e.message || '')) return;
       var bar = document.getElementById('errbar');
       if (!bar) { bar = document.createElement('div'); bar.id = 'errbar'; bar.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:5000;background:#5a1d1d;color:#fff;font:12px system-ui;padding:6px 10px;white-space:pre-wrap'; document.body.appendChild(bar); }
-      bar.textContent = 'Something broke: ' + e.message + ' (' + String(e.filename || '').split('/').pop().split('?')[0] + ':' + e.lineno + ':' + (e.colno || 0) + ') [build 20261019m]. Please tell the developers.';
+      bar.textContent = 'Something broke: ' + e.message + ' (' + String(e.filename || '').split('/').pop().split('?')[0] + ':' + e.lineno + ':' + (e.colno || 0) + ') [build 20261019n]. Please tell the developers.';
     } catch (x) {}
   });
   var memStore = {};

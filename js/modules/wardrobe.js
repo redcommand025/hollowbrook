@@ -369,8 +369,10 @@
     return txt;
   }
 
+  // starting clothes follow the creator's gender (male/female/neither); old saves fall back to appearance
+  function startKey(p) { var g = p && p.gender; return g === 'male' ? 'male' : g === 'female' ? 'female' : g === 'neither' ? 'androgynous' : (p && p.appearance) || 'androgynous'; }
   function starterIds(p) {
-    var app = (p && p.appearance) || 'androgynous';
+    var app = startKey(p);
     var ids = ['tee_white', 'hoodie', 'jeans', 'sweats', 'sneakers'];
     if (app === 'female') ids.push('skirt', 'tee_sage'); else if (app === 'male') ids.push('flannel', 'chinos'); else ids.push('tee_band', 'jeans_black');
     return ids;
@@ -379,7 +381,7 @@
   function spriteOutfit(p) {
     var g = G_(), w = g && g.state && g.state.wardrobe;
     if (!w || !w.starter) {      // creation preview: the outfit you'd start in
-      var app = (p && p.appearance) || 'androgynous';
+      var app = startKey(p);
       return { top: look(app === 'male' ? 'flannel' : 'tee_white'), bottom: look(app === 'female' ? 'skirt' : 'jeans'), shoes: look('sneakers') };
     }
     pullLive();
@@ -404,7 +406,7 @@
   function giveStarter(state) {
     var w = state.wardrobe; if (w.starter) return;
     w.starter = true;
-    var p = (state.creation || {}).player || {}, ids = starterIds(p), app = p.appearance;
+    var p = (state.creation || {}).player || {}, ids = starterIds(p), app = startKey(p);
     ids.forEach(function (id) { newItem(id); });
     var first = function (id) { for (var i = 0; i < w.items.length; i++) if (w.items[i].id === id) return w.items[i].uid; };
     var c = C();
@@ -420,7 +422,7 @@
     var w = state.wardrobe; if (w.underlayers) return; w.underlayers = true;
     if (w.worn.under_top === undefined) w.worn.under_top = null;
     if (w.worn.under_bottom === undefined) w.worn.under_bottom = null;
-    var app = ((state.creation || {}).player || {}).appearance, uid = app === 'male' ? 'boxers' : app === 'female' ? 'briefs_lace' : 'briefs';
+    var app = startKey((state.creation || {}).player || {}), uid = app === 'male' ? 'boxers' : app === 'female' ? 'briefs_lace' : 'briefs';
     var a = newItem(uid); newItem(uid); newItem(uid);
     var t = newItem(app === 'female' ? 'camisole' : 'undershirt'); newItem('undershirt');
     w.worn.under_bottom = a.uid; w.worn.under_top = t.uid;

@@ -6777,7 +6777,8 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       var busy = t.hour >= 8 && t.hour < 21 && l && !/woods|old_mill|alley|dorm_room/.test(loc(state));
       if (busy && (N.strangerSmell || -1) !== t.day * 24 + t.hour && Math.random() < (lvl === 2 ? 0.15 : 0.05) * smellScale() * crowdScale(0.6) * Math.min(1, (minutes || 10) / 30)) {
         N.strangerSmell = t.day * 24 + t.hour;
-        out += "<p class=\"scene smell\">" + pick(onCampusHere() ? ['Two students at the next table go quiet, then start whispering.', 'Someone in the hallway coughs pointedly as you pass.'] : ['A passer-by gives you a wide berth.', 'A kid asks their parent, loudly, what that smell is.']) + "</p>";
+        var P = genPerson(onCampusHere());
+        out += "<p class=\"scene smell\">" + pick(onCampusHere() ? ['Two students at the next table go quiet, then start whispering.', P.Noun + " in the hallway coughs pointedly as you pass."] : [P.Noun + " gives you a wide berth.", "A kid asks " + (P.g === 'male' ? 'his dad' : P.g === 'female' ? 'her mum' : 'their parent') + ", loudly, what that smell is."]) + "</p>";
         spotted(null, 'smell', {
           strength: lvl
         });
@@ -6952,7 +6953,8 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     }
     if (!here.length && N.exposedSeen.stranger !== hr && Math.random() < 0.5 * f * crowdScale(0.6)) {
       N.exposedSeen.stranger = hr;
-      out += "<p class=\"scene exposed\">" + pick(onCampusHere() ? ['A group of students stops talking all at once.', 'Someone in the hallway hurriedly holds a folder up between you.'] : ['A passer-by steers their kid across the street.', 'Somebody mutters that they are calling the police.', 'A shopkeeper pulls their blind down.']) + "</p>";
+      var P = genPerson(onCampusHere());
+      out += "<p class=\"scene exposed\">" + pick(onCampusHere() ? ['A group of students stops talking all at once.', P.Noun + " in the hallway hurriedly holds a folder up between you."] : [P.Noun + " steers " + P.pos + " kid across the street.", P.Noun + " mutters that " + P.sub + " " + (P.g === 'neither' ? 'are' : 'is') + " calling the police.", "A shopkeeper pulls " + P.pos + " blind down."]) + "</p>";
       spotted(null, 'exposed');
     }
     if (out && window.G.appendStory) window.G.appendStory(out);
@@ -7157,6 +7159,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
             var first = !rr.met;
             rr.met = true;
             rr.known = true;
+            rr.lastMet = nowMin();
             ns(s).talking = {
               id: id,
               node: 'root'
@@ -7196,6 +7199,195 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     }
   };
 
+  // ---------- Relationships tab ----------
+  var REL_GROUPS = [['Students', 'Classmates'], ['Teachers', 'Staff'], ['Influential', 'Town figures'], ['Neighbors', 'Neighbours'], ['Outcasts', 'Drifters'], ['Non-Human', 'Others']];
+  var REL_TINT = {
+    Students: '#5b8def',
+    Teachers: '#8e6cc9',
+    Influential: '#c99a2e',
+    Neighbors: '#3fa36b',
+    Outcasts: '#b0625a',
+    'Non-Human': '#6aa0a0'
+  };
+  var relEsc = function relEsc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+      return {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      }[c];
+    });
+  };
+  function relUsualPlace(id) {
+    var c = {};
+    (BY_ID[id].schedule || []).forEach(function (e) {
+      c[e.loc] = (c[e.loc] || 0) + (e.to - e.from) * (e.days ? e.days.length : 7);
+    });
+    var best = null;
+    Object.keys(c).forEach(function (k) {
+      if (best === null || c[k] > c[best]) best = k;
+    });
+    if (!best) return 'Around town';
+    try {
+      var L = window.G.world && window.G.world.location && window.G.world.location(best);
+      if (L && L.name) return L.name;
+    } catch (e) {}
+    return best.replace(/_/g, ' ');
+  }
+  function relLastMet(state, id) {
+    var r = rel(state, id),
+      today = time().day;
+    var d = typeof r.lastMet === 'number' ? Math.floor(r.lastMet / 1440) : typeof r.lastChatDay === 'number' ? r.lastChatDay : null;
+    if (d === null) return {
+      txt: 'A while ago',
+      ago: 9999
+    };
+    var ago = Math.max(0, today - d);
+    return {
+      txt: ago === 0 ? 'Today' : ago === 1 ? 'Yesterday' : ago + " days ago",
+      ago: ago
+    };
+  }
+  function relHistory(state, id) {
+    var r = rel(state, id),
+      p = pronouns(id),
+      bits = [];
+    var helped = Object.keys(QUESTS).filter(function (q) {
+      return QUESTS[q].giver === id && !QUESTS[q].romance && questStatus(state, q) === 'done';
+    });
+    if (r.romance >= 4) bits.push("You and " + BY_ID[id].name + " are partners");else if (r.romance === 3) bits.push("You're seeing each other");
+    if (helped.length) bits.push(helped.length === 1 ? "you helped with \"" + QUESTS[helped[0]].title + "\"" : "you've helped " + p.obj + " " + helped.length + " times");
+    if (r.heart) bits.push(r.heart === 1 ? 'you\'ve had one real heart-to-heart' : "you've had " + r.heart + " heart-to-hearts");
+    if (!bits.length) return r.rep >= 15 ? 'You get on well, though you don\'t know each other deeply yet.' : r.rep < -10 ? 'Things between you are frosty.' : 'You\'ve only just met.';
+    var s = bits.join(', and ');
+    return s.charAt(0).toUpperCase() + s.slice(1) + '.';
+  }
+  function relColor(rep) {
+    var v = Math.round((clamp(rep, -100, 100) + 100) * 5);
+    try {
+      if (window.G.stats && window.G.stats.tierColor) return window.G.stats.tierColor(v);
+    } catch (e) {}
+    return rep >= 40 ? '#27ae60' : rep >= 0 ? '#d4ac0d' : '#c0392b';
+  }
+  function relEntry(state, id) {
+    var n = BY_ID[id],
+      r = rel(state, id),
+      st = _stage(state, id),
+      col = relColor(r.rep),
+      lm = relLastMet(state, id);
+    var pct = Math.round((clamp(r.rep, -100, 100) + 100) / 2);
+    var tags = [];
+    if (r.romance >= 3) tags.push("<span class=\"rel-tag rel-dating\">\u2764\uFE0F " + ROMANCE[r.romance] + "</span>");else if (r.romance >= 1) tags.push("<span class=\"rel-tag\">" + ROMANCE[r.romance] + "</span>");
+    if (r.rep >= 40) tags.push("<span class=\"rel-tag rel-friend\">" + (r.rep >= 70 ? 'Close friend' : 'Friend') + "</span>");
+    var init = n.name.replace(/^(Professor|Coach|Dr\.|Officer)\s+/, '').charAt(0);
+    return "<div class=\"rel-card\" style=\"display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid rgba(128,128,128,.2)\">" + ("<div class=\"rel-ava\" aria-hidden=\"true\" style=\"flex:0 0 36px;height:36px;border-radius:50%;background:" + (REL_TINT[n.group] || '#888') + ";color:#fff;display:flex;align-items:center;justify-content:center;font-weight:bold\">" + relEsc(init) + "</div>") + ("<div style=\"flex:1;min-width:0\"><b>" + relEsc(n.name) + "</b> " + tags.join(' ') + "<br><small>" + relEsc(n.role) + ". Usually at " + relEsc(relUsualPlace(id)) + ".</small>") + ("<div style=\"margin:3px 0\"><span style=\"color:" + col + ";font-weight:bold\">" + relEsc(st.label) + "</span>") + ("<span class=\"rel-bar\" style=\"display:inline-block;vertical-align:middle;margin-left:8px;width:120px;height:7px;border-radius:4px;background:rgba(128,128,128,.25);overflow:hidden\"><span style=\"display:block;height:100%;width:" + pct + "%;background:" + col + "\"></span></span></div>") + ("<small>Last met: " + relEsc(lm.txt) + ". " + relEsc(relHistory(state, id)) + "</small></div></div>");
+  }
+  var REL_FILTERS = [['all', 'All'], ['friends', 'Friends'], ['dating', 'Dating'], ['recent', 'Recent']];
+  function relationshipsHTML(state) {
+    if (!state || !state.npcs) return '<p>Nothing yet.</p>';
+    var N = ns(state),
+      f = N.relFilter || 'all';
+    var ids = ROSTER.filter(function (n) {
+      return rel(state, n.id) && rel(state, n.id).met;
+    }).map(function (n) {
+      return n.id;
+    });
+    if (!ids.length) return '<p>You haven\'t met anyone yet. Say hello to someone.</p>';
+    if (f === 'friends') ids = ids.filter(function (id) {
+      return rel(state, id).rep >= 40;
+    });
+    if (f === 'dating') ids = ids.filter(function (id) {
+      return rel(state, id).romance >= 3;
+    });
+    if (f === 'recent') ids = ids.filter(function (id) {
+      return relLastMet(state, id).ago <= 7;
+    });
+    var bar = "<div class=\"rel-filter\" id=\"npc-rel\" style=\"display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px\">" + REL_FILTERS.map(function (x) {
+      return "<button type=\"button\" data-rel-filter=\"" + x[0] + "\" class=\"" + (x[0] === f ? 'on' : '') + "\" aria-pressed=\"" + (x[0] === f) + "\">" + x[1] + "</button>";
+    }).join('') + "</div>";
+    if (!ids.length) return bar + ("<p><i>" + (f === 'dating' ? 'You\'re not seeing anyone right now.' : f === 'friends' ? 'No close friends yet. Give it time.' : 'Nobody in the last week.') + "</i></p>");
+    if (f === 'recent') return bar + ids.sort(function (a, b) {
+      return relLastMet(state, a).ago - relLastMet(state, b).ago || rel(state, b).rep - rel(state, a).rep;
+    }).map(function (id) {
+      return relEntry(state, id);
+    }).join('');
+    var h = bar;
+    REL_GROUPS.forEach(function (g) {
+      var list = ids.filter(function (id) {
+        return BY_ID[id].group === g[0];
+      }).sort(function (a, b) {
+        return rel(state, b).rep - rel(state, a).rep;
+      });
+      if (list.length) h += "<h4 style=\"margin:10px 0 2px\">" + g[1] + "</h4>" + list.map(function (id) {
+        return relEntry(state, id);
+      }).join('');
+    });
+    return h;
+  }
+  function hookRelUI() {
+    if (typeof document === 'undefined' || window.G._npcRelHooked) return;
+    window.G._npcRelHooked = true;
+    document.addEventListener('click', function (e) {
+      var b = e.target && e.target.closest && e.target.closest('#npc-rel [data-rel-filter]');
+      if (!b || !window.G.state || !window.G.state.npcs) return;
+      e.preventDefault();
+      ns(window.G.state).relFilter = b.getAttribute('data-rel-filter');
+      if (window.G.openCharMenu) window.G.openCharMenu('relationships');
+    });
+  }
+  // ---------- Generic (unnamed) people: gender from the creator's NPC settings ----------
+  function npcGenderWeights() {
+    var c = window.G.state && window.G.state.creation || {};
+    var w = c.world && c.world.npcGender || c.npcRatio || null;
+    var m = w && +w.male >= 0 ? +w.male : 1,
+      fe = w && +w.female >= 0 ? +w.female : 1,
+      ne = w && +w.neither >= 0 ? +w.neither : w ? 0 : 0.3;
+    return m + fe + ne > 0 ? {
+      male: m,
+      female: fe,
+      neither: ne
+    } : {
+      male: 45,
+      female: 45,
+      neither: 10
+    };
+  }
+  function genPerson(young) {
+    var g = null;
+    try {
+      if (window.Creation && window.Creation.rollNpcGender) g = window.Creation.rollNpcGender();
+    } catch (e) {}
+    if (g !== 'male' && g !== 'female' && g !== 'neither') {
+      var w = npcGenderWeights(),
+        tot = w.male + w.female + w.neither;
+      var x = Math.random() * tot;
+      g = (x -= w.male) < 0 ? 'male' : (x -= w.female) < 0 ? 'female' : 'neither';
+    }
+    if (g === 'male') return {
+      g: g,
+      noun: young ? 'a guy' : 'a man',
+      Noun: young ? 'A guy' : 'A man',
+      pos: 'his',
+      sub: 'he'
+    };
+    if (g === 'female') return {
+      g: g,
+      noun: young ? 'a girl' : 'a woman',
+      Noun: young ? 'A girl' : 'A woman',
+      pos: 'her',
+      sub: 'she'
+    };
+    return {
+      g: g,
+      noun: 'someone',
+      Noun: 'Someone',
+      pos: 'their',
+      sub: 'they'
+    };
+  }
+
   // Jimmy: NPCS.witness(state, 'accident'|'smell'|'relieved', id?) -> html reaction from a present named NPC ('' if nobody).
   function witnessApi(state, kind, id) {
     state = state || window.G.state;
@@ -7232,6 +7424,8 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     items: ITEMS,
     journalHTML: journalHTML,
     notesHTML: notesHTML,
+    relationshipsHTML: relationshipsHTML,
+    genPerson: genPerson,
     present: present,
     pronouns: pronouns,
     whereIs: whereIs,
@@ -7266,6 +7460,15 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
   function hook() {
     window.G.register(mod);
     hookNotesUI();
+    hookRelUI();
+    if (window.G.addTab) window.G.addTab({
+      id: 'relationships',
+      label: 'Relationships',
+      order: 42,
+      render: function render(st) {
+        return relationshipsHTML(st);
+      }
+    });
     if (window.G.addTab) window.G.addTab({
       id: 'journal',
       label: 'Journal',

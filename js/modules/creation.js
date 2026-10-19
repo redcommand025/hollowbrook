@@ -4,10 +4,11 @@
  * Shape written to G.state.creation:
  * {
  *   done: bool,
- *   player: { name, age, pronouns, anatomy, appearance, height, build,
- *             skin, hairColor, hairStyle, eyeColor, freckles, background },
+ *   player: { name, age, pronouns, gender (male|female|neither), anatomy (clothing fit only, locked after start),
+ *             appearance, bodySize (small|average|large, permanent), height, build,
+ *             skin, hairColor, hairStyle, eyeColor, freckles, background (waif|nerd|athlete|delinquent|beautiful), backgroundLegacy },
  *   npcOverrides: { <npcId>: { gender, appearance } },   // names never editable
- *   world: { startSeason, needsPace, startMoney }
+ *   world: { startSeason, needsPace, startMoney, npcGender: {male, female, neither} (percent, sums to 100) }
  * }
  * Reads the named-NPC roster from window.NNPC_ROSTER (array of
  * {id, name, category, gender, appearance, blurb}) published by npcs.js.
@@ -20,6 +21,8 @@
 
   var OPT = {
     pronouns:   ['she/her', 'he/him', 'they/them'],
+    gender:     [['female', 'Female'], ['male', 'Male'], ['neither', 'Neither']],
+    bodySize:   [['small', 'Small (harder)'], ['average', 'Average'], ['large', 'Large (easier)']],
     anatomy:    [['penis', 'Penis'], ['vagina', 'Vagina'], ['both', 'Both']],
     appearance: [['female', 'Feminine'], ['male', 'Masculine'], ['androgynous', 'Androgynous']],
     height:     [['short', 'Short'], ['average', 'Average'], ['tall', 'Tall']],
@@ -28,21 +31,22 @@
     hairColor:  [['black', 'Black', '#1c1a1a'], ['brown', 'Brown', '#5a3a22'], ['chestnut', 'Chestnut', '#7b3f1d'], ['blonde', 'Blonde', '#d8b45c'], ['ginger', 'Ginger', '#b5521f'], ['auburn', 'Auburn', '#8a2f1f'], ['platinum', 'Platinum', '#e8e2cf'], ['grey', 'Grey', '#9a9a9a'], ['dyed blue', 'Dyed blue', '#3b5fbf'], ['dyed pink', 'Dyed pink', '#d9709f'], ['dyed purple', 'Dyed purple', '#7a4fa8'], ['dyed green', 'Dyed green', '#3f8f5a'], ['dyed red', 'Dyed cherry red', '#b0242f'], ['dyed silver', 'Dyed silver', '#c4c8d0']],
     hairStyle:  [['buzzed', 'Buzzed'], ['short', 'Short'], ['messy', 'Messy'], ['bob', 'Bob'], ['shoulder', 'Shoulder-length'], ['long', 'Long'], ['ponytail', 'Ponytail'], ['braid', 'Braid'], ['curly', 'Curly']],
     eyeColor:   [['brown', 'Brown', '#5b3a1e'], ['hazel', 'Hazel', '#8e7340'], ['green', 'Green', '#3f7a4a'], ['blue', 'Blue', '#3f6fae'], ['grey', 'Grey', '#7d8790'], ['amber', 'Amber', '#c08a2b']],
+    // [id, name, blurb, start money, trade-offs (+ good, - bad), recommended]
     background: [
-      ['scholarship', 'Scholarship kid', 'You got in on brains and a thin envelope of aid. Studious, but money is tight.', 60],
-      ['local', 'Local born', 'You grew up in Hollowbrook. You know the shortcuts and half the shopkeepers know you.', 120],
-      ['farmhand', 'Farm raised', 'Early mornings and muddy boots. Animals like you and you are stronger than you look.', 90],
-      ['streetwise', 'Streetwise transfer', 'You moved around a lot. Quick hands, quicker eyes, and a reputation you would rather leave behind.', 80],
-      ['comfortable', 'Comfortable family', 'Your parents pay the rent. You have pocket money but have never really had to work.', 300]
+      ['waif', 'Waif', 'You arrive with a duffel bag and no particular reputation. Nothing to live up to, nothing to live down.', 120, ['+ Balanced stats', '+ Steady starting cash', '- Nothing stands out yet'], true],
+      ['nerd', 'Nerd', 'Top of every class you ever took, and everyone at Hollowbrook seems to know it.', 100, ['+ Good grades', '+ Teachers like you', '- Low student status'], false],
+      ['athlete', 'Athlete', 'Recruited for the pool and the track. Coursework was always the thing you did between practices.', 100, ['+ High physique', '+ Strong swimmer', '- Bad grades'], false],
+      ['delinquent', 'Delinquent', 'Your name gets around, and not because of the honour roll.', 80, ['+ High student status', '- High delinquency (crime)', '- Less starting cash'], false],
+      ['beautiful', 'Beautiful', 'Heads turn when you walk in. That opens doors, and it makes it hard to blend in.', 50, ['+ Big Beauty boost', '+ Big Charm boost', '- Very little starting cash', '- More attention and stress'], false]
     ],
     startSeason: [['autumn', 'Autumn (term starts)'], ['winter', 'Winter'], ['spring', 'Spring'], ['summer', 'Summer']],
     needsPace:   [['gentle', 'Gentle: needs build slowly'], ['normal', 'Normal'], ['harsh', 'Harsh: needs build quickly']]
   };
 
   var DEFAULT_PLAYER = {
-    name: '', age: 19, pronouns: 'they/them', anatomy: 'vagina', appearance: 'androgynous',
+    name: '', age: 19, pronouns: 'they/them', gender: 'neither', anatomy: 'vagina', appearance: 'androgynous', bodySize: 'average',
     height: 'average', build: 'average', skin: 'fair', hairColor: 'brown', hairStyle: 'shoulder',
-    eyeColor: 'hazel', freckles: false, background: 'local'
+    eyeColor: 'hazel', freckles: false, background: 'waif'
   };
 
   var FIRST_NAMES = ['Alex', 'Robin', 'Sam', 'Jules', 'Casey', 'Morgan', 'Riley', 'Quinn', 'Avery', 'Eden', 'Sasha', 'Noel', 'Rowan', 'Kit', 'Ash'];
@@ -50,6 +54,25 @@
   function $(sel, root) { return (root || document).querySelector(sel); }
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function find(list, v) { for (var i = 0; i < list.length; i++) if (list[i][0] === v) return list[i]; return list[0]; }
+  function find2(list, v) { for (var i = 0; i < list.length; i++) if (list[i][0] === v) return list[i]; return null; }
+  var LEGACY_BG = { scholarship: 'nerd', local: 'waif', farmhand: 'athlete', streetwise: 'delinquent', comfortable: 'waif' };
+  var PRONOUNS = { female: 'she/her', male: 'he/him', neither: 'they/them' };
+  function pronounsFor(g) { return PRONOUNS[g] || 'they/them'; }
+  function curPlayer() { var g = G(); return g && g.state && g.state.creation ? g.state.creation.player : null; }
+  function bodySizeMod(p) { p = p || curPlayer(); var b = p && p.bodySize; return b === 'small' ? -1 : b === 'large' ? 1 : 0; }
+  function rollNpcGender() {
+    var g = G(), w = g && g.state && g.state.creation && g.state.creation.world, ng = (w && w.npcGender) || { male: 45, female: 45, neither: 10 };
+    var tot = (ng.male || 0) + (ng.female || 0) + (ng.neither || 0), r = Math.random() * (tot || 1);
+    if (!tot) return pick(['male', 'female']);
+    if (r < ng.female) return 'female'; if (r < ng.female + ng.male) return 'male'; return 'neither';
+  }
+  function setNpcRatio(c, neither, femaleShare) {
+    neither = Math.max(0, Math.min(50, Math.round(neither))); femaleShare = Math.max(0, Math.min(100, Math.round(femaleShare)));
+    var rest = 100 - neither, f = Math.round(rest * femaleShare / 100);
+    c.world.npcGender = { female: f, male: rest - f, neither: neither }; c.npcRatio = c.world.npcGender;
+  }
+  var GENDER_NOUN = { female: 'young woman', male: 'young man', neither: 'young person' };
+  var SIZE_WORD = { small: 'small-framed', average: '', large: 'big-framed' };
   function pick(list) { return list[Math.floor(Math.random() * list.length)]; }
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
   function roster() { return Array.isArray(window.NNPC_ROSTER) ? window.NNPC_ROSTER : []; }
@@ -59,9 +82,18 @@
     state.creation = state.creation || {};
     var c = state.creation;
     if (typeof c.done !== 'boolean') c.done = false;
-    c.player = Object.assign(clone(DEFAULT_PLAYER), c.player || {});
+    var had = c.player || {};
+    c.player = Object.assign(clone(DEFAULT_PLAYER), had);
+    // old saves: derive gender from appearance, map legacy backgrounds
+    if (!had.gender && had.appearance) c.player.gender = had.appearance === 'male' ? 'male' : had.appearance === 'female' ? 'female' : 'neither';
+    if (!find2(OPT.gender, c.player.gender)) c.player.gender = 'neither';
+    if (!find2(OPT.bodySize, c.player.bodySize)) c.player.bodySize = 'average';
+    if (!find2(OPT.background, c.player.background)) { c.player.backgroundLegacy = c.player.background; c.player.background = LEGACY_BG[c.player.background] || 'waif'; }
     c.npcOverrides = c.npcOverrides || {};
     c.world = Object.assign({ startSeason: 'autumn', needsPace: 'normal', startMoney: find(OPT.background, c.player.background)[3] }, c.world || {});
+    var ng = c.world.npcGender;
+    if (!ng || typeof ng.male !== 'number' || typeof ng.female !== 'number' || typeof ng.neither !== 'number') c.world.npcGender = (c.npcRatio && typeof c.npcRatio.male === 'number') ? c.npcRatio : { male: 45, female: 45, neither: 10 };
+    c.npcRatio = c.world.npcGender;   // same object; Roy reads G.state.creation.npcRatio
     return c;
   }
 
@@ -261,7 +293,7 @@
 
   function describe(p) {
     var app = { female: 'feminine', male: 'masculine', androgynous: 'androgynous' }[p.appearance];
-    return (p.name || 'You') + ': ' + (p.height === 'average' ? 'average height' : p.height) + ', ' + find(OPT.build, p.build)[1].toLowerCase() + ' and ' + app +
+    return (p.name || 'You') + ': a ' + (SIZE_WORD[p.bodySize] ? SIZE_WORD[p.bodySize] + ' ' : '') + (GENDER_NOUN[p.gender] || 'young person') + ', ' + (p.height === 'average' ? 'average height' : p.height) + ', ' + find(OPT.build, p.build)[1].toLowerCase() + ' and ' + app +
       ', with ' + (p.hairStyle === 'ponytail' || p.hairStyle === 'braid' ? p.hairColor + ' hair in a ' + p.hairStyle : find(OPT.hairStyle, p.hairStyle)[1].toLowerCase() + ' ' + p.hairColor + ' hair') + ', ' + p.eyeColor + ' eyes and ' +
       p.skin + ' skin' + (p.freckles ? ' dusted with freckles' : '') + '.';
   }
@@ -294,6 +326,10 @@
     '#sol-creation .cr-hint{font-size:13px;color:#8f8a7e}' +
     '#sol-creation .cr-bg{display:block;margin:6px 0;padding:6px 8px;border-radius:6px}' +
     '#sol-creation .cr-bg:hover{background:#26272f}' +
+    '#sol-creation .cr-rec{background:#3f6b4a;color:#fff;border-radius:4px;padding:0 6px;font-size:.8em}' +
+    '#sol-creation .cr-trade{display:block;font-size:.85em;margin-top:2px}' +
+    '#sol-creation .cr-trade span{margin-right:10px}' +
+    '#sol-creation input:disabled+*,#sol-creation input:disabled{opacity:.6}' +
     '#sol-creation .cr-npc{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid #2c2d35}' +
     '#sol-creation .cr-npc small{display:block;color:#8f8a7e}' +
     '#sol-creation .cr-cat{color:#d9c48f;margin:14px 0 4px;font-size:13px;text-transform:uppercase;letter-spacing:1px}' +
@@ -306,11 +342,11 @@
 
   var ui = { tab: 'you', root: null, c: null };
 
-  function radios(field, list, val, swatchIdx) {
+  function radios(field, list, val, swatchIdx, locked) {
     return list.map(function (o) {
       var v = Array.isArray(o) ? o[0] : o, l = Array.isArray(o) ? o[1] : o;
       var sw = swatchIdx && o[swatchIdx] ? '<span class="sw" style="background:' + o[swatchIdx] + '"></span>' : '';
-      return '<label><input type="radio" name="' + field + '" value="' + esc(v) + '"' + (v === val ? ' checked' : '') + '>' + sw + esc(l) + '</label>';
+      return '<label><input type="radio" name="' + field + '" value="' + esc(v) + '"' + (v === val ? ' checked' : '') + (locked ? ' disabled' : '') + '>' + sw + esc(l) + '</label>';
     }).join('');
   }
 
@@ -324,11 +360,17 @@
         '<p class="cr-hint">Every student at Hollowbrook College is 18 or older.</p>' +
       '</fieldset>' +
       '<fieldset><legend>Gender</legend>' +
-        '<div class="cr-row">Body: ' + radios('anatomy', OPT.anatomy, p.anatomy) + '</div>' +
+        '<div class="cr-row">Gender: ' + radios('gender', OPT.gender, p.gender) + '</div>' +
+        '<p class="cr-hint">Sets your default pronouns, how you describe yourself, and the clothes you arrive with.</p>' +
+        '<div class="cr-row">Genitals: ' + radios('anatomy', OPT.anatomy, p.anatomy, 0, ui.c && ui.c.done) + '</div>' +
+        '<p class="cr-hint">Only used for how clothes fit. It is never shown or described, and it is fixed once you arrive.</p>' +
         '<div class="cr-row">Appearance: ' + radios('appearance', OPT.appearance, p.appearance) + '</div>' +
         '<p class="cr-hint">Appearance is how strangers read you at a glance. It can drift later with clothing and choices.</p>' +
       '</fieldset>' +
       '<fieldset><legend>Body</legend>' +
+        '<div class="cr-row">Body size: ' + radios('bodySize', OPT.bodySize, p.bodySize, 0, ui.c && ui.c.done) + '</div>' +
+        (function () { var g = G(), ss = g && g.stats && g.stats.SIZE_SUMMARY; return ss && ss[p.bodySize] ? '<p class="cr-hint">' + esc(ss[p.bodySize]) + '</p>' : ''; })() +
+        '<p class="cr-hint">Permanent. Works like a difficulty dial for physical checks: small makes squeezing through crowds, holding on to your bag, sports and carrying harder; large makes them easier.</p>' +
         '<div class="cr-row">Height: ' + radios('height', OPT.height, p.height) + '</div>' +
         '<div class="cr-row">Build: ' + radios('build', OPT.build, p.build) + '</div>' +
         '<div class="cr-row">Skin: ' + radios('skin', OPT.skin, p.skin, 2) + '</div>' +
@@ -356,12 +398,22 @@
     '</fieldset>';
   }
 
+  function bgNotes(id) {
+    var g = G(), out = [];
+    try { if (g && g.stats && g.stats.BG_SUMMARY && g.stats.BG_SUMMARY[id]) out.push(g.stats.BG_SUMMARY[id]); } catch (e) {}
+    try { if (g && g.school && g.school.backgroundNote) { var n = g.school.backgroundNote(id); if (n) out.push(n); } } catch (e) {}
+    return out.length ? '<span class="cr-hint" style="display:block">' + out.map(esc).join(' ') + '</span>' : '';
+  }
   function tabStart(c) {
     return '' +
       '<fieldset><legend>Background</legend>' +
         OPT.background.map(function (b) {
           return '<label class="cr-bg"><input type="radio" name="background" value="' + b[0] + '"' + (c.player.background === b[0] ? ' checked' : '') +
-            '> <b>' + esc(b[1]) + '</b> ($' + b[3] + ')<br><span class="cr-hint">' + esc(b[2]) + '</span></label>';
+            '> <b>' + esc(b[1]) + '</b> ($' + b[3] + ')' + (b[5] ? ' <span class="cr-rec">Recommended for beginners</span>' : '') +
+            '<br><span class="cr-hint">' + esc(b[2]) + '</span><span class="cr-trade">' + (b[4] || []).map(function (t) {
+              var good = t.charAt(0) === '+';
+              return '<span style="color:' + (good ? '#8fc98f' : '#e09a8a') + '">' + (good ? '▲ ' : '▼ ') + esc(t.slice(2)) + '</span>';
+            }).join(' ') + '</span>' + bgNotes(b[0]) + '</label>';
         }).join('') +
       '</fieldset>' +
       '<fieldset><legend>World</legend>' +
@@ -375,6 +427,12 @@
     var r = roster();
     if (!r.length) return '<p class="cr-flavor">The townsfolk are still settling in. (No named NPC roster is loaded yet.)</p>';
     var cats = ['Influential', 'Teachers', 'Students', 'Neighbors', 'Outcasts', 'Non-Human'], html = '<p class="cr-hint">Names are fixed. You can change how each person is built and how they present.</p>';
+    var ng = c.world.npcGender, rest = ng.male + ng.female, fs = rest ? Math.round(ng.female * 100 / rest) : 50;
+    html = '<fieldset><legend>Random townsfolk</legend>' +
+      '<div class="cr-row"><label>Men <input type="range" data-f="npcFemale" min="0" max="100" step="5" value="' + fs + '"> Women</label></div>' +
+      '<div class="cr-row"><label>Neither: <input type="range" data-f="npcNeither" min="0" max="50" step="5" value="' + ng.neither + '"></label></div>' +
+      '<p class="cr-hint cr-npcmix">Unnamed and randomly generated people: ' + ng.female + '% women, ' + ng.male + '% men, ' + ng.neither + '% neither. Everyone is 18 or older.</p>' +
+      '</fieldset>' + html;
     var seen = {};
     cats.concat(r.map(function (n) { return n.category; })).forEach(function (cat) {
       if (seen[cat]) return; seen[cat] = 1;
@@ -426,9 +484,19 @@
       if (t.name.indexOf('w:') === 0) c.world[t.name.slice(2)] = t.value;
       else {
         c.player[t.name] = /^(breastSize|hipSize)$/.test(t.name) ? +t.value : t.value;
+        if (c.done && (t.name === 'anatomy' || t.name === 'bodySize')) { render(); return; }   // fixed after arrival
         if (c.player.dollAuto) delete c.player.dollAuto[t.name];
         if (t.name === 'background') c.world.startMoney = find(OPT.background, t.value)[3];
+        if (t.name === 'appearance') c.player.appearanceSet = true;
+        if (t.name === 'gender' && !c.player.appearanceSet) { c.player.appearance = t.value === 'neither' ? 'androgynous' : t.value; var ap = ui.root.querySelectorAll('input[name=appearance]'); [].forEach.call(ap, function (x) { x.checked = x.value === c.player.appearance; }); }
+        if (t.name === 'gender') { c.player.pronouns = pronounsFor(t.value); var pr = ui.root.querySelectorAll('input[name=pronouns]'); [].forEach.call(pr, function (x) { x.checked = x.value === c.player.pronouns; }); }
       }
+    } else if (t.dataset.f === 'npcFemale' || t.dataset.f === 'npcNeither') {
+      var ng = c.world.npcGender, rest = ng.male + ng.female, fs = rest ? ng.female * 100 / rest : 50;
+      if (t.dataset.f === 'npcFemale') setNpcRatio(c, ng.neither, +t.value); else setNpcRatio(c, +t.value, fs);
+      var mix = $('.cr-npcmix', ui.root), n2 = c.world.npcGender;
+      if (mix) mix.textContent = 'Unnamed and randomly generated people: ' + n2.female + '% women, ' + n2.male + '% men, ' + n2.neither + '% neither. Everyone is 18 or older.';
+      return;
     } else if (t.dataset.f === 'name') c.player.name = t.value.replace(/[<>]/g, '');
     else if (t.dataset.f === 'age') c.player.age = Math.max(18, Math.min(30, parseInt(t.value, 10) || 18));
     else if (t.dataset.f === 'freckles') c.player.freckles = t.checked;
@@ -515,7 +583,10 @@
     }
   };
 
-  window.Creation = { open: open, paperdollSVG: paperdollSVG, describe: describe, npcLook: npcLook, OPTIONS: OPT, module: mod };
+  window.Creation = { open: open, paperdollSVG: paperdollSVG, describe: describe, npcLook: npcLook, OPTIONS: OPT, module: mod,
+    bodySizeMod: bodySizeMod, rollNpcGender: rollNpcGender, pronounsFor: pronounsFor,
+    gender: function () { var p = curPlayer(); return (p && p.gender) || 'neither'; },
+    background: function () { var p = curPlayer(); return (p && p.background) || 'waif'; } };
   (function (gofn, pick) { mod.getOptions = function (state) { var out = gofn.apply(this, arguments); if (out) ['actions', 'other', 'dialogue'].forEach(function (k) { (out[k] || []).forEach(function (o) { if (o && !o.section) o.section = pick(o, state); if (o && !o.icon) o.icon = '🪞'; }); }); return out; }; })(mod.getOptions, function () { return 'self'; });
   if (window.G && typeof window.G.register === 'function') window.G.register(mod);
   if (window.G && typeof window.G.addTab === 'function') window.G.addTab({
@@ -525,10 +596,11 @@
       var bg = find(OPT.background, p.background);
       return '<div style="display:flex;gap:18px;align-items:flex-start">' + paperdollSVG(p, 5) +
         '<div><p><i>The person looking back at you from shop windows.</i></p><p>' + esc(describe(p)) + '</p>' +
-        '<p>Age ' + p.age + ', ' + esc(p.pronouns) + '. Strangers tend to read you as ' +
+        '<p>Age ' + p.age + ', ' + esc(p.pronouns) + ', ' + esc(find(OPT.gender, p.gender)[1].toLowerCase()) + '. Strangers tend to read you as ' +
         ({ female: 'feminine', male: 'masculine', androgynous: 'androgynous' }[p.appearance]) + '.</p>' +
         (window.Salon && Salon.hairNote ? '<p>' + esc(Salon.hairNote()) + '</p>' : '') +
-        '<p><b>Background:</b> ' + esc(bg[1]) + '. ' + esc(bg[2]) + '</p></div></div>';
+        '<p><b>Background:</b> ' + esc(bg[1]) + '. ' + esc(bg[2]) + '</p>' +
+        '<p class="cr-hint"><b>Fixed at arrival:</b> body size ' + esc(find(OPT.bodySize, p.bodySize)[1].replace(/ \(.*\)/, '').toLowerCase()) + ' (' + (p.bodySize === 'small' ? 'physical checks are harder' : p.bodySize === 'large' ? 'physical checks are easier' : 'no change to physical checks') + '); clothing fit ' + esc(find(OPT.anatomy, p.anatomy)[1].toLowerCase()) + '.</p></div></div>';
     }
   });
 })();

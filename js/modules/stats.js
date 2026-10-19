@@ -119,9 +119,50 @@
 
   // Difficulty labels for a check(stat, base) roll: success chance = (value + 500 - base) / 1000.
   var DIFF_LABELS = ['Very Hard', 'Hard', 'Challenging', 'Reasonable', 'Easy', 'Simple'];
+  // ---------- creation: body size and background (creation.js sets player.bodySize / player.background) ----------
+  function player() { return (G.state.creation && G.state.creation.player) || {}; }
+  function bodySize() { var b = String(player().bodySize || player().size || 'average').toLowerCase(); return b === 'small' || b === 'large' ? b : 'average'; }
+  var PHYSICAL = { physique: 1, athletics: 1 };
+  // Small makes physical checks harder, large easier (a difficulty dial). Used for shoving through crowds,
+  // fending off a pickpocket, sports and carrying. There are no fights in Hollowbrook.
+  function sizeMod() { return { small: -100, average: 0, large: 100 }[bodySize()]; }
+  function carryMult() { return { small: 0.85, average: 1, large: 1.15 }[bodySize()]; }
+  var BACKGROUNDS = {
+    waif:       { core: { beauty: 40, physique: 40, willpower: 40, awareness: 40 }, skills: { housekeeping: 60, cooking: 60 } },
+    nerd:       { core: { awareness: 160, willpower: 120, physique: -60 }, skills: { charm: -40 }, attitudes: { publicSpeech: -20, crowds: -15 } },
+    athlete:    { core: { physique: 260, willpower: 40, awareness: -40 }, skills: { athletics: 260 }, attitudes: { exercise: 40 }, workouts: 10 },
+    delinquent: { core: { awareness: 80, willpower: -40 }, skills: { skulduggery: 220, charm: 40 }, status: { crime: 150 }, attitudes: { theft: 60, rulebreaking: 70 } },
+    beautiful:  { core: { beauty: 320 }, skills: { charm: 260 }, needs: { stress: 150 }, status: { socialiteFame: 80 }, attention: 1.25 }
+  };
+  // Old background ids from earlier saves map onto the new list.
+  var BG_ALIAS = { scholarship: 'nerd', local: 'waif', farmhand: 'athlete', streetwise: 'delinquent', comfortable: 'waif' };
+  function backgroundId() { var b = player().background || 'waif'; b = BG_ALIAS[b] || b; return BACKGROUNDS[b] ? b : 'waif'; }
+  function attentionMult() { return BACKGROUNDS[backgroundId()].attention || 1; }
+  function applyBackground() {
+    var s = S(); if (s.flags.bgApplied) return;
+    var bg = BACKGROUNDS[backgroundId()]; s.flags.bgApplied = backgroundId();
+    Object.keys(bg.core || {}).forEach(function (k) { var c = s.core[k]; if (!c) return; c.value = clamp(c.value + bg.core[k], 0, MAX); c.base = clamp(c.base + bg.core[k], 0, MAX); });
+    Object.keys(bg.skills || {}).forEach(function (k) { s.skills[k] = clamp((s.skills[k] || 0) + bg.skills[k], 0, MAX); });
+    Object.keys(bg.status || {}).forEach(function (k) { s.status[k] = clamp((s.status[k] || 0) + bg.status[k], 0, MAX); });
+    Object.keys(bg.needs || {}).forEach(function (k) { s.needs[k] = clamp(s.needs[k] + bg.needs[k], 0, MAX); });
+    Object.keys(bg.attitudes || {}).forEach(function (k) { s.attitudes[k] = clamp((s.attitudes[k] || 0) + bg.attitudes[k], -100, 100); });
+    if (bg.workouts) rec().workouts += bg.workouts;
+    updateTraits();
+  }
+  // Trade-off lines for the creator (Lucy can show these under each background).
+  var BG_SUMMARY = {
+    waif: 'Balanced: a little of everything. Recommended for beginners.',
+    nerd: 'Awareness and Willpower up; Physique and Charm down.',
+    athlete: 'Physique and Athletics way up, and you start as a gym regular; Awareness down.',
+    delinquent: 'Skulduggery up, Crime starts high; Willpower down.',
+    beautiful: 'Beauty and Charm way up; you start more stressed and get noticed more.'
+  };
+  var SIZE_SUMMARY = { small: 'Harder: physical checks are tougher and you carry less.', average: 'Normal difficulty.', large: 'Easier: physical checks are easier and you carry more.' };
+
   function checkValue(stat) {
     var s = S(); var v = s.core[stat] !== undefined ? effective(stat) : (s.skills[stat] || 0);
     if (hasTrait('sharpEyed') && stat === 'awareness') v += 50;
+    if (PHYSICAL[stat]) v += sizeMod();
     return v;
   }
   function checkChance(stat, base) {
@@ -1312,7 +1353,11 @@
     soiled: isSoiled,
     // undressed in public: covering() is true after "Cover yourself"; multiply notice chances by noticeMult() (0.5 while covering)
     VOLUME: VOLUME,
-    exposed: function () { return exposedNow() && inPublic(); }, covering: covering, noticeMult: function () { return covering() ? 0.5 : 1; },
+    exposed: function () { return exposedNow() && inPublic(); }, covering: covering, noticeMult: function () { return (covering() ? 0.5 : 1) * attentionMult(); },
+    // creation hooks
+    bodySize: bodySize, sizeMod: sizeMod, carryMult: carryMult, attentionMult: attentionMult, background: backgroundId,
+    BACKGROUNDS: BACKGROUNDS, BG_SUMMARY: BG_SUMMARY, SIZE_SUMMARY: SIZE_SUMMARY, applyBackground: applyBackground,
+    physicalChance: function (p) { return clamp((+p || 0) + sizeMod() / MAX, 0, 1); },
     money: money, addMoney: addMoney,
     panelHTML: panelHTML,
     tabs: { Characteristics: tabCharacteristics, Status: tabStatus, Clothing: tabClothing },
@@ -1336,6 +1381,7 @@
           G.on('creationDone', function () {
             var w = (G.state.creation && G.state.creation.world) || {};
             if (typeof w.startMoney === 'number') G.state.money = w.startMoney;
+            applyBackground();
           });
         }
         if (G.addTab) {

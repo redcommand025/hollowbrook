@@ -8,7 +8,7 @@
   function G_() { return window.G; }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function I(state) { state = state || G_().state; if (!state.inventory || state.inventory.lots) state.inventory = { tote: !!(state.inventory && state.inventory.tote) }; return state.inventory; }
-  function limit() { return BASE + (I().tote ? TOTE : 0); }
+  function limit() { var m = 1; try { if (window.G && G.stats && G.stats.carryMult) m = +G.stats.carryMult() || 1; } catch (e) {} return Math.round((BASE + (I().tote ? TOTE : 0)) * m); }
   function used() { var g = G_().groceries; return g && g.total ? g.total() : 0; }
   function money() { return (G_().state.money) || 0; }
   function hookLimit() { var g = G_().groceries; if (g && g.limit !== limit) g.limit = limit; }

@@ -217,7 +217,7 @@
         return { text: 'An early jogger gives you a breathless wave as they pass. Hollowbrook is that kind of town.' }; } },
     { id: 'pickpocket_attempt', where: ['main_street', 'bar', 'alley'], chance: 0.03,
       run: function (s) { var aw = num(s, 'stats.core.awareness.value');
-        if (Math.random() * 1000 < aw + 200) { aware(3);
+        if (Math.random() < physChance((aw + 200) / 1000)) { aware(3);
           return { text: 'You feel a light tug at your pocket and turn just in time. A hooded figure mutters something and melts into the crowd.' }; }
         var loss = Math.min(num(s, 'money'), 5 + Math.floor(Math.random() * 15)); G.change('money', -loss); G.change('stats.needs.stress', 40);
         return { text: 'Later, you reach for your wallet and find it lighter than it should be. Someone in the crowd was quicker than you.' }; } },
@@ -362,6 +362,9 @@
     out.push(a, b); return out;
   }
 
+  // Body size (Jimmy's stats.js): small makes physical odds harder and carrying more tiring, large the reverse.
+  function physChance(p) { try { if (G.stats && G.stats.physicalChance) return G.stats.physicalChance(p); } catch (e) {} return p; }
+  function carryFat(f) { var m = 1; try { if (G.stats && G.stats.carryMult) m = G.stats.carryMult() || 1; } catch (e) {} return Math.round(f / m); }
   function endShop() { W().shop = null; if (G.state.lock && G.state.lock.reason === 'world-shop') G.state.lock = null; }
 
   /* ---------------- Menus (café, dining commons, pub) ----------------
@@ -646,7 +649,7 @@
     { id: 'farm_lamb', where: ['campus_farm'], chance: 0.25, when: function () { return season() === 'Spring'; },
       run: function () { G.change('stats.needs.stress', -40); return { text: 'The farm has new arrivals: two wobbly lambs, bleating and bouncing straight up in the air for no reason at all.', minutes: 10 }; } },
     { id: 'harvest_help', where: ['campus_farm'], chance: 0.15, when: function () { return season() === 'Autumn'; },
-      run: function () { G.change('stats.needs.fatigue', 50); G.change('money', 5); return { text: 'The farm manager waves you over to help carry pumpkins into the barn and presses $5 into your hand afterwards.', minutes: 30 }; } },
+      run: function () { G.change('stats.needs.fatigue', carryFat(50)); G.change('money', 5); return { text: 'The farm manager waves you over to help carry pumpkins into the barn and presses $5 into your hand afterwards.', minutes: 30 }; } },
     { id: 'charity_collector', where: ['main_street', 'shopping_centre'], chance: 0.08,
       run: function () { G.change('money', -1); G.change('stats.status.kindnessFame', 3); return { text: 'A volunteer with a rattling tin smiles hopefully. You drop in a dollar and get a paper flower for your lapel.' }; } },
     { id: 'roadworks', where: ['main_street', 'residential'], chance: 0.06,
@@ -919,7 +922,7 @@
     var r = Math.random();
     if (r < 0.4) return { text: '<p>Nobody answers. A security camera above the door blinks at you.</p>', minutes: 2 };
     if (r < 0.7) { G.change('stats.needs.stress', -5); return { text: '<p>A woman in gardening gloves opens the door, listens politely, says she is not buying anything and wishes you a nice day.</p>', minutes: 2 }; }
-    if (r < 0.9) { G.change('money', 8); G.change('stats.needs.fatigue', 60); return { text: '<p>An older man asks if you would carry some boxes from his car to the garage. Twenty minutes later he presses $8 into your hand.</p>', minutes: 22 }; }
+    if (r < 0.9) { G.change('money', 8); G.change('stats.needs.fatigue', carryFat(60)); return { text: '<p>An older man asks if you would carry some boxes from his car to the garage. Twenty minutes later he presses $8 into your hand.</p>', minutes: 22 }; }
     G.change('stats.needs.thirst', 120); G.change('stats.needs.stress', -15);
     return { text: '<p>A cheerful retired couple invite you in for a glass of lemonade and show you photos of their grandchildren. It is oddly nice.</p>', minutes: 20 };
   }

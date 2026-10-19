@@ -491,7 +491,32 @@
   function clearScene() { S().scene = null; if (G.state.lock && G.state.lock.reason === 'school-scene') G.state.lock = null; }
   var SHIFT_STEP = ['The next hour settles into a steady rhythm.', 'You find your pace, and the clock moves faster than you expect.', 'Another hour. Your feet notice, even if nobody else does.', 'A lull, then a rush, then a lull again.'];
   // durations include the action's own minutes, since the engine advances the clock after run()
+  // ---------- creation backgrounds: grades + student status, applied once when creation finishes ----------
+  var BG_SCHOOL = {
+    waif:       { note: 'Average grades and standing.' },
+    nerd:       { grades: { lit: 14, math: 16, sci: 16, art: 6, pe: -10, agri: 4 }, rep: -150, note: 'Strong grades, but low standing with other students.' },
+    athlete:    { grades: { lit: -12, math: -14, sci: -12, art: -8, pe: 22, agri: -4 }, rep: 60, note: 'Top marks in PE, weak marks elsewhere.' },
+    delinquent: { grades: { lit: -6, math: -6, sci: -6, art: -2, pe: 0, agri: -4 }, rep: 200, delinq: 250, note: 'High standing with students, and already on the staff\'s radar.' },
+    beautiful:  { rep: 80, note: 'People notice you, for better and worse.' }
+  };
+  function bgId() {
+    var c = G.state && G.state.creation, p = c && c.player;
+    return p ? String(p.background || p.bg || '').toLowerCase() : '';
+  }
+  function applyBackground() {
+    var s = S(), c = G.state && G.state.creation;
+    if (!s || s.bgApplied || !c || !c.done) return;
+    s.bgApplied = true;
+    var b = BG_SCHOOL[bgId()]; if (!b) return;
+    if (b.grades) Object.keys(b.grades).forEach(function (k) { if (typeof s.grades[k] === 'number') s.grades[k] = clamp(s.grades[k] + b.grades[k], 0, 100); });
+    if (b.rep) s.studentRep = clamp(srep() + b.rep, 0, 1000);
+    if (b.delinq) s.delinquency = clamp((s.delinquency || 0) + b.delinq, 0, 1000);
+    // crime is Jimmy's (stats.js); background crime is set there, not here
+    s.background = bgId();
+  }
   function mood(n, m) { if (G.doll && G.doll.setTemp) { try { G.doll.setTemp(n, m); } catch (e) {} } }
+  // body size on physical (physique) jobs: small -2, large +2 performance
+  function sizeAdj(stat) { if (stat !== 'physique' || !G.stats || typeof G.stats.carryMult !== 'function') return 0; try { return Math.round((G.stats.carryMult() - 1) * 15); } catch (e) { return 0; } }
   function nd(k) { return (G.state.stats && G.state.stats.needs && G.state.stats.needs[k]) || 0; }
   function workShift(id) {
     var j = JOBS[id], m = S().jobs[id], t = time();
@@ -499,7 +524,7 @@
     var fat = nd('fatigue'), hrs = jobHrs(j);
     m.lastDay = t.day; m.shifts++;
     setScene({ kind: 'shift', id: id, loc: loc(), day: t.day, hrs: hrs, left: hrs, worked: 0, tips: 0, ev: false, rested: false,
-      perf: rnd(-5, 8) + Math.floor(statVal(j.needStat) / 250) - (fat > 700 ? 8 : 0) });
+      perf: rnd(-5, 8) + Math.floor(statVal(j.needStat) / 250) + sizeAdj(j.needStat) - (fat > 700 ? 8 : 0) });
     var out = '<p><b>' + (RANKS[id] ? RANKS[id][m.rank || 0] : j.title) + ' shift at ' + j.name + '</b></p><p>' + pick(j.shifts) + '</p>';
     if (fat > 700) out += '<p>You\'re running on fumes, and it shows in your work.</p>';
     return shiftHour(out);
@@ -1155,7 +1180,7 @@
   function shiftP(o) {
     var id = null; Object.keys(JOBS).forEach(function (k) { if (JOBS[k].loc === loc()) id = k; }); if (!id) return 0.7;
     var fat = (G.state.stats && G.state.stats.needs && G.state.stats.needs.fatigue) || 0;
-    var n = Math.floor(statVal(JOBS[id].needStat) / 250) - (fat > 700 ? 8 : 0), ok = 0;
+    var n = Math.floor(statVal(JOBS[id].needStat) / 250) + sizeAdj(JOBS[id].needStat) - (fat > 700 ? 8 : 0), ok = 0;
     for (var r = -5; r <= 8; r++) if (r + n >= 0) ok++;
     return ok / 14; // chance the shift goes well
   }
@@ -1222,7 +1247,7 @@
   var mod = {
     id: 'school',
     init: function (state) {
-      if (state.school) { var x = state.school; x.clubs = x.clubs || {}; x.jobs = x.jobs || {}; x.extraCredit = x.extraCredit || {}; x.homework = x.homework || {}; x.homeworkDone = x.homeworkDone || 0; x.loot = x.loot || []; x.bannedFrom = x.bannedFrom || {}; x.serviceHours = x.serviceHours || 0; x.farm.stallDays = x.farm.stallDays || 0; x.year = x.year || 1; x.credits = x.credits || 0; x.creditsNeeded = x.creditsNeeded || 10; x.transcript = x.transcript || []; x.arrests = x.arrests || 0; x.studiedTerm = x.studiedTerm || 0; return; }
+      if (state.school) { var x = state.school; if (typeof x.bgApplied !== 'boolean') x.bgApplied = !!(state.creation && state.creation.done); x.clubs = x.clubs || {}; x.jobs = x.jobs || {}; x.extraCredit = x.extraCredit || {}; x.homework = x.homework || {}; x.homeworkDone = x.homeworkDone || 0; x.loot = x.loot || []; x.bannedFrom = x.bannedFrom || {}; x.serviceHours = x.serviceHours || 0; x.farm.stallDays = x.farm.stallDays || 0; x.year = x.year || 1; x.credits = x.credits || 0; x.creditsNeeded = x.creditsNeeded || 10; x.transcript = x.transcript || []; x.arrests = x.arrests || 0; x.studiedTerm = x.studiedTerm || 0; return; }
       state.school = {
         grades: { lit: 66, math: 66, sci: 66, art: 66, pe: 66, agri: 66 },
         delinquency: 0, crime: 0, attended: 0, skipped: 0, attendedKeys: {},
@@ -1435,7 +1460,7 @@
 
   function boot() {
     if (!window.G || !G.register) return setTimeout(boot, 50);
-    var _go = mod.getOptions; mod.getOptions = function (st) { var so = null; try { so = sceneOptions(); } catch (e) { clearScene(); } if (so) return tagSections(so); return tagSections(addMins(_go.call(mod, st) || {})); };
+    var _go = mod.getOptions; mod.getOptions = function (st) { try { applyBackground(); } catch (e) {} var so = null; try { so = sceneOptions(); } catch (e) { clearScene(); } if (so) return tagSections(so); return tagSections(addMins(_go.call(mod, st) || {})); };
     G.register(mod);
     if (G.world && G.world.addLocation && !(G.world.location && G.world.location('deans_office'))) G.world.addLocation('deans_office', {
       name: "Dean's Office", district: 'Campus', indoor: true, open: [8, 17], restroom: false,
@@ -1489,6 +1514,7 @@
     if (G.on) G.on('arrive', function (d) {
       try { if (!S() || !onCampus() || ['dorm_room', 'restroom'].indexOf(d && d.location) >= 0) return; if (chance(0.12) && G.notify) G.notify(ambientLine(), 'info'); /* rare: world.js already describes each arrival */ } catch (e) {}
     });
+    if (G.on) G.on('creationDone', function () { try { applyBackground(); } catch (e) {} });
     if (G.on) { G.on('newDay', newDay); G.on('newDay', repNewDay); G.on('spotted', onSpotted); G.on('accident', onAccident); G.on('arrive', repArrive); G.on('tick', exposedTick); G.on('action', exposedTick); G.on('tick', briefNoticeTick); }
     if (G.on) G.on('arrive', function (d) {
       var prev = S().lastLoc; S().lastLoc = d && d.location;
@@ -1498,7 +1524,7 @@
     });
     G.school = mod.api;
     G.school.nextClass = nextClassInfo;
-    G.school.studentRep = studentRep; G.school.studentRepValue = srep; G.school.studentRepText = repText; G.school.isStudent = isStudent; G.school.jobStats = jobStats;
+    G.school.studentRep = studentRep; G.school.studentRepValue = srep; G.school.studentRepText = repText; G.school.isStudent = isStudent; G.school.jobStats = jobStats; G.school.backgroundNote = function (id) { var b = BG_SCHOOL[String(id || '').toLowerCase()]; return b ? b.note : ''; }; G.school.applyBackground = applyBackground;
     // Banner: refresh whenever the story text changes or time moves.
     if (G.addBanner) G.addBanner(function () { var i = G.state && G.state.school && onCampus() ? nextClassInfo() : null; return i ? i.html : null; });
     else if (G.on) { G.on('action', refreshClassBanner); G.on('tick', refreshClassBanner); G.on('start', function () { setTimeout(refreshClassBanner, 0); }); G.on('arrive', function () { setTimeout(refreshClassBanner, 0); }); }

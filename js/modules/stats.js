@@ -771,6 +771,19 @@
     spoiled: function (id) { return (groc()[id] || []).filter(function (d) { return isOff(id, d); }).length; },
     limit: prev.limit
   }; }
+  // Engine sections (engine.js sectionOf): label guesses misfile priced food/drink as Shop, so tag ours explicitly.
+  var SECTION_RX = [
+    [/pass out|collapse/i, 'needs'],
+    [/meal|snack|coffee|tea|water|cook|noodles|shower|clean yourself|rinse|fresh clothes|restroom|somewhere to|brief|cover yourself/i, 'needs'],
+    [/appearance|laundry|mend/i, 'self'],
+    [/swim|treadmill|weights|yoga|jog|meditate|people-watch/i, 'here']
+  ];
+  function tagSections(out) {
+    ['actions', 'other'].forEach(function (k) { (out[k] || []).forEach(function (o) {
+      if (!o || o.section || o.sub === 'Groceries' || /cold medicine/i.test(o.label)) return;
+      for (var i = 0; i < SECTION_RX.length; i++) if (SECTION_RX[i][0].test(o.label)) { o.section = SECTION_RX[i][1]; return; }
+    }); });
+  }
   function groceryOptions(out, n, home) {
     var hid = here().id;
     if (hid === 'market') {
@@ -967,6 +980,7 @@
     }
     groceryOptions(out, n, home);
     // the mirror self-check now lives in Lucy's 'Look in a mirror' (creation.js), which can call G.stats.selfDescription()
+    tagSections(out);
     return out;
   }
 

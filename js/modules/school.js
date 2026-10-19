@@ -1046,7 +1046,7 @@
     ['dialogue', 'actions', 'other'].forEach(function (g) {
       (opts[g] || []).forEach(function (o) {
         if (!o || o.section || typeof o.label !== 'string') return;
-        for (var i = 0; i < SECT.length; i++) if (SECT[i][0].test(o.label)) { if (g !== 'dialogue' || SECT[i][1] === 'now') o.section = SECT[i][1]; if (SECT[i][2] && !o.sub) o.sub = SECT[i][2]; return; }
+        for (var i = 0; i < SECT.length; i++) if (SECT[i][0].test(o.label)) { if (g !== 'dialogue' || SECT[i][1] === 'now') o.section = SECT[i][1]; if (SECT[i][2] && !o.sub) { o.sub = SECT[i][2]; if (typeof o.priority !== 'number') o.priority = -1; } return; }
       });
     });
     return opts;

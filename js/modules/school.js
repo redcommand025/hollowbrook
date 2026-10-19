@@ -206,6 +206,7 @@
     var avg = total / Object.keys(s.grades).length;
     s.examDue = false; s.lastExamAvg = Math.round(avg); s.examsTaken++;
     need('stats.needs.stress', 80); need('stats.needs.fatigue', 100);
+    if (avg < 50) mood('stressed', 240); else if (avg >= 70) mood('happy', 240);
     if (avg < 50) { s.probation = true; out += '<p>Results go up by the evening. Your name is near the bottom, and there\'s a letter in your pigeonhole: <i>academic probation</i>.</p>'; }
     else if (avg >= 85) { s.probation = false; cash(50); out += '<p>Results go up by the evening. You\'re near the top, and the bursary awards you a small merit prize.</p>'; }
     else { if (avg >= 60) s.probation = false; out += '<p>Results go up by the evening. Respectable, nothing to write home about.</p>'; }
@@ -405,7 +406,7 @@
   }
   function doExtraCredit(subj) {
     var s = S(); delete s.pendingExtra[subj];
-    grade(subj, rnd(3, 5)); need('stats.needs.fatigue', 60); need('stats.needs.stress', 20);
+    grade(subj, rnd(3, 5)); mood('happy', 135); need('stats.needs.fatigue', 60); need('stats.needs.stress', 20);
     return { text: '<p>You grind through the ' + SUBJECTS[subj].name + ' extra-credit sheet. The last question is mean, but you get there.</p>', minutes: 75 };
   }
 
@@ -489,6 +490,8 @@
   function setScene(sc) { sc.t = (G.state.world && G.state.world.minutes) || 0; S().scene = sc; if (!G.state.lock) G.state.lock = { reason: 'school-scene', allow: [] }; }
   function clearScene() { S().scene = null; if (G.state.lock && G.state.lock.reason === 'school-scene') G.state.lock = null; }
   var SHIFT_STEP = ['The next hour settles into a steady rhythm.', 'You find your pace, and the clock moves faster than you expect.', 'Another hour. Your feet notice, even if nobody else does.', 'A lull, then a rush, then a lull again.'];
+  // durations include the action's own minutes, since the engine advances the clock after run()
+  function mood(n, m) { if (G.doll && G.doll.setTemp) { try { G.doll.setTemp(n, m); } catch (e) {} } }
   function nd(k) { return (G.state.stats && G.state.stats.needs && G.state.stats.needs[k]) || 0; }
   function workShift(id) {
     var j = JOBS[id], m = S().jobs[id], t = time();
@@ -524,7 +527,7 @@
     if (id === 'cafe') tips += Math.floor(rnd(0, 6) * (1 + statVal('beauty') / 600) * f);
     if (srep() < 250) tips = Math.floor(tips * 0.6);
     m.perf = clamp(m.perf + sc.perf - (early ? 4 : 0), 0, 100);
-    var pay = rate * w + tips; if (pay > 0) cash(pay);
+    var pay = rate * w + tips; if (pay > 0) { cash(pay); if (!early) mood('happy', 120); }
     if (w > 0) logJob(id, w, pay, tips);
     fame(j.fame, Math.max(1, Math.round(3 * f))); if (j.skill) gainSkill(j.skill, Math.round(rnd(8, 14) * f));
     if (id === 'library') { if (chance(0.4 * f)) grade(pick(Object.keys(SUBJECTS)), 1); train('awareness', Math.round(6 * f)); }
@@ -842,7 +845,7 @@
     if (!items) return { text: '<p>You\'ve got nothing to put on a stall.</p>', minutes: 1 };
     var mult = 1.4 + skill('tending') / 2500 + statVal('beauty') / 5000;
     var sold = Math.round(total * mult) + rnd(0, 10);
-    s.farm.produce = {}; s.farm.stallDays++; cash(sold); fame('business', 8);
+    s.farm.produce = {}; s.farm.stallDays++; cash(sold); mood('happy', 300); fame('business', 8);
     var extra = pick(['A regular asks if you\'ll be here next week. You say yes before thinking.', 'Someone\'s grandmother buys everything green and tells you you\'re too thin.', 'A food blogger photographs your strawberries from nine angles.']);
     return { text: '<p>You set out a trestle table in the town square with a hand-lettered sign. By early afternoon the crates are empty and you\'ve made $' + sold + '.</p><p>' + extra + '</p>', minutes: 240 };
   }

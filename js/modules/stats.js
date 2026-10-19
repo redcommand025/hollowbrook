@@ -372,6 +372,7 @@
         if (g.id === 'yoga') il.sore = Math.max(0, il.sore - 600);
         if (sore) extra += ' <span class="flavor">Your sore muscles hold you back today.</span>';
         if (gymPlan() !== before) note('Training level: ' + gymPlan() + '. Your routine is getting easier.', 'up');
+        dollTemp('happy', 60 + g.min);
         if (g.id !== 'yoga') startScene('gym', { id: g.id });
         return { text: '<p>' + g.text + extra + '</p>', minutes: g.min };
       }, { time: g.min, disabled: !!dis, reason: dis ? (n.fatigue >= 850 ? 'Too tired' : 'Needs $' + g.cost) : null,
@@ -603,7 +604,7 @@
   }
   function coverOption() {
     return opt('Cover yourself as best you can', function () {
-      var s = S(); s.flags.covering = true; s.needs.stress = clamp(s.needs.stress - 10, 0, MAX);
+      var s = S(); dollTemp('blush', 21); s.flags.covering = true; s.needs.stress = clamp(s.needs.stress - 10, 0, MAX);
       if (G.emit) G.emit('covered', { where: here().id });
       return { text: '<p>You hold your bag in front of you and keep your arms in close. It isn\'t much, but fewer people will notice. You need proper clothes, or somewhere private, soon.</p>', minutes: 1 };
     }, { time: 1, hint: 'People notice less often, but it doesn\'t fix it' });
@@ -614,7 +615,10 @@
   function presentIds() { try { return (window.NPCS && NPCS.present && NPCS.present(G.state)) || []; } catch (e) { return []; } }
   function isStudentId(id) { if (id === 'students') return true; var n = window.NPCS && NPCS.byId && NPCS.byId[id]; return !!(n && n.group === 'Students'); }
   // Shared 'spotted' event: school.js turns student sightings into school reputation, npcs.js into named NPC opinion.
+  // Paperdoll expressions (doll.js); harmless no-op before it loads.
+  function dollTemp(name, mins) { if (G.doll && G.doll.setTemp) { try { G.doll.setTemp(name, mins); } catch (e) {} } }
   function spotted(by, kind, extra) {
+    dollTemp('blush', 30); // padded: set before the action's minutes tick
     var d = { by: by, kind: kind, student: isStudentId(by), src: 'stats', where: here().id };
     if (extra) for (var k in extra) d[k] = extra[k];
     if (G.emit) G.emit('spotted', d);
@@ -915,7 +919,7 @@
         chg('needs.hunger', 480 + bonus); chg('needs.stress', -20); chg('needs.thirst', 20);
         n.bowels = clamp(n.bowels + 50, 0, MAX); trainSkill('cooking', 8);
         if (hasTrait('homeCook')) { chg('needs.hunger', 110); chg('needs.stress', -20); }
-        if (anyOff) maybePoison(0.4);
+        if (anyOff) maybePoison(0.4); else dollTemp('happy', 90);
         return { text: '<p>You cook ' + recipe[2] + ' in the shared kitchen and eat it while it\'s hot. Proper food, and cheaper than eating out. ' + flav('cook') + (anyOff ? ' One of the ingredients smelled a little past it.' : '') + '</p>', minutes: 30 };
       }, { sub: 'Your groceries', time: 30, effects: ['^−Hunger', '^−Stress', '^+Cooking'] }));
     }
@@ -964,7 +968,7 @@
       }, { time: 1, icon: '🚪', effects: sc.relief ? ['^−Stress'] : null }));
     } else if (sc.kind === 'cafmeal') {
       if (!sc.finished) list.push(step('Finish your plate', function () {
-        sc.finished = true; chg('needs.hunger', 200); chg('needs.thirst', 60); n.bowels = clamp(n.bowels + 30, 0, MAX); chg('needs.stress', -15);
+        sc.finished = true; dollTemp('happy', 70); chg('needs.hunger', 200); chg('needs.thirst', 60); n.bowels = clamp(n.bowels + 30, 0, MAX); chg('needs.stress', -15);
         return { text: '<p>' + pick(['You clear the plate.', 'You finish every last bite.', 'You eat the rest more slowly.']) + '</p>', minutes: 10 };
       }, { time: 10, icon: '🍽️', effects: ['^−Hunger', '^−Stress'] }));
       if (!sc.drink) list.push(step('Get a glass of water', function () {
@@ -975,7 +979,7 @@
     } else if (sc.kind === 'cook') {
       var eat = function (slow) {
         return function () {
-          endScene(); var bonus = hasTrait('homeCook') ? 110 : 0;
+          endScene(); dollTemp('happy', slow ? 85 : 70); var bonus = hasTrait('homeCook') ? 110 : 0;
           chg('needs.hunger', 450 + bonus); chg('needs.thirst', 40); n.bowels = clamp(n.bowels + 40, 0, MAX);
           chg('needs.stress', (slow ? -35 : 0) - (bonus ? 20 : 0));
           return { text: '<p>' + (slow ? pick(['You sit down and eat slowly. It\'s nice to stop for a while.', 'You eat by the window and let your mind wander.']) : pick(['You eat at your desk. Not fancy, but filling.', 'You eat straight from the pan. Filling enough.'])) + '</p>', minutes: slow ? 25 : 10 };
@@ -1125,7 +1129,7 @@
     if (hereHas('gym')) gymOptions(out);
     if (!hereHas('gym') && hereHas('outdoors')) {
       out.actions.push(opt('Go for a jog', function () {
-        train('physique', 18); trainSkill('athletics', 10); chg('needs.fatigue', 90); chg('needs.thirst', -120); addStress(-40, 'hardWork'); attitude('hardWork', 1);
+        dollTemp('happy', 105); train('physique', 18); trainSkill('athletics', 10); chg('needs.fatigue', 90); chg('needs.thirst', -120); addStress(-40, 'hardWork'); attitude('hardWork', 1);
         return { text: '<p>' + flav('gym') + '</p>', minutes: 45 };
       }));
     }

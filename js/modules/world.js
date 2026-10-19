@@ -336,6 +336,32 @@
   function basketTotal(sh) { return sh.basket.reduce(function (t, id) { return t + gprice(id); }, 0); }
   function basketServings(sh) { return sh.basket.reduce(function (t, id) { var c = gcat(id); return t + (c ? c.qty || 1 : 0); }, 0); }
   function bagRoom() { var g = G.groceries; if (!g || !g.total) return 99; var lim = 24; try { if (typeof g.limit === 'function') lim = g.limit(); } catch (e) {} return lim - g.total(); }
+  /* ---------------- Sunbathing (paperdoll tan) ---------------- */
+  var SUN_SPOTS = { park: 'the grass by the millpond', docks: 'the end of the sunny jetty', quad: 'the lawn under the oaks' };
+  function isRaining() { return ['drizzle', 'rain', 'storm'].indexOf(W().weather) >= 0; }
+  function sunny() { var wx = W().weather; return wx === 'clear' || wx === 'hot'; }
+  function sunOptions() {
+    var here = W().location, spot = SUN_SPOTS[here], h = G.time.hour, out = [];
+    if (!spot || h < 9 || h >= 19) return out;
+    var why = !sunny() ? 'Not sunny right now' : W().temp < 18 ? 'Too cold for sunbathing' : h >= 17 ? 'The sun is too low now' : '';
+    var hot = W().weather === 'hot' || W().temp >= 24;
+    var a = { label: 'Sunbathe on ' + spot, icon: '☀️', minutes: 30, section: 'here', effects: ['^Tan', '^−Stress', '!−Drink'], run: function () {
+      if (G.doll && G.doll.tan) G.doll.tan(3);
+      G.change('stats.needs.stress', -30); G.change('stats.needs.thirst', -50);
+      return { text: '<p>You stretch out on ' + spot + ', shoes off, and let the sun do its work. Half an hour passes in a warm daze.</p>', minutes: 30 };
+    } };
+    var b = { label: 'Lie out in full sun for two hours', icon: '🌞', minutes: 120, section: 'here', effects: ['^More tan', '^−Stress', '!Sunburn risk', '!−Drink', '!+Fatigue'], run: function () {
+      var burn = hot || Math.random() < 0.6;
+      if (G.doll && G.doll.tan) G.doll.tan(8);
+      if (burn && G.doll && G.doll.setTemp) G.doll.setTemp('sunburn', 600);
+      G.change('stats.needs.stress', -60); G.change('stats.needs.thirst', -150); G.change('stats.needs.fatigue', 40);
+      return { text: '<p>You find a spot on ' + spot + ' with no shade at all and stay there, drifting in and out of a doze.</p><p>' +
+        (burn ? 'When you finally sit up, your shoulders and nose are pink and tight. That will sting tonight.' : 'You turn over now and then, and come away warm and golden rather than burnt.') + '</p>', minutes: 120 };
+    } };
+    if (why) { a.disabled = b.disabled = true; a.reason = b.reason = why; }
+    out.push(a, b); return out;
+  }
+
   function endShop() { W().shop = null; if (G.state.lock && G.state.lock.reason === 'world-shop') G.state.lock = null; }
 
   /* ---------------- Menus (café, dining commons, pub) ----------------
@@ -990,6 +1016,7 @@
         });
       }
 
+      sunOptions().forEach(function (o) { opts.actions.push(o); });
       if (w.location === 'residential') opts.actions.push({ label: 'Knock on one of the houses', icon: '🚪', minutes: 2, effects: function () { var h = G.time.hour; return h >= 21 || h < 8 ? ['!Late to be knocking'] : ['^Maybe a small job']; }, run: knockDoor });
       opts.actions.push({ label: 'Look around', icon: '👀', minutes: 2, run: function () {
         var ev = tryEvent('idle');
@@ -1249,6 +1276,8 @@
     crowd: crowd,   // 0..1 how busy a place is right now (default: here); scales witness/smell odds
     weather: function () { return W().weather; },
     temp: function () { return W().temp; },
+    isRaining: isRaining,             // drizzle, rain or storm right now
+    isSunny: sunny,
     fmtTemp: fmtTemp,                 // 14 -> '14°C' or '57°F' per G.settings.tempUnit
     routeTo: routeOption,             // option that walks the quickest route to a place (or null)
     mapHtml: mapHtml,

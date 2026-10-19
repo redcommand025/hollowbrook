@@ -165,6 +165,20 @@
       });
       out.actions.push(back()); return;
     }
+    if (h.mode === 'contacts') {
+      var CON = [['ice', 'ice blue'], ['rose', 'rose'], ['gold', 'gold'], ['violet', 'violet'], ['emerald', 'emerald'], ['sky', 'sky blue']];
+      var curC = p.contacts && p.contacts.color;
+      CON.forEach(function (c) {
+        if (c[0] === curC) return;
+        out.actions.push(opt('Wear ' + c[1] + ' lenses ($6)', function () {
+          if (money() < 6) return { text: '<p>Not today.</p>', minutes: 0 };
+          G_().change('money', -6); logMoney('spend', 'Hair salon', 6); h.mode = null; G_().doll.applyContacts(c[0], 24);
+          return { text: '<p>' + ['A few blinks, a tissue, and there it is: your eyes are ' + c[1] + ' now.', 'The stylist steadies your chin while you blink them in. In the mirror your eyes catch the light, ' + c[1] + ' and a little startling.'][Math.floor(Math.random() * 2)] + '</p><p class="hint">Day lenses: they come out on their own after 24 hours.</p>', minutes: 5 };
+        }, { time: 5, disabled: money() < 6, effects: ['!−$6', '^' + c[1].charAt(0).toUpperCase() + c[1].slice(1) + ' eyes for a day'] }));
+      });
+      if (curC) out.actions.push(opt('Take out your lenses', function () { h.mode = null; G_().doll.applyContacts(null); return { text: '<p>You pop the lenses out and blink. Your own eyes look back at you.</p>', minutes: 2 }; }, { time: 2 }));
+      out.actions.push(back()); return;
+    }
     if (h.mode === 'dye') {
       colours().forEach(function (c) {
         if (c[0] === p.hairColor) return;
@@ -189,6 +203,22 @@
       return { text: '<p>' + esc(stylistLine()) + '</p><p>A neat tidy-up that keeps your ' + esc(cur.label) + ' looking sharp.' + (lost ? ' The dyed ends are gone.' : '') + '</p>', minutes: 30 };
     }, { time: 30, disabled: !grown || money() < 12, reason: !grown ? 'Your cut still looks fresh' : '', hint: grown ? 'Tidies your current cut.' : 'Your cut still looks fresh.' }));
     out.actions.push(opt('Get a new haircut', function () { h.mode = 'cut'; return { text: '<p>The stylist hands you a dog-eared binder of styles. "Shorter is easy," she says. "Longer takes patience, or extensions."</p><p>' + esc(hairNote()) + '</p>', minutes: 2 }; }));
+    if (G_().doll) {
+      out.actions.push(opt('Try coloured contact lenses ($6)', function () { h.mode = 'contacts'; return { text: '<p>' + ['The stylist sets out a little tray of lens cases, each one a different colour.', 'A small mirror and a tray of day lenses. "Just for fun," the stylist says. "They last a day."'][Math.floor(Math.random() * 2)] + '</p>', minutes: 1 }; }, { time: 1, icon: '👁️', effects: ['Lasts a day'] }));
+      out.actions.push(opt('Book a spray tan ($18)', function () {
+        if (money() < 18) return { text: '<p>Not today.</p>', minutes: 0 };
+        G_().change('money', -18); logMoney('spend', 'Hair salon', 18);
+        var p2 = P(), lines = p2 && p2.tanLines ? JSON.parse(JSON.stringify(p2.tanLines)) : null;
+        G_().doll.tan(15); if (p2 && lines) p2.tanLines = lines;   // booth tan is even: no new tan lines
+        G_().change('stats.needs.stress', -5);
+        return { text: '<p>You change into a paper robe in the booth out back. A cool mist, a hum, and a few minutes of standing very still. You come out a shade more golden, evenly, with no tan lines.</p>', minutes: 20 };
+      }, { time: 20, disabled: money() < 18, effects: ['!−$18', '^Even tan', '^−Stress'] }));
+    }
+    if (h.dyed && (rootsShowing() || faded())) out.actions.push(opt('Touch up your roots and tone ($25)', function () {
+      if (money() < 25) return { text: '<p>Maybe next week.</p>', minutes: 0 };
+      G_().change('money', -25); logMoney('spend', 'Hair salon', 25); h.dyeDays = 0; G_().change('stats.needs.stress', -5); train(4); emit('dye');
+      return { text: '<p>' + esc(stylistLine()) + '</p><p>A brush of colour along the parting and a gloss to bring back the shine. Your ' + esc(colourName(p.hairColor)) + ' looks freshly done again.</p>', minutes: 60 };
+    }, { time: 60, disabled: money() < 25, effects: ['!−$25', '^Fresh colour', '^No roots'] }));
     out.actions.push(opt('Look at hair colours', function () { h.mode = 'dye'; return { text: '<p>' + ['A fan of swatches, from honest browns to a blue the stylist calls "mermaid".', 'The stylist fans out a ring of dyed hair samples. "Bold is fun," she says, "but brown forgives you."', 'A laminated colour chart, a little faded at the edges where people keep pointing at the reds.'][Math.floor(Math.random() * 3)] + '</p>', minutes: 2 }; }));
     out.actions.push(opt('Get clip-in extensions ($70)', function () {
       if (money() < 70) return { text: '<p>Seventy dollars is a lot of instant noodles.</p>', minutes: 1 };
@@ -258,7 +288,7 @@
       if (!state.creation || !state.creation.done || !P()) return out;
       var h = H(), hid = hereId(), tags = hereTags();
       var atSalon = hid === SALON && isOpen(SALON), mirror = tags.indexOf('home') >= 0;   // mirror actions only in your dorm room
-      if ((h.mode === 'cut' || h.mode === 'dye') && !atSalon) h.mode = null;
+      if ((h.mode === 'cut' || h.mode === 'dye' || h.mode === 'contacts') && !atSalon) h.mode = null;
       if ((h.mode === 'style' || h.mode === 'makeup') && !mirror) h.mode = null;
       washValid(atSalon);
       if (h.mode === 'wash') { washOptions(out); return out; }
@@ -266,7 +296,7 @@
       if (mirror && !h.makeupKit) out.other.push(opt('Put on makeup', function () { return { text: '', minutes: 0 }; }, { disabled: true, reason: 'Needs a makeup kit from the salon', time: 10 }));
       if (hid === SALON && !isOpen(SALON)) out.actions.push(opt('Book a haircut', function () { return { text: '', minutes: 0 }; }, { disabled: true, reason: 'Closed. Open 9am to 6pm', section: 'shop' }));
       if (atSalon && h.mode !== 'style') salonOptions(out);
-      if (mirror && h.mode !== 'cut' && h.mode !== 'dye') { styleOptions(out); if (h.mode !== 'style') makeupOptions(out); }
+      if (mirror && h.mode !== 'cut' && h.mode !== 'dye' && h.mode !== 'contacts') { styleOptions(out); if (h.mode !== 'style') makeupOptions(out); }
       return out;
     }
   };

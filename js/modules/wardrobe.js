@@ -427,18 +427,46 @@
     syncLayers();
   }
 
+  /* ---------- mannequin previews (G.doll) ---------- */
+  function catIds(slot) {
+    return Object.keys(CATALOG).filter(function (id) {
+      var d = CATALOG[id]; if (d.pack) return false;
+      if (slot === 'season') return !!d.season && d.season === season();
+      if (slot === 'clearance') return !!d.season && d.season !== season();
+      if (slot === 'acc') return ACC.indexOf(d.slot) >= 0 && !d.season;
+      return d.slot === slot && !d.season;
+    });
+  }
+  function manPres() {
+    var w = W(); if (w.manPres) return w.manPres;
+    var p = (G_().state.creation || {}).player || {}; return p.appearance === 'male' ? 'masc' : 'fem';
+  }
+  function mannequin(id, scale) {
+    var g = G_(); if (!g.doll || !g.doll.html) return '';
+    var p = (g.state.creation || {}).player || {};
+    try { return g.doll.html(null, { mannequin: true, outfit: [id], presentation: manPres(), breastSize: p.breastSize, scale: scale || 3 }); } catch (e) { return ''; }
+  }
+  function mannequinGrid(slot) {
+    if (!G_().doll) return '';
+    var ids = catIds(slot); if (!ids.length) return '';
+    return '<div class="hb-mannequins" style="display:flex;flex-wrap:wrap;gap:10px;margin:6px 0">' + ids.map(function (id) {
+      var d = CATALOG[id];
+      return '<figure style="margin:0;text-align:center;width:' + (56 * 3 + 4) + 'px">' + mannequin(id, 3) + '<figcaption style="font-size:.8em">' + esc(d.name) + ' ($' + priceOf(id) + ')</figcaption></figure>';
+    }).join('') + '</div><p class="hint">Showing the ' + manPres() + ' mannequins.</p>';
+  }
+
   /* ---------- store + wardrobe options ---------- */
   function storeOptions(out) {
     var w = W(), mode = w.mode || '';
     if (mode.indexOf('shop:') === 0) {
       var slot = mode.slice(5);
-      Object.keys(CATALOG).forEach(function (id) {
+      var other = manPres() === 'fem' ? 'masc' : 'fem';
+      if (G_().doll && catIds(slot).length) out.actions.push(opt('Show the ' + other + ' mannequins', function () {
+        W().manPres = other;
+        return { text: '<p>' + line('mannequin', ['A clerk wheels out the ' + other + ' mannequins and dresses them for you.', 'You swap to the ' + other + ' row of mannequins at the back.', 'The ' + other + ' mannequins stand in a patient line by the mirror.']) + '</p>' + mannequinGrid(slot), minutes: 1 };
+      }, { time: 1, icon: '🧍', section: 'shop' }));
+      catIds(slot).forEach(function (id) {
         var d = CATALOG[id];
-        if (slot === 'season') { if (!d.season || d.season !== season()) return; }
-        else if (slot === 'clearance') { if (!d.season || d.season === season()) return; }
-        else if (slot === 'acc') { if (ACC.indexOf(d.slot) < 0 || d.season) return; }
-        else if (d.slot !== slot || d.season) return;
-        if (d.pack) return;
         var price = priceOf(id);
         var owned = w.items.filter(function (it) { return it.id === id; }).length;
         out.actions.push(opt('Buy the ' + d.name + ' ($' + price + ')' + (owned ? ' (own ' + owned + ')' : ''), function () {
@@ -446,7 +474,7 @@
           G_().change('money', -price); logMoney('spend', 'Threadbare', price);
           newItem(id); syncSpare();
           G_().emit('clothesBought', { id: id });
-          return { text: '<p>' + line('buy', ['The clerk folds the ' + esc(d.name) + ' into a paper bag with a sprig of lavender. ', 'The clerk wraps the ' + esc(d.name) + ' in tissue paper. "Good choice," she says, and sounds like she means it. ', 'The ' + esc(d.name) + ' goes into a bag stamped with the Threadbare needle-and-thread logo. ', 'The clerk snips off the tag and tucks a loyalty card into the bag with one stamp on it. ']) + esc(d.desc) + '</p><p class="hint">You can change into it in the fitting room or at home.</p>', minutes: 5 };
+          return { text: mannequin(id, 2) + '<p>' + line('buy', ['The clerk folds the ' + esc(d.name) + ' into a paper bag with a sprig of lavender. ', 'The clerk wraps the ' + esc(d.name) + ' in tissue paper. "Good choice," she says, and sounds like she means it. ', 'The ' + esc(d.name) + ' goes into a bag stamped with the Threadbare needle-and-thread logo. ', 'The clerk snips off the tag and tucks a loyalty card into the bag with one stamp on it. ']) + esc(d.desc) + '</p><p class="hint">You can change into it in the fitting room or at home.</p>', minutes: 5 };
         }, { time: 5, disabled: money() < price, hint: d.desc + ' ' + shopLine(id) }));
       });
       if (slot === 'under_bottom') briefPackOption(out, 'Threadbare & Co.');
@@ -460,7 +488,7 @@
     cats.forEach(function (ct) {
       out.actions.push(opt(ct[1], function () {
         w.mode = 'shop:' + ct[0];
-        return { text: '<p>You flick through ' + esc(ct[2]) + '.' + (ct[0] === 'season' ? ' A chalkboard sign reads "New in for ' + season() + '".' : '') + ' ' + line('browse', ['A radio behind the counter plays something from the seventies.', 'Hangers clack along the rail as you push them aside.', 'The shop cat is asleep in a basket of scarves and nobody has the heart to move her.', 'Someone in the next aisle is having a whispered argument about corduroy.', 'The tags are handwritten in looping blue ink.']) + '</p>', minutes: 3 };
+        return { text: mannequinGrid(ct[0]) + '<p>You flick through ' + esc(ct[2]) + '.' + (ct[0] === 'season' ? ' A chalkboard sign reads "New in for ' + season() + '".' : '') + ' ' + line('browse', ['A radio behind the counter plays something from the seventies.', 'Hangers clack along the rail as you push them aside.', 'The shop cat is asleep in a basket of scarves and nobody has the heart to move her.', 'Someone in the next aisle is having a whispered argument about corduroy.', 'The tags are handwritten in looping blue ink.']) + '</p>', minutes: 3 };
       }));
     });
     // repairs

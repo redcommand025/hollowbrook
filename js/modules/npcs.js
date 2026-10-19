@@ -3114,6 +3114,12 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
   };
   // ---------- Dialogue trees (topics) ----------
   // Each topic: { label, need(state,id)->bool, run(state,id)->{text,minutes} }
+  function blush(mins) {
+    try {
+      var G = window.G;
+      if (G && G.doll && G.doll.setTemp) G.doll.setTemp('blush', mins || 30);
+    } catch (e) {}
+  }
   function askOutLock(state, id) {
     var r = rel(state, id);
     if (!r || r.romance !== 1 && r.romance !== 2 || !QUESTS['rom_' + id]) return null;
@@ -3320,6 +3326,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         sub: 'Date',
         run: function run(s) {
           endScene(s);
+          blush(40);
           changeAff(s, id, 3);
           _changeRep(s, id, 2);
           safeChange('stats.needs.stress', -30);
@@ -3429,6 +3436,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       }
       r.lastCompDay = t.day;
       _changeRep(state, id, 2);
+      blush(30);
       if (r.rep >= 15) changeAff(state, id, 3);
       return {
         text: "You tell " + nm(id) + " something nice and mean it. " + pronouns(id).Sub + " " + (pronouns(id).be === 'are' ? 'look' : 'looks') + " pleased.",
@@ -3453,6 +3461,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         minutes: 5
       };
       r.lastFlirtDay = t.day;
+      blush(30);
       var chance = 0.35 + r.rep / 200 + r.aff / 300;
       if (Math.random() < chance) {
         changeAff(state, id, 5);
@@ -3576,6 +3585,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       };
       var p = askOutChance(state, id);
       N.askOut = N.askOut || {};
+      blush(90); // the 60-min outing runs after run(), so pad it
       if (Math.random() < p) {
         N.askOut[id] = {
           day: t.day

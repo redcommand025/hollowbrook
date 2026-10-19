@@ -16,6 +16,7 @@ Plain HTML5 + vanilla JS, no build step, no external CDNs. Open index.html direc
 - js/modules/world.js (set map + locations, travel times, clock/calendar, weather, random events)  -> Ron
 - js/modules/school.js (classes, timetable, grades, delinquency, exams) + skulduggery + tending/farm  -> Ted
 - js/modules/npcs.js (named NPCs: Influential, Teachers, Students, Neighbors, Outcasts, Non-Human; schedules, dialogue trees, reputation, romance, quests, journal)  -> Roy
+- js/modules/doll.js (procedural pixel-art paperdoll, G.doll)  -> paperdoll owner; other modules only call its API
 
 ## Module API (engine.js exposes window.G)
 G.state            single save-able object. Each module owns G.state.<module> (creation, stats, world, school, npcs).
@@ -144,7 +145,7 @@ Within a section, a numeric `priority` sorts higher first; `pin: true` or `prior
 - `G.TIPS` (array of short gameplay tips) and `G.randomTip()` (extras.js). One shows on the title screen and one at the end of each end-of-day summary. Add tips by pushing to `G.TIPS`; keep them short, grounded and true to the current game.
 
 ## Versioning
-`G.version` in engine.js uses the format `vYY.MM.DD.#`, where # is the hotfix number for that day (starting at 0), e.g. `v26.10.19.0`, then `v26.10.19.1` for the first hotfix that day. Current: `v26.10.19.1`. It shows on the title screen and in the error bar. The `?v=` cache-bust in index.html uses the same string without the leading v (`?v=26.10.19.0`). Bump both on every deploy.
+`G.version` in engine.js uses the format `vYY.MM.DD.#`, where # is the hotfix number for that day (starting at 0), e.g. `v26.10.19.0`, then `v26.10.19.1` for the first hotfix that day. Current: `v26.10.19.2`. It shows on the title screen and in the error bar. The `?v=` cache-bust in index.html uses the same string without the leading v (`?v=26.10.19.0`). Bump both on every deploy.
 
 ## Effect previews, locked choices, collapsible sections (engine, v26.10.19.1)
 ### `effects`: what a choice will do
@@ -174,3 +175,75 @@ Long activities (washing up, laundry, a shopping trip, a job shift, a study sess
 - Example step options: `Keep studying (0:30) +Study · !+Fatigue`, `Take a break (0:10) ^−Stress`, `Stop studying`.
 - Let needs interrupt: if a need is critical, disable Keep going with a `reason` (`You need the restroom first`) rather than hiding it.
 - Clear the state when the activity finishes or the player leaves, travels, or sleeps, so a stale scene never comes back.
+
+## Paperdoll (doll.js)
+`js/modules/doll.js` is a procedural pixel-art paperdoll in ES5. It is loaded right after creation.js. Everything is drawn in code at a native 56x112 canvas and scaled up with `image-rendering:pixelated`. No image assets are used, and none may be added from other games. Style: chibi, front-facing, head about 1/3 of height, 1px outlines, 2-3 tone shading, highlights in hair and eyes.
+
+**Guardrails.** Everyone is 18+. Bare chest (when bust > 0) and a bare lower body are always covered by black censor bars. Genitals and nipples are never drawn. Size fields change only silhouette, proportions and clothing fit. `penis` is a presentation/fit flag only: it switches the underwear to a trunk cut and slightly changes how bottoms fit. Diaper/brief fill at most adds a 1px silhouette bulge under bottoms. There are no supernatural transformations.
+
+### Player fields (on `G.state.creation.player`; filled in by `G.doll.ensure(p)`)
+| field | values | notes |
+|---|---|---|
+| `bodyShape` | classic, slender, curvy, soft | derived from `build`/`appearance` until the player picks one |
+| `demeanor` | gentle, catty, aloof, sweet, foxy | eye shape + resting brow/mouth |
+| `eyeColor` | brown, dark, hazel, amber, honey, green, emerald, teal, blue, sky, grey, steel, violet | existing creation field, extended |
+| `contacts` | `{color, until}` or null | `until` is a `state.world.minutes` value; extra colours ice, rose, gold |
+| `skin` (= skinTone) | porcelain, fair, light, olive, tan, golden, brown, deep, ebony | existing creation field, extended |
+| `tan` | 0-100 | overall tan level |
+| `tanLines` | `{region: missedTan}` | regions: face, neck, shoulders, chest, belly, hips, thigh, shin, foot, upperArm, forearm |
+| `hairColor` / `hairStyle` | existing | salon dye, roots, fade and scruff are read from G.salon |
+| `hairSides` | straight, wavy, curly, tucked, pigtails, ponytail, braids, bun | |
+| `hairFringe` | blunt, swept, parted, curtain, spiky, wispy, choppy, none (swept back) | |
+| `hairLength` | cm (optional override) | otherwise `G.salon.length()` once the game has started; stages: buzz, short, ear, chin, shoulder, mid-back, waist |
+| `breastSize` | 0-4 | masc presentation is drawn flat |
+| `hipSize` | 0-4 | |
+| `penis` | boolean | optional; otherwise derived from `anatomy` (penis/both) |
+| `freckles` | existing | |
+| `dollAuto` | `{field:true}` | internal: fields still auto-derived; the creator deletes a key once the player picks |
+
+### API (`G.doll`, also `window.HBDoll`)
+- `G.doll.html(player, opts)` returns an HTML string: a `.hb-doll` div with a 2-frame sprite sheet plus a blink overlay. `opts`:
+  - `scale` (default 3)
+  - `outfit`: an array of item ids or `{id, wet, f, soiled, bulk}` objects, or a `spriteOutfit` object. If omitted, the live outfit is used.
+  - `mannequin`, `presentation` ('fem'/'masc'), `breastSize`
+  - `frames:false` for a static image
+  - `temps` / `pose` for preview renders
+- `G.doll.render(el, player, opts)` sets `el.innerHTML`.
+- `G.doll.panelHtml(state)` is the small doll shown in `#panel`.
+- `G.doll.tan(amount)` raises `p.tan` by `amount`. It records missed tan for every region currently covered by worn clothes, which creates tan lines. A negative amount fades the tan (doll.js calls `tan(-1)` each new day). It returns the new tan.
+- `G.doll.setTemp(name, minutes)`, `clearTemp(name)`, `temp(name)`. Temp names: blush, tired, stressed, upset, cold, wetHair, sunburn, happy. They are stored in `G.state.doll.temps` and expire on tick.
+- `G.doll.applyContacts(color, hours)` tints the eyes until expiry. `color` is any eye-colour key, including the contacts-only ice, rose and gold (`G.doll.PALETTE.contacts`).
+- `G.doll.ensure(p)`, `randomize(p)`, `describe(p)`, `resolve(p, opts)` (returns the plain render config), `sheet(cfg)`, `clearCache()`, `cacheSize()`.
+- `G.doll.OPTIONS` lists the creator choices. The `PALETTE` and `REGIONS` constants are also exported.
+- Rendered sheets are cached by a hash of the resolved config (LRU, 90 entries), so calling `html()` on every render is cheap.
+
+### Live states (derived automatically; no hook needed)
+- tired: fatigue ≥ 700
+- stressed: stress ≥ 650
+- upset: stress ≥ 900
+- blush:
+  - `setTemp('blush')`
+  - `G.wardrobe.exposedInPublic()` (strong)
+  - a lock reason of `'npcs-scene'` (mild)
+- cold shiver plus hugging pose: outdoors, and either temp ≤ 8 °C with warmth < 6, or temp ≤ 2 °C with warmth < 9
+- wet hair: outdoors, `WEATHER[wx].wet ≥ 4`, no `state.world.umbrella`, no raincoat or hood, and no hat other than a sunhat
+- covering-up pose: exposed in public, or `G.stats.covering()`
+- Clothing wear:
+  - integrity < 50% shows tears and a frayed hem
+  - wetness darkens the item and adds drips
+  - soiled adds a slight tint
+  - bagginess widens the silhouette
+- Breathing idle: 2 frames, CSS `steps(2)` at about 1.1s. Blink runs every ~4.4s. Both are off when `G.settings.reducedMotion` is set.
+
+### Mannequin
+`G.doll.html(null, {mannequin:true, outfit:[itemId], presentation:'fem'|'masc', breastSize})` draws a grey, featureless mannequin on a stand wearing the items. Masc is flat. Fem uses the player's breast size unless `breastSize` is given. Use it for shop previews.
+
+### How other modules hook in
+- Sunbathing, beach or park (world.js): `G.doll.tan(n)` while the player is in the sun. Add `G.doll.setTemp('sunburn', 600)` if they overdo it.
+- Salon contacts (salon.js): `G.doll.applyContacts(color, hours)`. Dye, roots and length are already read from G.salon. Emitting `hairChanged {what:'style'}` lets sides/fringe re-derive.
+- Scenes (npcs.js): `G.doll.setTemp('blush', 30)` for flustered moments. `'happy'` gives a big smile.
+- Shops (wardrobe.js): use mannequin renders for previews.
+- Panel: the engine exposes `G.addPanel(fn(state) -> html)`. Its output is prepended to `#panel` on each render. doll.js uses it for the side-panel doll, which on mobile (<720px) stays inside the collapsible panel.
+- Creation: `Creation.paperdollSVG` delegates to `G.doll.html`, and the old SVG remains as a fallback. The "Look" fieldset edits the new fields.
+- Tests: `tests/doll-test.html` renders 194 combinations and a contact sheet.
+

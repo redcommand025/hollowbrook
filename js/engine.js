@@ -38,7 +38,7 @@
 
   var G = window.G = {
     store: store,
-    version: 'v26.10.19.1',
+    version: 'v26.10.19.2',
     state: {},
     time: { day: 1, hour: 7, minute: 30, weekday: 'Monday', clock: '07:30' },
     limits: {},          // path -> [min, max]; modules may add their own
@@ -326,6 +326,9 @@
   /* Persistent banners: modules register fn() -> html or null; shown above the story every render. */
   var banners = [];
   G.addBanner = function (fn) { banners.push(fn); };
+  // G.addPanel(fn): fn(state) returns HTML placed at the top of the side panel on every render (doll.js uses it for the paperdoll)
+  var panelAdds = [];
+  G.addPanel = function (fn) { if (typeof fn === 'function') panelAdds.push(fn); };
   function renderBanners() {
     var b = el('banners'); if (!b) return;
     var out = '';
@@ -498,7 +501,9 @@
     var who = (s.creation && s.creation.player && s.creation.player.name) || 'You';
     var loc = (G.world && G.world.location) ? (G.world.location() || {}).name || '' : '';
     var words = !G.settings || G.settings.needDisplay !== 'numbers';
-    var h = '<div class="who">' + esc(who) + '</div>';
+    var h = '';
+    panelAdds.forEach(function (fn) { try { var ph = fn(G.state); if (ph) h += ph; } catch (e) { console.warn('panel hook', e); } });   // e.g. the paperdoll (doll.js)
+    h += '<div class="who">' + esc(who) + '</div>';
     h += '<div class="clock">' + (t.weekday || '') + ', Day ' + t.day + ' · ' + esc(clockStr(t)) + (t.season ? ' · ' + t.season : '') + '</div>';
     if (loc) h += '<div class="loc">' + esc(loc) + '</div>';
     h += '<div class="money">$' + (Number(s.money) || 0).toFixed(2) + '</div>';

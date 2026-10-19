@@ -73,6 +73,8 @@
   }
 
   function paperdollSVG(p, scale, outfit) {
+    // new pixel paperdoll (doll.js); old SVG below stays as the fallback
+    if (window.G && window.G.doll && window.G.doll.html) { try { var dh = window.G.doll.html(p, { scale: scale ? Math.max(1, Math.round(scale * 0.55)) : 3, outfit: outfit }); if (dh) return dh; } catch (e) {} }
     var W = 26, H = 52, S = scale || 6, grid = {};
     var skin = find(OPT.skin, p.skin)[2], hair = find(OPT.hairColor, p.hairColor)[2], eye = find(OPT.eyeColor, p.eyeColor)[2];
     var shirt = { female: '#8a6fb0', male: '#4f7396', androgynous: '#5f8a76' }[p.appearance] || '#5f8a76';
@@ -280,7 +282,7 @@
     '#sol-creation .cr-tabs{display:flex;gap:6px;border-bottom:1px solid #3a3b44;margin-bottom:18px}' +
     '#sol-creation .cr-tab{background:none;border:1px solid transparent;border-bottom:none;color:#bdb6a6;padding:8px 14px;cursor:pointer;font:inherit;border-radius:6px 6px 0 0}' +
     '#sol-creation .cr-tab.on{background:#26272f;border-color:#3a3b44;color:#fff}' +
-    '#sol-creation .cr-grid{display:grid;grid-template-columns:1fr 200px;gap:24px}' +
+    '#sol-creation .cr-grid{display:grid;grid-template-columns:1fr 232px;gap:24px}' +
     '#sol-creation fieldset{border:1px solid #33343d;border-radius:8px;margin:0 0 14px;padding:10px 14px}' +
     '#sol-creation legend{color:#d9c48f;padding:0 6px}' +
     '#sol-creation label{display:inline-flex;align-items:center;gap:6px;margin:3px 12px 3px 0;cursor:pointer}' +
@@ -336,7 +338,22 @@
         '<div class="cr-row">Hair colour: ' + radios('hairColor', OPT.hairColor, p.hairColor, 2) + '</div>' +
         '<div class="cr-row">Hair style: ' + radios('hairStyle', OPT.hairStyle, p.hairStyle) + '</div>' +
         '<div class="cr-row">Eyes: ' + radios('eyeColor', OPT.eyeColor, p.eyeColor, 2) + '</div>' +
-      '</fieldset>';
+      '</fieldset>' + dollFields(p);
+  }
+
+  // paperdoll look (doll.js): body shape, demeanor, sizes, hair sides and fringe
+  function dollFields(p) {
+    var GD = window.G && window.G.doll, D = GD && GD.OPTIONS; if (!D) return '';
+    GD.ensure(p);
+    return '<fieldset><legend>Look</legend>' +
+      '<div class="cr-row">Body shape: ' + radios('bodyShape', D.bodyShape, p.bodyShape) + '</div>' +
+      '<div class="cr-row">Chest: ' + radios('breastSize', D.breastSize, p.breastSize) + '</div>' +
+      '<div class="cr-row">Hips: ' + radios('hipSize', D.hipSize, p.hipSize) + '</div>' +
+      '<div class="cr-row">Demeanor: ' + radios('demeanor', D.demeanor, p.demeanor) + '</div>' +
+      '<div class="cr-row">Hair sides: ' + radios('hairSides', D.hairSides, p.hairSides) + '</div>' +
+      '<div class="cr-row">Fringe: ' + radios('hairFringe', D.hairFringe, p.hairFringe) + '</div>' +
+      '<p class="cr-hint">Demeanor sets your eye shape and resting expression. Hair length grows on its own after you arrive.</p>' +
+    '</fieldset>';
   }
 
   function tabStart(c) {
@@ -408,7 +425,8 @@
     if (t.type === 'radio') {
       if (t.name.indexOf('w:') === 0) c.world[t.name.slice(2)] = t.value;
       else {
-        c.player[t.name] = t.value;
+        c.player[t.name] = /^(breastSize|hipSize)$/.test(t.name) ? +t.value : t.value;
+        if (c.player.dollAuto) delete c.player.dollAuto[t.name];
         if (t.name === 'background') c.world.startMoney = find(OPT.background, t.value)[3];
       }
     } else if (t.dataset.f === 'name') c.player.name = t.value.replace(/[<>]/g, '');
@@ -425,7 +443,9 @@
       case 'randname': c.player.name = pick(FIRST_NAMES); render(); break;
       case 'randomize':
         ['height', 'build', 'skin', 'hairColor', 'hairStyle', 'eyeColor', 'appearance'].forEach(function (k) { c.player[k] = pick(OPT[k])[0]; });
-        c.player.freckles = Math.random() < 0.3; render(); break;
+        c.player.freckles = Math.random() < 0.3;
+        if (window.G && window.G.doll && window.G.doll.randomize) window.G.doll.randomize(c.player);
+        render(); break;
       case 'npcreset': c.npcOverrides = {}; render(); break;
       case 'begin': finish(); break;
     }

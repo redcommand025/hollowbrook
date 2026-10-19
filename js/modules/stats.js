@@ -82,6 +82,62 @@
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
   function tierIdx(v) { return clamp(Math.floor(v / 91), 0, 10); }
   function tier(v) { return TIERS[tierIdx(v)]; }
+  // Coloured letter grade: F (red) up to A+ (green), S in gold. Inline colour so it works without extra CSS.
+  var TIER_COLORS = ['#c0392b', '#d35400', '#e67e22', '#e69a22', '#d4ac0d', '#b7b51f', '#8db600', '#5cae2e', '#27ae60', '#1e9e70', '#d4a017'];
+  function tierColor(v) { return TIER_COLORS[tierIdx(v)]; }
+  function tierHTML(v) {
+    var i = tierIdx(v);
+    return '<span class="tier grade-' + i + (i === 10 ? ' grade-s' : '') + '" style="color:' + TIER_COLORS[i] + ';font-weight:bold' + (i === 10 ? ';text-shadow:0 0 4px rgba(212,160,23,.6)' : '') + '">' + TIERS[i] + '</span>';
+  }
+
+  // Need wording: level 0 (fine) to 6 (critical). HIGH_BAD needs get worse as they rise; the rest as they fall.
+  var HIGH_BAD = { fatigue: 1, stress: 1, bladder: 1, bowels: 1 };
+  var NEED_WORDS = {
+    fatigue: ['Wide awake', 'Alert', 'A little tired', 'Tired', 'Very tired', 'Exhausted', 'About to drop'],
+    stress:  ['Calm', 'Relaxed', 'A bit tense', 'Stressed', 'Very stressed', 'Overwhelmed', 'At breaking point'],
+    control: ['Composed', 'Steady', 'Holding together', 'A bit shaky', 'Struggling', 'Slipping', 'Barely holding on'],
+    bladder: ['Empty', 'Fine', 'You could go', 'You need to go soon', 'You need to go badly', 'Desperate', 'You can\'t hold it much longer'],
+    bowels:  ['Empty', 'Fine', 'A little full', 'You need to go soon', 'You need to go badly', 'Desperate', 'You can\'t hold it much longer'],
+    thirst:  ['Hydrated', 'Quenched', 'A little thirsty', 'Thirsty', 'Very thirsty', 'Parched', 'Dangerously dehydrated'],
+    hunger:  ['Full', 'Satisfied', 'Peckish', 'Hungry', 'Very hungry', 'Starving', 'Faint with hunger']
+  };
+  function needValue(id, value) {
+    if (value !== undefined && value !== null) return +value;
+    var n = (G.state && G.state.stats && G.state.stats.needs) || {};
+    return n[id] || 0;
+  }
+  function needLevel(id, value) {
+    var v = clamp(needValue(id, value), 0, MAX);
+    var bad = HIGH_BAD[id] ? v : MAX - v;
+    return clamp(Math.floor(bad / MAX * 7), 0, 6);
+  }
+  function needWords(id, value) {
+    var w = NEED_WORDS[id]; if (!w) return { text: '', level: 0, toString: function () { return ''; } };
+    var lv = needLevel(id, value), t = w[lv];
+    return { text: t, level: lv, toString: function () { return t; } };
+  }
+
+  // Difficulty labels for a check(stat, base) roll: success chance = (value + 500 - base) / 1000.
+  var DIFF_LABELS = ['Very Hard', 'Hard', 'Challenging', 'Reasonable', 'Easy', 'Simple'];
+  function checkValue(stat) {
+    var s = S(); var v = s.core[stat] !== undefined ? effective(stat) : (s.skills[stat] || 0);
+    if (hasTrait('sharpEyed') && stat === 'awareness') v += 50;
+    return v;
+  }
+  function checkChance(stat, base) {
+    return clamp((checkValue(stat) + 500 - (base === undefined ? 500 : base)) / MAX, 0, 1);
+  }
+  function difficultyInfo(stat, base) {
+    var c = checkChance(stat, base);
+    var i = c >= 0.9 ? 5 : c >= 0.75 ? 4 : c >= 0.55 ? 3 : c >= 0.35 ? 2 : c >= 0.15 ? 1 : 0;
+    return { label: DIFF_LABELS[i], level: 5 - i, chance: c };
+  }
+  function difficulty(stat, base) { return difficultyInfo(stat, base).label; }
+  // For modules with their own odds: label from a success chance (0..1).
+  function difficultyFromChance(c) {
+    c = clamp(+c || 0, 0, 1);
+    return DIFF_LABELS[c >= 0.9 ? 5 : c >= 0.75 ? 4 : c >= 0.55 ? 3 : c >= 0.35 ? 2 : c >= 0.15 ? 1 : 0];
+  }
   function S() { return G.state.stats; }
   function hasTrait(id) { return S().traits.indexOf(id) !== -1; }
   function note(msg, kind) { if (G.notify) G.notify(msg, kind || 'info'); }
@@ -778,8 +834,15 @@
     [/appearance|laundry|mend/i, 'self'],
     [/swim|treadmill|weights|yoga|jog|meditate|people-watch/i, 'here']
   ];
+  var ICON_RX = [
+    [/restroom|somewhere to/i, '🚻'], [/brief/i, '🩲'], [/cover yourself/i, '🫣'], [/water/i, '💧'], [/coffee|tea\b/i, '☕'],
+    [/meal|snack|cook|noodles|eat |bread|apple|crisps|eggs|milk/i, '🍽️'], [/shower|clean yourself|rinse/i, '🚿'], [/^sleep/i, '🛏️'], [/nap/i, '💤'],
+    [/medicine/i, '💊'], [/meditate/i, '🧘'], [/people-watch/i, '👀'], [/appearance/i, '💄'], [/laundry/i, '🧺'], [/mend/i, '🪡'],
+    [/fresh clothes/i, '👕'], [/swim/i, '🏊'], [/jog|treadmill/i, '🏃'], [/weights/i, '🏋️'], [/yoga/i, '🧘']
+  ];
   function tagSections(out) {
     ['actions', 'other'].forEach(function (k) { (out[k] || []).forEach(function (o) {
+      if (o && !o.icon) for (var j = 0; j < ICON_RX.length; j++) if (ICON_RX[j][0].test(o.label)) { o.icon = ICON_RX[j][1]; break; }
       if (!o || o.section || o.sub === 'Groceries' || /cold medicine/i.test(o.label)) return;
       for (var i = 0; i < SECTION_RX.length; i++) if (SECTION_RX[i][0].test(o.label)) { o.section = SECTION_RX[i][1]; return; }
     }); });
@@ -1036,11 +1099,11 @@
     h.push('<p class="flavor">' + (db.length ? 'Right now you are held back by: ' + db.map(function (x) { return x.label; }).join(', ') + '.' : 'Nothing is holding you back right now.') + '</p>');
     Object.keys(CORE).forEach(function (k) {
       var v = s.core[k].value, e = effective(k), f = CORE[k].flavor[clamp(Math.floor(tierIdx(e) / 2.2), 0, 4)];
-      h.push('<div class="char-row"><b>' + CORE[k].label + '</b> <span class="tier">' + tier(e) + '</span>' + (e !== v ? ' <small>(base ' + tier(v) + ')</small>' : '') + bar(e, MAX, true) + '<p class="flavor">' + f + '</p></div>');
+      h.push('<div class="char-row"><b>' + CORE[k].label + '</b> ' + tierHTML(e) + (e !== v ? ' <small>(base ' + tier(v) + ')</small>' : '') + bar(e, MAX, true) + '<p class="flavor">' + f + '</p></div>');
     });
     h.push('<h4>Skills</h4>');
     Object.keys(s.skills).forEach(function (k) {
-      h.push('<div class="char-row"><b>' + (SKILLS[k] ? SKILLS[k].label : k) + '</b> <span class="tier">' + tier(s.skills[k]) + '</span>' + bar(s.skills[k], MAX, true) + (SKILLS[k] ? '<p class="flavor">' + SKILLS[k].flavor + '</p>' : '') + '</div>');
+      h.push('<div class="char-row"><b>' + (SKILLS[k] ? SKILLS[k].label : k) + '</b> ' + tierHTML(s.skills[k]) + bar(s.skills[k], MAX, true) + (SKILLS[k] ? '<p class="flavor">' + SKILLS[k].flavor + '</p>' : '') + '</div>');
     });
     h.push('<h4>Traits</h4>');
     TRAITS.forEach(function (t) {
@@ -1111,11 +1174,13 @@
   var api = {
     TIERS: TIERS, tier: tier, tierIdx: tierIdx,
     effective: effective,             // effective core stat after debuffs/traits/transforms
-    check: function (stat, difficulty) { // skill/stat check: returns true/false
-      var v = S().core[stat] ? effective(stat) : (S().skills[stat] || 0);
-      if (hasTrait('sharpEyed') && stat === 'awareness') v += 50;
-      return Math.random() * MAX < v + (500 - (difficulty || 500));
+    check: function (stat, base) { // skill/stat check: returns true/false (same odds difficulty() describes)
+      return Math.random() < checkChance(stat, base || 500);
     },
+    // UI helpers: needWords(id, value?) -> phrase, needLevel -> 0 (fine)..6 (critical); difficulty(stat, base?) -> 'Simple'..'Very Hard'
+    needWords: needWords, needLevel: needLevel, NEED_WORDS: NEED_WORDS,
+    difficulty: difficulty, difficultyInfo: difficultyInfo, difficultyFromChance: difficultyFromChance, chance: checkChance,
+    tierHTML: tierHTML, tierColor: tierColor,
     train: train, trainSkill: trainSkill, attitude: attitude, addStress: addStress,
     transform: transform, hasTrait: hasTrait, debuffs: debuffs,
     fame: function (kind, d) { chg('status.' + kind + 'Fame', d); },
@@ -1133,6 +1198,7 @@
   function boot() {
     if (!window.G || !G.register) return setTimeout(boot, 20);
     G.stats = api;
+    G.difficulty = difficulty;
     exposeGroceries();
     G.register({
       id: 'stats',

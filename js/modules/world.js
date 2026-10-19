@@ -674,7 +674,7 @@
 
   function weatherLine() {
     var wx = WEATHER[W().weather];
-    return wx.text + ' (' + wx.label + ', ' + W().temp + '°C)';
+    return wx.text + ' (' + wx.label + ', ' + fmtTemp(W().temp) + ')';
   }
 
 
@@ -835,17 +835,17 @@
       if (w.bike && !w.bikeFlat && m >= 4 && w.weather !== 'storm' && w.weather !== 'snow' && (!LOCATIONS[here].indoor || !l.indoor)) m = Math.max(2, Math.ceil(m * 0.5));
       var special = LINK_LABEL[here + '>' + id], road = isRoad(id) || id === 'park';
       var label = special || (road ? 'Travel to ' : 'Go to ') + l.name;
-      (roadHere && road ? travel : goTo).push({ label: label + closed, run: travelTo(id), locationId: id, mins: m, minutes: m, sub: roadHere ? (road ? 'Travel to' : 'Go to') : null });
+      (roadHere && road ? travel : goTo).push({ label: label + closed, icon: (LOCATIONS[id].indoor ? '🚪' : '🚶'), run: travelTo(id), locationId: id, mins: m, minutes: m, sub: roadHere ? (road ? 'Travel to' : 'Go to') : null });
     });
     goTo.sort(function (a, b) { return a.mins - b.mins || (a.label < b.label ? -1 : 1); });
     travel.sort(function (a, b) { var ap = a.locationId === 'park' || LOCATIONS[a.locationId].alleyway, bp = b.locationId === 'park' || LOCATIONS[b.locationId].alleyway; return ap - bp || a.mins - b.mins; });
     var out = goTo.concat(travel);
-    if (BUS_STOPS.indexOf(here) >= 0) out.push({ label: 'Bus stop', minutes: 2, sub: 'Travel to', run: function () {
+    if (BUS_STOPS.indexOf(here) >= 0) out.push({ label: 'Bus stop', icon: '🚌', minutes: 2, sub: 'Travel to', run: function () {
       w.busOpen = here;
       var msg = busStopUsable() ? 'You wait at the bus shelter. The timetable says a bus comes every ten minutes or so.' + (OUTSKIRTS_STOPS.indexOf(here) >= 0 ? ' Only the Number 12 stops out here.' : '') : 'The timetable is taped over: no more buses tonight' + (W().weather === 'snow' ? ' because of the snow' : '') + '.';
       return { text: '<p>' + msg + '</p>', minutes: 2 };
     } });
-    if (roadHere) out.push({ label: 'Loiter', minutes: 15, sub: 'Travel to', run: loiter });
+    if (roadHere) out.push({ label: 'Loiter', icon: '🧍', minutes: 15, sub: 'Travel to', run: loiter });
     return out;
   }
   function knockDoor() {
@@ -933,7 +933,7 @@
       if (w.menuOpen && (w.menuOpen !== w.location || !isOpen(w.location))) w.menuOpen = null;
       if (w.menuOpen) { opts.actions = menuOptions(w.menuOpen); return opts; }
       if (MENUS[w.location] && isOpen(w.location)) {
-        opts.actions.push({ label: 'Look at the menu', minutes: 1, section: 'shop', run: function () {
+        opts.actions.push({ label: 'Look at the menu', icon: '📋', minutes: 1, section: 'shop', run: function () {
           w.menuOpen = w.location;
           var m = MENUS[w.location], lines = m.items.filter(function (it) { return !it.hours || (G.time.hour >= it.hours[0] && G.time.hour < it.hours[1]); })
             .map(function (it) { return it.name + ', $' + it.price; });
@@ -950,13 +950,13 @@
         });
       }
 
-      if (w.location === 'residential') opts.actions.push({ label: 'Knock on one of the houses', minutes: 2, run: knockDoor });
+      if (w.location === 'residential') opts.actions.push({ label: 'Knock on one of the houses', icon: '🚪', minutes: 2, run: knockDoor });
       opts.actions.push({ label: 'Look around', minutes: 2, run: function () {
         var ev = tryEvent('idle');
         return { text: locationBlurb() + (ev ? '<p>' + ev.text + '</p>' : ''), minutes: 2 + ((ev && ev.minutes) || 0) };
       } });
 
-      opts.actions.push({ label: 'Wait', minutes: 30, run: function () {
+      opts.actions.push({ label: 'Wait', icon: '⏳', minutes: 30, run: function () {
         var ev = tryEvent('idle');
         return { text: '<p>You let half an hour drift by.</p>' + (ev ? '<p>' + ev.text + '</p>' : ''), minutes: 30 };
       } });
@@ -980,7 +980,7 @@
           ['Dairy', function () { return 'The chiller hums. Milk in three sizes, local butter in paper, eggs from the campus farm, and a cheese wedge someone has clearly put back in the wrong place.'; }],
           ['Drinks', function () { return 'Bottled water, fizzy drinks, juice cartons and a fridge of energy drinks with a "students: 2 for $3" sign taped crookedly to the door.'; }]
         ];
-        opts.actions.push({ label: 'Browse the aisles', minutes: 5, section: 'shop', run: function () {
+        opts.actions.push({ label: 'Browse the aisles', icon: '🛒', minutes: 5, section: 'shop', run: function () {
           var two = AISLES.slice().sort(function () { return Math.random() - 0.5; }).slice(0, 2);
           return { text: '<p>' + two[0][1]() + '</p><p>' + two[1][1]() + '</p><p>' + (busy > 0.5 ? 'The checkout queue snakes back past the magazines.' : busy > 0.2 ? 'A couple of people wait at the till.' : 'The till is quiet.') + '</p>', minutes: 5 };
         } });
@@ -1011,28 +1011,86 @@
           G.change('money', -6); w.bikeFlat = false; return { text: '<p>The kiosk owner patches the tube in ten minutes flat, whistling.</p>', minutes: 15 };
         } });
       }
-      if (w.location === 'dorm_room') opts.other.push({ label: 'Check the weather app', minutes: 1, section: 'self', run: function () {
+      if (w.location === 'dorm_room') opts.other.push({ label: 'Check the weather app', icon: '🌦️', minutes: 1, section: 'self', run: function () {
         return { text: '<p>It is ' + G.time.clock + ' on ' + G.time.weekday + ', day ' + G.time.dayOfSeason + ' of ' + G.time.season +
           '. ' + weatherLine() + '</p><p>' + forecastLine() + '</p>', minutes: 1 };
       } });
-      opts.other.push({ label: 'Open the town map', minutes: 0, section: 'self', run: function () { return { text: mapHtml(), minutes: 0 }; } });
+      opts.other.push({ label: 'Open the town map', icon: '🗺️', minutes: 0, section: 'self', run: function () { return { text: mapHtml(), minutes: 0 }; } });
       return opts;
     }
   };
 
 
+  // Temperature in the player's chosen unit. Reads G.settings.tempUnit ('C' or 'F') or G.settings.fahrenheit.
+  function useF() { var st = G.settings || {}; return st.tempUnit === 'F' || st.tempUnit === 'f' || st.fahrenheit === true; }
+  function fmtTemp(c) { if (G.fmtTemp) return G.fmtTemp(c); return useF() ? Math.round(c * 9 / 5 + 32) + '°F' : c + '°C'; }
+
+  /* ---------------- Clickable town map ---------------- */
+  // Minutes for one hop, with the same weather and bike rules as the travel options.
+  function hopMins(from, to) {
+    var w = W(), m = ADJ[from][to], l = LOCATIONS[to];
+    if (w.weather === 'storm' || w.weather === 'snow') m = Math.ceil(m * 1.4);
+    if (w.bike && !w.bikeFlat && m >= 4 && w.weather !== 'storm' && w.weather !== 'snow' && (!LOCATIONS[from].indoor || !l.indoor)) m = Math.max(2, Math.ceil(m * 0.5));
+    return m;
+  }
+  // Quickest walking route from here to every place: {id: {mins, path:[...]}}
+  function routes(from) {
+    var dist = {}, prev = {}, done = {}; dist[from] = 0;
+    for (;;) {
+      var u = null; Object.keys(dist).forEach(function (k) { if (!done[k] && (u === null || dist[k] < dist[u])) u = k; });
+      if (u === null) break; done[u] = true;
+      Object.keys(ADJ[u] || {}).forEach(function (v) { if (!LOCATIONS[v]) return; var d = dist[u] + hopMins(u, v); if (dist[v] === undefined || d < dist[v]) { dist[v] = d; prev[v] = u; } });
+    }
+    var out = {};
+    Object.keys(dist).forEach(function (id) { var path = [], c = id; while (c !== from) { path.unshift(c); c = prev[c]; } out[id] = { mins: dist[id], path: path }; });
+    return out;
+  }
+  // An option that walks the whole route, so the engine runs it like any other action.
+  function routeOption(dest) {
+    var r = routes(W().location)[dest]; if (!r || !r.path.length) return null;
+    return { label: 'Go to ' + LOCATIONS[dest].name, minutes: r.mins, section: 'travel', run: function (state) {
+      var w = W(), path = r.path, mins = 0, via = [];
+      w.busOpen = null; w.menuOpen = null;
+      for (var k = 0; k < path.length - 1; k++) { var step = _travelTo(path[k])(state); mins += step.minutes; via.push(LOCATIONS[path[k]].name); }
+      var last = travelTo(dest)(state);
+      return { text: (via.length ? '<p>You make your way via ' + via.join(', ') + '. ' + fmtT(mins + last.minutes) + ' in all.</p>' : '') + last.text, minutes: mins + last.minutes };
+    } };
+  }
+  var MAP_ORDER = ['Campus', 'Campus Edge', 'Town', 'Shopping Centre', 'Residential', 'Outskirts'];
   function mapHtml() {
-    var here = W().location, byDistrict = {};
-    Object.keys(LOCATIONS).forEach(function (id) { var d = LOCATIONS[id].district; (byDistrict[d] = byDistrict[d] || []).push(id); });
-    var html = '<p><b>Map of Hollowbrook</b></p>';
-    Object.keys(byDistrict).forEach(function (d) {
-      html += '<p><u>' + d + '</u><br>' + byDistrict[d].map(function (id) {
-        var l = LOCATIONS[id], name = W().visited[id] ? l.name : l.name + ' <i>(unvisited)</i>';
-        var hrs = l.open ? ' · ' + l.open[0] + ':00 to ' + (l.open[1] % 24) + ':00' : '';
-        return (id === here ? '<b>➤ ' + name + '</b>' : name) + hrs;
-      }).join('<br>') + '</p>';
+    var here = W().location, byDistrict = {}, rt = routes(here);
+    Object.keys(LOCATIONS).forEach(function (id) { var d = LOCATIONS[id].district || 'Other'; (byDistrict[d] = byDistrict[d] || []).push(id); });
+    var ds = Object.keys(byDistrict).sort(function (a, b) { var ia = MAP_ORDER.indexOf(a), ib = MAP_ORDER.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); });
+    var html = '<p><b>Map of Hollowbrook</b> · tap a place to go there</p><div class="wmap">';
+    ds.forEach(function (d) {
+      var ids = byDistrict[d].slice().sort(function (a, b) { return (rt[a] ? rt[a].mins : 999) - (rt[b] ? rt[b].mins : 999); });
+      html += '<div class="wmap-d' + (LOCATIONS[here].district === d ? ' wmap-here-d' : '') + '"><div class="wmap-h">' + d + '</div>';
+      ids.forEach(function (id) {
+        var l = LOCATIONS[id], closed = weatherClosure(id) || !isOpen(id), r = rt[id];
+        var hrs = l.open ? l.open[0] + ':00–' + (l.open[1] % 24) + ':00' : 'always open';
+        if (id === here) { html += '<div class="wmap-p wmap-here">➤ ' + l.name + '<small>You are here</small></div>'; return; }
+        if (!r) { html += '<div class="wmap-p wmap-off">' + l.name + '<small>No way there</small></div>'; return; }
+        html += '<a href="#" class="wmap-p' + (closed ? ' wmap-closed' : '') + (W().visited[id] ? '' : ' wmap-new') + '" data-wgo="' + id + '" title="' + hrs + '">' + l.name +
+          '<small>' + fmtT(r.mins) + (closed ? ' · closed' : '') + (W().visited[id] ? '' : ' · new') + '</small></a>';
+      });
+      html += '</div>';
     });
-    return html;
+    return html + '</div>';
+  }
+  if (typeof document !== 'undefined' && document.addEventListener) {
+    document.addEventListener('click', function (e) {
+      var t = e.target && e.target.closest ? e.target.closest('[data-wgo]') : null; if (!t) return;
+      e.preventDefault(); e.stopPropagation();
+      var o = routeOption(t.getAttribute('data-wgo')); if (o && G.act) G.act(o);
+    }, true);
+    var css = '.wmap{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;margin:6px 0 10px}' +
+      '.wmap-d{border:1px solid rgba(128,128,128,.35);border-radius:8px;padding:6px}.wmap-here-d{border-color:#c9a227}' +
+      '.wmap-h{font-weight:bold;font-size:.85em;text-transform:uppercase;letter-spacing:.05em;opacity:.75;margin-bottom:4px}' +
+      '.wmap-p{display:block;padding:4px 6px;margin:2px 0;border-radius:5px;text-decoration:none;color:inherit;background:rgba(128,128,128,.12);line-height:1.25}' +
+      'a.wmap-p:hover,a.wmap-p:focus{background:rgba(201,162,39,.25)}.wmap-p small{display:block;opacity:.7;font-size:.8em}' +
+      '.wmap-here{background:rgba(201,162,39,.35);font-weight:bold}.wmap-closed{opacity:.55}.wmap-new{font-style:italic}.wmap-off{opacity:.4}';
+    var add = function () { if (document.getElementById('wmap-css')) return; var st = document.createElement('style'); st.id = 'wmap-css'; st.textContent = css; (document.head || document.body).appendChild(st); };
+    if (document.head) add(); else document.addEventListener('DOMContentLoaded', add);
   }
 
   // Arrival hook: describe the new place and roll an arrival event.
@@ -1107,6 +1165,9 @@
     crowd: crowd,   // 0..1 how busy a place is right now (default: here); scales witness/smell odds
     weather: function () { return W().weather; },
     temp: function () { return W().temp; },
+    fmtTemp: fmtTemp,                 // 14 -> '14°C' or '57°F' per G.settings.tempUnit
+    routeTo: routeOption,             // option that walks the quickest route to a place (or null)
+    mapHtml: mapHtml,
     season: season,
     partOfDay: function () { return partOfDay(G.time.hour); },
     distance: function (a, b) { a = resolve(a); b = resolve(b); return (ADJ[a] && ADJ[a][b]) || null; },

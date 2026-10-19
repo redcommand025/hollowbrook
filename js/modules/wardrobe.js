@@ -147,6 +147,7 @@
   function hereId() { return G_().world && G_().world.hereId ? G_().world.hereId() : (G_().state.world || {}).location; }
   function hereTags() { var l = G_().world && G_().world.here ? G_().world.here() : null; return (l && l.tags) || []; }
   function isOpen(id) { return G_().world && G_().world.isOpen ? G_().world.isOpen(id) : true; }
+  function logMoney() {}   // the engine logs spending by location, so nothing to do here
   function opt(label, run, extra) { var o = { label: label, run: run }; if (extra) for (var k in extra) o[k] = extra[k]; return o; }
 
   function maxOf(id) { var d = typeof id === 'string' ? CATALOG[id] : def(id); return (d && d.maxI) || 100; }
@@ -441,7 +442,7 @@
         var owned = w.items.filter(function (it) { return it.id === id; }).length;
         out.actions.push(opt('Buy the ' + d.name + ' ($' + price + ')' + (owned ? ' (own ' + owned + ')' : ''), function () {
           if (money() < price) return { text: '<p>You count your cash twice. Not enough for the ' + esc(d.name) + '.</p>', minutes: 1 };
-          G_().change('money', -price);
+          G_().change('money', -price); logMoney('spend', 'Threadbare', price);
           newItem(id); syncSpare();
           G_().emit('clothesBought', { id: id });
           return { text: '<p>' + line('buy', ['The clerk folds the ' + esc(d.name) + ' into a paper bag with a sprig of lavender. ', 'The clerk wraps the ' + esc(d.name) + ' in tissue paper. "Good choice," she says, and sounds like she means it. ', 'The ' + esc(d.name) + ' goes into a bag stamped with the Threadbare needle-and-thread logo. ', 'The clerk snips off the tag and tucks a loyalty card into the bag with one stamp on it. ']) + esc(d.desc) + '</p><p class="hint">You can change into it in the fitting room or at home.</p>', minutes: 5 };
@@ -466,18 +467,18 @@
     var torn = w.items.filter(function (it) { return it.integ < maxOf(it) * 0.8 && !ruined(it) && !def(it).disposable && CLOTH.indexOf(def(it).slot) >= 0; });
     if (torn.length) out.actions.push(opt('Have ' + torn.length + ' damaged item' + (torn.length > 1 ? 's' : '') + ' mended ($' + (torn.length * 5) + ')', function () {
       var cost = torn.length * 5; if (money() < cost) return { text: '<p>The tailor quotes you a price you can\'t cover today.</p>', minutes: 1 };
-      G_().change('money', -cost); torn.forEach(function (it) { it.integ = maxOf(it); it._ruinNote = false; }); pushLive('top'); pushLive('bottom'); syncLayers();
+      G_().change('money', -cost); logMoney('spend', 'Threadbare', cost); torn.forEach(function (it) { it.integ = maxOf(it); it._ruinNote = false; }); pushLive('top'); pushLive('bottom'); syncLayers();
       return { text: '<p>The owner\'s nephew does alterations in the back. An hour later your clothes come back with neat, nearly invisible stitches.</p>', minutes: 60 };
     }, { time: 60, disabled: money() < torn.length * 5 }));
     if (!w.sewingKit) out.actions.push(opt('Buy a sewing kit ($10)', function () {
       if (money() < 10) return { text: '<p>Not today.</p>', minutes: 1 };
-      G_().change('money', -10); w.sewingKit = true;
+      G_().change('money', -10); logMoney('spend', 'Threadbare', 10); w.sewingKit = true;
       return { text: '<p>A little tin of needles, thread in twelve colours, and a thimble you will lose within the week. You can mend clothes at home now.</p>', minutes: 2 };
     }, { time: 2, disabled: money() < 10, hint: 'Lets you mend torn clothes yourself at home.' }));
     var junk = w.items.filter(function (it) { return it.integ < 40 && SLOTS.every(function (s) { return w.worn[s] !== it.uid; }); });
     if (junk.length) out.actions.push(opt('Drop worn-out clothes in the recycling bin (+$' + (junk.length * 2) + ' store credit)', function () {
       junk.forEach(function (it) { w.items.splice(w.items.indexOf(it), 1); });
-      G_().change('money', junk.length * 2); syncSpare();
+      G_().change('money', junk.length * 2); logMoney('earn', 'Clothes recycling', junk.length * 2); syncSpare();
       return { text: '<p>The clerk weighs your tired old clothes on a little scale and hands over a few dollars. "They\'ll become insulation," she says, pleased.</p>', minutes: 3 };
     }));
   }
@@ -489,7 +490,7 @@
       var price = priceOf(id), have = supplies(id);
       out.actions.push(opt('Buy ' + d.pack + ' ' + d.name + 's ($' + price + ')' + (have ? ' (have ' + have + ')' : ''), function () {
         if (money() < price) return { text: '<p>Not enough cash for a pack today.</p>', minutes: 1 };
-        G_().change('money', -price); stock()[id] = have + d.pack;
+        G_().change('money', -price); logMoney('spend', where === 'market' ? 'Hollowbrook Grocer' : 'Threadbare', price); stock()[id] = have + d.pack;
         return { text: '<p>A plain, discreet pack. The cashier rings it up without comment. You can change into one at home, in a restroom, or in the fitting room.</p>', minutes: 2 };
       }, { time: 2, disabled: money() < price, hint: d.desc + ' Holds about ' + Math.floor(d.absorb.ml / BLADDER_ML) + ' pees (' + d.absorb.ml + ' ml) or ' + d.absorb.lb + ' lb.', sub: sub }));
     });
@@ -540,7 +541,7 @@
     }, { time: 2 }));
     if (home && dirty.length) out.actions.push(opt('Do laundry: ' + dirty.length + ' item' + (dirty.length > 1 ? 's' : '') + ' ($3)', function () {
       if (money() < 3) return { text: '<p>The machines want quarters you don\'t have.</p>', minutes: 1 };
-      G_().change('money', -3);
+      G_().change('money', -3); logMoney('spend', 'Laundry', 3);
       dirty.forEach(function (it) { it.clean = true; it.wet = 0; it.days = 0; it.soiled = false; it.soiledAt = null; it.ml = 0; it.lb = 0; it.grew = false; });
       if (G_().stats && G_().stats.trainSkill) G_().stats.trainSkill('housekeeping', 6);
       syncSpare();
@@ -676,7 +677,8 @@
       desc: 'A narrow clothing shop with creaky floorboards, racks sorted by colour, and a velvet-curtained fitting room. The owner hums along to the radio.'
     }, [['shopping_centre', 1]]);
 
-  (function (gofn, pick) { mod.getOptions = function (state) { var out = gofn.apply(this, arguments); if (out) ['actions', 'other', 'dialogue'].forEach(function (k) { (out[k] || []).forEach(function (o) { if (o && !o.section) o.section = pick(o, state); }); }); return out; }; })(mod.getOptions, function (o, st) { var l = o.label || '', m = (st.wardrobe && st.wardrobe.mode) || ''; if (/^Buy /.test(l)) return 'shop'; if (/brief|diaper|hide|out of sight/i.test(l)) return 'needs'; if (m.indexOf('shop') === 0 || /^(Browse|Check the clearance|Sell|Have your|Step back|Use the fitting room|Leave the fitting room)/.test(l)) return 'shop'; return 'self'; });
+  var ICON = function (o) { var l = o.label || ''; return /brief|diaper/i.test(l) ? (/^Buy/.test(l) ? '📦' : '🩲') : /out of sight|hide/i.test(l) ? '🫣' : /laundry/i.test(l) ? '🧺' : /^(Mend|Have your|Buy a sewing)/.test(l) ? '🪡' : /^(Sell|Throw away)/.test(l) ? '♻️' : /^Buy/.test(l) ? '🛍️' : /^(Browse|Check the clearance)/.test(l) ? '👀' : /fitting room/i.test(l) ? '🚪' : /wardrobe|drawer|Back to your clothes/i.test(l) ? '🚪' : /undressed|^Take off/.test(l) ? '👕' : /^Wear/.test(l) ? '👕' : /Step back/.test(l) ? '↩️' : '👕'; };
+  (function (gofn, pick) { mod.getOptions = function (state) { var out = gofn.apply(this, arguments); if (out) ['actions', 'other', 'dialogue'].forEach(function (k) { (out[k] || []).forEach(function (o) { if (o && !o.section) o.section = pick(o, state); if (o && !o.icon) o.icon = ICON(o); }); }); return out; }; })(mod.getOptions, function (o, st) { var l = o.label || '', m = (st.wardrobe && st.wardrobe.mode) || ''; if (/^Buy /.test(l)) return 'shop'; if (/brief|diaper|hide|out of sight/i.test(l)) return 'needs'; if (m.indexOf('shop') === 0 || /^(Browse|Check the clearance|Sell|Have your|Step back|Use the fitting room|Leave the fitting room)/.test(l)) return 'shop'; return 'self'; });
     g.register(mod);
     if (g.on) {
       g.on('start', function (state) { ensure(state); giveStarter(state); });

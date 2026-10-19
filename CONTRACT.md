@@ -106,3 +106,39 @@ The engine groups every option into sections, top to bottom: `now` (Right now: c
 Set `section: 'now'|'needs'|'here'|'people'|'shop'|'self'|'travel'` on an option to place it; otherwise it is guessed from the label, `sub`, and its group (`dialogue` goes to People, `travel` goes to Travel). `priority: 'top'` or `urgent: true` also puts it in Right now.
 Mirror and forecast options only show in the dorm room (set `anywhere: true` to override).
 Within a section, a numeric `priority` sorts higher first; `pin: true` or `priority >= 90` puts it in Right now.
+
+## Option icons & checks (engine, 20261019p)
+- `icon: '🔒'` (emoji string) is prepended to the label in `span.ico` (after the number hint). Hidden when the player turns Settings > Icons off.
+- `check: 'Skulduggery: Hard'` (a string, or `function(state)` returning one) is shown after the time as `span.chk.chk-<level>`. The class is taken from the last word(s): `chk-simple | chk-easy | chk-reasonable | chk-challenging | chk-hard | chk-veryhard` (anything else gets `chk-other`). Use the stats.js difficulty words (Simple .. Very Hard). HTML in the string is stripped.
+- `activity: 'Work'` (optional) names the bucket the action's hours go to in the ledger (see below).
+- `G.act(opt, {k: group})` is what the click handler calls; `meta` is optional for modules calling G.act themselves.
+
+## Ledger: G.log(kind, key, amount)
+- `kind`: `'earn'` (dollars, key = source e.g. job name), `'spend'` (dollars, key = place/shop), `'hours'` (hours, key = activity).
+- Stored in `G.state.ledger.weeks[week] = { earn:{}, spend:{}, hours:{}, totals:{earn, spend, hours} }`, week = `floor((day-1)/7)+1` (`G.weekOf(day)`). Only the last 8 weeks are kept. `G.ledgerWeek(w)` reads one.
+- Automatic logging (the engine guesses when you don't): `G.change('money', d)` logs spend (d < 0) or earn (d > 0) under the current location's name, and each action's elapsed minutes are logged as hours under `opt.activity` or a section-based name (Class and work, Travel, Socialising, Shopping, Getting ready, Looking after yourself, Out and about; Sleep / Waiting / Study by label).
+- If a module calls `G.log` for a kind during an action, the engine's automatic entry for that kind is skipped for that action, so nothing is double-counted. Pass `G.change('money', d, {noLog:true})` for transfers that should never count (refunds, debug).
+- Money set directly (`G.state.money = x`) is not logged.
+- The Character menu "Stats" tab (id `ledger`, order 65) shows this week and last week: earnings by source, spending by place, hours by activity, totals and net.
+
+## Need words (panel + mobile bar)
+- The panel uses `G.stats.needWords(id, value)` (a string, or `{text, level}`) and `G.stats.needLevel(id, value)` (0 fine .. 6 critical) when they exist: `Bladder: You need to go soon`, raw number in the `title` tooltip.
+- Bars are coloured on a 7-step scale, CSS classes `lvl0..lvl6`: green, teal, blue, purple, pink, orange, red. Without stats.js helpers the level is computed from value/1000 (direction-aware) and the number is shown.
+- `G.needInfo(id, value) -> {text, level, value}` is the engine's guarded wrapper; use it for any UI.
+- Setting `needDisplay: 'words'|'numbers'` (default words).
+- Mobile (< 720px): a sticky `#mbar` at the top shows the time, money and the 2-3 worst needs (level >= 2). Tapping it toggles the full panel (`body.panel-open`); the panel is collapsed by default on phones. Desktop is unchanged.
+
+## Stat-change pips
+- Notices the engine formats in `G.change` (not money, not module free text from `G.notify`) show as pips when `changeStyle` is `'pips'` (default): |delta| <= 15 `+`, <= 40 `++`, otherwise `+++` (or `−` versions), with the exact number in the tooltip. `'numbers'` restores `Stress +32`. Merging repeated changes works as before. `G.pips(delta)` is exposed.
+
+## Settings helpers: fmtClock / fmtTemp (extras.js)
+- `G.settings` keys: `textSize, daySummary, numberHints, clock24 (true), tempUnit 'C'|'F' ('C'), lineHeight 'normal'|'relaxed', readableFont (false), reducedMotion (false), icons (true), needDisplay 'words'|'numbers', changeStyle 'pips'|'numbers'`. Stored in localStorage (via `G.store`), not in the save.
+- `G.fmtClock(h, m)` -> `'17:05'` or `'5:05 pm'`. `G.fmtTemp(celsius)` -> `'12°C'` or `'54°F'`. Please format clocks and temperatures shown to the player through these (world.js `weatherLine` currently hard-codes °C).
+- Root classes for CSS: `hb-relaxed`, `hb-readable`, `hb-reduced-motion`, `hb-noicons` on `<html>`.
+
+## Save files
+- Saves menu: Download save (.json) (Blob + `a[download]`, falling back to a copyable text box), Show save text, Load from file (`input[type=file]`), Paste save text. Loading asks for confirmation. `G.exportSave()`, `G.importSave(jsonText)`.
+- `G.store.fallback` is true when real storage failed (memory only); the Saves menu then warns the player to download. It also nudges if no export in 3 in-game days (`G.state._exportDay`).
+
+## Tips
+- `G.TIPS` (array of short gameplay tips) and `G.randomTip()` (extras.js). One shows on the title screen and one at the end of each end-of-day summary. Add tips by pushing to `G.TIPS`; keep them short, grounded and true to the current game.

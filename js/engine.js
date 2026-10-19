@@ -22,15 +22,17 @@
       if (!f || f.indexOf('/js/') < 0 || /onSsModeChange/.test(e.message || '')) return;
       var bar = document.getElementById('errbar');
       if (!bar) { bar = document.createElement('div'); bar.id = 'errbar'; bar.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:5000;background:#5a1d1d;color:#fff;font:12px system-ui;padding:6px 10px;white-space:pre-wrap'; document.body.appendChild(bar); }
-      bar.textContent = 'Something broke: ' + e.message + ' (' + String(e.filename || '').split('/').pop().split('?')[0] + ':' + e.lineno + ':' + (e.colno || 0) + ') [build 20261019n]. Please tell the developers.';
+      bar.textContent = 'Something broke: ' + e.message + ' (' + String(e.filename || '').split('/').pop().split('?')[0] + ':' + e.lineno + ':' + (e.colno || 0) + ') [build 20261019p]. Please tell the developers.';
     } catch (x) {}
   });
   var memStore = {};
   var store = {
-    get: function (k) { try { return window.localStorage.getItem(k); } catch (e) { return memStore.hasOwnProperty(k) ? memStore[k] : null; } },
-    set: function (k, v) { try { window.localStorage.setItem(k, v); } catch (e) { memStore[k] = String(v); } },
-    remove: function (k) { try { window.localStorage.removeItem(k); } catch (e) { delete memStore[k]; } }
+    fallback: false, // true once real storage has failed and saves only live in memory (gone when the tab closes)
+    get: function (k) { try { return window.localStorage.getItem(k); } catch (e) { store.fallback = true; return memStore.hasOwnProperty(k) ? memStore[k] : null; } },
+    set: function (k, v) { try { window.localStorage.setItem(k, v); } catch (e) { store.fallback = true; memStore[k] = String(v); } },
+    remove: function (k) { try { window.localStorage.removeItem(k); } catch (e) { store.fallback = true; delete memStore[k]; } }
   };
+  try { window.localStorage.setItem('hb_probe', '1'); window.localStorage.removeItem('hb_probe'); } catch (e) { store.fallback = true; }
 
   var mods = [], handlers = {}, tabs = [], pendingNotes = [], started = false;
 
@@ -89,22 +91,100 @@
     var next = Math.max(lim[0], Math.min(lim[1], cur + delta));
     var real = next - cur;
     setPath(path, next);
+    if (path === 'money' && real && !opts.noLog) autoMoney(real);
     if (real && !opts.silent) {
       var name = prettyName(path);
       var shown = path === 'money' ? (real > 0 ? '+$' : '-$') + Math.abs(real).toFixed(2).replace(/\.00$/, '') : (real > 0 ? '+' : '') + Math.round(real);
-      G.notify(name + ' ' + shown, real > 0 ? 'up' : 'down', path);
+      G.notify(name + ' ' + shown, real > 0 ? 'up' : 'down', path, true);
     }
     G.emit('change', { path: path, delta: real, value: next });
     return real;
   };
 
+  /* ---------- ledger: G.log(kind, key, amount) ---------- */
+  /* kind 'earn' | 'spend' (dollars) | 'hours' (hours). Stored per week in G.state.ledger.weeks[week]; the last 8 weeks are kept. */
+  var LEDGER_KINDS = { earn: 1, spend: 1, hours: 1 };
+  function weekOf(day) { day = Number(day) || 1; return Math.floor((day - 1) / 7) + 1; }
+  G.weekOf = weekOf;
+  function ledgerWeek(w) {
+    var L = G.state.ledger; if (!L || typeof L !== 'object' || !L.weeks) L = G.state.ledger = { weeks: {} };
+    var k = String(w);
+    if (!L.weeks[k]) {
+      L.weeks[k] = { earn: {}, spend: {}, hours: {}, totals: { earn: 0, spend: 0, hours: 0 } };
+      Object.keys(L.weeks).forEach(function (o) { if (+o <= w - 8) delete L.weeks[o]; });
+    }
+    return L.weeks[k];
+  }
+  G.ledgerWeek = function (w) { var L = G.state.ledger; return (L && L.weeks && L.weeks[String(w)]) || null; };
+  var actLog = null; // per-action bookkeeping so explicit G.log calls win over the engine's automatic guesses
+  function logRaw(kind, key, amount) {
+    if (!LEDGER_KINDS[kind]) return;
+    amount = Number(amount); if (!amount || !isFinite(amount)) return;
+    key = String(key || 'Other');
+    var wk = ledgerWeek(weekOf(G.time && G.time.day));
+    var q = kind === 'hours' ? 10000 : 100;
+    wk[kind][key] = Math.round(((wk[kind][key] || 0) + amount) * q) / q;
+    wk.totals[kind] = Math.round(((wk.totals[kind] || 0) + amount) * q) / q;
+  }
+  G.log = function (kind, key, amount) {
+    try { if (actLog) actLog.explicit[kind] = true; logRaw(kind, key, amount); } catch (e) { console.error('G.log', e); }
+  };
+  function placeName() { try { return (G.world && G.world.location && (G.world.location() || {}).name) || 'Around town'; } catch (e) { return 'Around town'; } }
+  function autoMoney(real) {
+    var kind = real < 0 ? 'spend' : 'earn', place = placeName();
+    try {
+      if (actLog) { var b = actLog[kind]; b[place] = (b[place] || 0) + Math.abs(real); }
+      else logRaw(kind, place, Math.abs(real));
+    } catch (e) {}
+  }
+  var ACTIVITY = { now: 'Class and work', needs: 'Looking after yourself', here: 'Out and about', people: 'Socialising', shop: 'Shopping', self: 'Getting ready', travel: 'Travel' };
+  function activityOf(o, k) {
+    if (o.activity) return String(o.activity);
+    var l = String(o.label || '').replace(/<[^>]+>/g, '');
+    if (/^wait\b/i.test(l)) return 'Waiting';
+    if (/\b(sleep|nap)\b/i.test(l)) return 'Sleep';
+    if (/\bstudy|homework|revise\b/i.test(l)) return 'Study';
+    return ACTIVITY[sectionOf(o, k || 'actions')] || 'Out and about';
+  }
+  function flushActLog(opt, k, mins) {
+    var a = actLog; actLog = null; if (!a) return;
+    try {
+      if (!a.explicit.spend) Object.keys(a.spend).forEach(function (p) { logRaw('spend', p, a.spend[p]); });
+      if (!a.explicit.earn) Object.keys(a.earn).forEach(function (p) { logRaw('earn', p, a.earn[p]); });
+      if (!a.explicit.hours && mins > 0) logRaw('hours', activityOf(opt, k), mins / 60);
+    } catch (e) { console.error('ledger', e); }
+  }
+
+  /* Stats tab: this week and last week from the ledger. */
+  function money2(v) { return '$' + (Number(v) || 0).toFixed(2); }
+  function hrs(v) { v = Number(v) || 0; var m = Math.round(v * 60); return Math.floor(m / 60) + 'h ' + (m % 60 < 10 ? '0' : '') + (m % 60) + 'm'; }
+  function ledgerTable(title, obj, fmt, total) {
+    var keys = Object.keys(obj || {}).filter(function (k) { return obj[k]; }).sort(function (a, b) { return obj[b] - obj[a]; });
+    var h = '<table class="ledger"><tr><th colspan="2">' + title + '</th></tr>';
+    if (!keys.length) h += '<tr><td colspan="2" class="flavor">Nothing yet.</td></tr>';
+    keys.forEach(function (k) { h += '<tr><td>' + esc(k) + '</td><td class="num">' + fmt(obj[k]) + '</td></tr>'; });
+    if (keys.length) h += '<tr class="tot"><td>Total</td><td class="num">' + fmt(total) + '</td></tr>';
+    return h + '</table>';
+  }
+  function ledgerWeekHtml(label, w, wk) {
+    if (!wk) return '<h4>' + label + ' (week ' + w + ')</h4><p class="flavor">No records for this week.</p>';
+    var t = wk.totals || {}, net = (t.earn || 0) - (t.spend || 0);
+    return '<h4>' + label + ' (week ' + w + ')</h4><p>Earned <b>' + money2(t.earn) + '</b> · spent <b>' + money2(t.spend) + '</b> · net <b class="' + (net >= 0 ? 'up' : 'down') + '">' + (net < 0 ? '-' : '') + money2(Math.abs(net)) + '</b> · ' + hrs(t.hours) + ' logged</p>' +
+      '<div class="ledgers">' + ledgerTable('Earnings by source', wk.earn, money2, t.earn) + ledgerTable('Spending by place', wk.spend, money2, t.spend) + ledgerTable('Hours by activity', wk.hours, hrs, t.hours) + '</div>';
+  }
+  G.addTab({ id: 'ledger', label: 'Stats', order: 65, render: function () {
+    var w = weekOf(G.time && G.time.day);
+    return '<h3>Stats</h3><p class="flavor">Where your money and hours went. Weeks run Monday to Sunday.</p>' +
+      ledgerWeekHtml('This week', w, G.ledgerWeek(w)) + (w > 1 ? ledgerWeekHtml('Last week', w - 1, G.ledgerWeek(w - 1)) : '');
+  } });
+
   /* ---------- story + notices ---------- */
-  G.notify = function (msg, kind, key) {
+  G.notify = function (msg, kind, key, eng) {
     if (key) { // merge repeated changes to the same stat in one turn
       var prev = pendingNotes.filter(function (n) { return n.key === key; })[0];
       if (prev && key !== 'text') { prev.sum = (prev.sum || 0); }
     }
-    pendingNotes.push({ msg: msg, kind: kind || 'info', key: key });
+    pendingNotes.push({ msg: msg, kind: kind || 'info', key: key, eng: !!eng });
     if (!busy) renderNotes();
   };
   var busy = false, storyHtml = '';
@@ -123,12 +203,23 @@
         var isMoney = n.key === 'money';
         a.msg = prettyName(n.key) + ' ' + (a.total >= 0 ? '+' : '-') + (isMoney ? '$' : '') + Math.abs(isMoney ? +a.total.toFixed(2) : Math.round(a.total));
       } else {
-        var c = { msg: n.msg, kind: n.kind, key: n.key, total: m ? parseFloat(n.msg.slice(m.index).replace('$', '')) : 0 };
+        var c = { msg: n.msg, kind: n.kind, key: n.key, eng: n.eng, total: m ? parseFloat(n.msg.slice(m.index).replace('$', '')) : 0 };
         if (m) byKey[n.key] = c; merged.push(c);
       }
     });
     box.innerHTML = merged.filter(function (n) { return !n.key || n.total !== 0 || !/[+-]/.test(n.msg); })
-      .map(function (n) { return '<div class="note ' + n.kind + '">' + n.msg + '</div>'; }).join('');
+      .map(function (n) { return '<div class="note ' + n.kind + '">' + noteText(n) + '</div>'; }).join('');
+  }
+  /* Stat-change pips: only for numeric notices the engine itself formatted (G.change), never for money or module free text. */
+  function pips(total) {
+    var a = Math.abs(total), c = total >= 0 ? '+' : '\u2212';
+    return a <= 15 ? c : a <= 40 ? c + c : c + c + c;
+  }
+  G.pips = pips;
+  function noteText(n) {
+    var style = (G.settings && G.settings.changeStyle) || 'pips';
+    if (style !== 'pips' || !n.eng || n.key === 'money' || !n.total) return n.msg;
+    return prettyName(n.key) + ' <span class="pips" title="' + (n.total > 0 ? '+' : '') + Math.round(n.total) + '">' + pips(n.total) + '</span>';
   }
 
   /* ---------- turn loop ---------- */
@@ -140,13 +231,17 @@
     G.emit('tick', { minutes: minutes });
   };
 
-  G.act = function (opt) {
+  G.act = function (opt, meta) {
     if (!opt || opt.disabled) return;
     busy = true; pendingNotes = [];
+    var t0 = typeof G.time.total === 'number' ? G.time.total : null;
+    actLog = { spend: {}, earn: {}, explicit: {} };
     var res;
     try { res = opt.run(G.state) || {}; } catch (e) { console.error(e); res = { text: '<p><i>Something went wrong with that action.</i></p>', minutes: 0 }; }
     G.story(res.text || '');
     G.tick(res.minutes || 0);
+    var spent = t0 !== null && typeof G.time.total === 'number' ? G.time.total - t0 : (res.minutes || 0);
+    flushActLog(opt, meta && meta.k, spent);
     G.emit('action', { option: opt, result: res });
     busy = false;
     renderNotes();
@@ -237,11 +332,24 @@
     banners.forEach(function (fn) { try { var h = fn(); if (h) out += '<div class="banner">' + h + '</div>'; } catch (e) { console.error(e); } });
     b.innerHTML = out; b.hidden = !out;
   }
+  /* Option `check`: a string or function(state) -> e.g. 'Skulduggery: Hard'. Shown after the time as span.chk.chk-<difficulty>. */
+  function checkOf(o) {
+    var c = o.check; if (!c) return '';
+    if (typeof c === 'function') { try { c = c(G.state); } catch (e) { return ''; } }
+    return c ? String(c).replace(/<[^>]+>/g, '') : '';
+  }
+  function checkClass(txt) {
+    var w = String(txt).toLowerCase().replace(/[^a-z]/g, '');
+    var L = ['veryhard', 'challenging', 'reasonable', 'simple', 'easy', 'hard'];
+    for (var i = 0; i < L.length; i++) if (w.slice(-L[i].length) === L[i]) return 'chk-' + L[i];
+    return 'chk-other';
+  }
+  G.checkClass = checkClass;
   function render() {
     if (!started) return;
     renderBanners();
     current = collectOptions();
-    var html = '', visibleN = 0, hints = !G.settings || G.settings.numberHints !== false;
+    var html = '', visibleN = 0, hints = !G.settings || G.settings.numberHints !== false, icons = !G.settings || G.settings.icons !== false;
     var buckets = {}; SECTIONS.forEach(function (sec) { buckets[sec[0]] = []; });
     ['dialogue', 'actions', 'other', 'travel'].forEach(function (k) {
       current[k].forEach(function (o, i) {
@@ -261,6 +369,8 @@
         if (typeof tv === 'function') { try { tv = tv(G.state); } catch (e) { tv = null; } }
         tm = typeof tv === 'number' ? tv : guessTime(o);
         if (tm !== null && tm > 0 && !/\(\d+:\d\d\)/.test(String(lbl))) lbl += ' <span class="tm">' + G.fmtTime(tm) + '</span>';
+        var ck = checkOf(o); if (ck) lbl += ' <span class="chk ' + checkClass(ck) + '">' + esc(ck) + '</span>';
+        if (o.icon && icons) lbl = '<span class="ico" aria-hidden="true">' + esc(o.icon) + '</span>' + lbl;
         html += '<li><a href="#" class="opt' + (o.disabled ? ' disabled' : '') + '" data-g="' + k + '" data-i="' + i + '"' +
           (o.hint ? ' title="' + esc(o.hint) + '"' : '') + '>' + (hints && !o.disabled && visibleN < 9 ? '<span class="num">' + (visibleN + 1) + '</span>' : '') + lbl + '</a></li>';
         if (!o.disabled) visibleN++;
@@ -276,25 +386,70 @@
     ['fatigue', 'Fatigue', 700], ['stress', 'Stress', 700], ['control', 'Control', null],
     ['bladder', 'Bladder', 600], ['bowels', 'Bowels', 600], ['thirst', 'Thirst', null], ['hunger', 'Hunger', null]
   ];
+  var LOW_BAD = { thirst: 1, hunger: 1, control: 1 };
+  /* Need words + 0..6 level. Uses Jimmy's G.stats.needWords / needLevel when present (string or {text, level}); otherwise a plain fallback. */
+  function needInfo(id, v) {
+    var lv = null, txt = '';
+    try {
+      if (G.stats && typeof G.stats.needLevel === 'function') { var l = Number(G.stats.needLevel(id, v)); if (isFinite(l)) lv = l; }
+      if (G.stats && typeof G.stats.needWords === 'function') {
+        var w = G.stats.needWords(id, v);
+        if (w && typeof w === 'object') { txt = w.text != null ? String(w.text) : ''; if (lv === null && isFinite(Number(w.level))) lv = Number(w.level); }
+        else if (w != null) txt = String(w);
+      }
+    } catch (e) { txt = ''; }
+    if (lv === null) { var bad = LOW_BAD[id] ? 1000 - v : v; lv = Math.floor(Math.max(0, Math.min(1000, bad)) / 1000 * 7); }
+    lv = Math.max(0, Math.min(6, Math.round(lv)));
+    return { text: txt, level: lv, value: v };
+  }
+  G.needInfo = needInfo;
+  function clockStr(t) {
+    if (typeof G.fmtClock === 'function' && typeof t.hour === 'number') { try { return G.fmtClock(t.hour, t.minute || 0); } catch (e) {} }
+    return t.clock || '';
+  }
+  function renderMobileBar(n, t) {
+    var bar = el('mbar');
+    if (!bar) {
+      var app = el('app'); if (!app) return;
+      bar = document.createElement('div'); bar.id = 'mbar'; bar.setAttribute('role', 'button'); bar.setAttribute('tabindex', '0');
+      bar.setAttribute('aria-controls', 'panel'); bar.setAttribute('aria-expanded', 'false');
+      app.insertBefore(bar, app.firstChild);
+    }
+    var words = !G.settings || G.settings.needDisplay !== 'numbers';
+    var rows = NEEDS.map(function (row) { var v = Math.round(Number(n[row[0]]) || 0); var ni = needInfo(row[0], v); ni.name = row[1]; ni.id = row[0]; return ni; })
+      .filter(function (r) { return r.level >= 2; }).sort(function (a, b) { return b.level - a.level; }).slice(0, 3);
+    var h = '<span class="mb-time">' + esc(clockStr(t)) + '</span><span class="mb-money">$' + (Number(G.state.money) || 0).toFixed(2) + '</span><span class="mb-needs">';
+    h += rows.length ? rows.map(function (r) { return '<span class="mb-need lvl' + r.level + '">' + r.name + ': ' + esc(words && r.text ? r.text : String(r.value)) + '</span>'; }).join('') : '<span class="mb-need lvl0">Feeling fine</span>';
+    h += '</span><span class="mb-tog" aria-hidden="true">\u2630</span>';
+    bar.innerHTML = h;
+  }
   function renderPanel() {
     var s = G.state, n = (s.stats && s.stats.needs) || {}, t = G.time;
     var who = (s.creation && s.creation.player && s.creation.player.name) || 'You';
     var loc = (G.world && G.world.location) ? (G.world.location() || {}).name || '' : '';
+    var words = !G.settings || G.settings.needDisplay !== 'numbers';
     var h = '<div class="who">' + esc(who) + '</div>';
-    h += '<div class="clock">' + (t.weekday || '') + ', Day ' + t.day + ' · ' + (t.clock || '') + (t.season ? ' · ' + t.season : '') + '</div>';
+    h += '<div class="clock">' + (t.weekday || '') + ', Day ' + t.day + ' · ' + esc(clockStr(t)) + (t.season ? ' · ' + t.season : '') + '</div>';
     if (loc) h += '<div class="loc">' + esc(loc) + '</div>';
     h += '<div class="money">$' + (Number(s.money) || 0).toFixed(2) + '</div>';
     NEEDS.forEach(function (row) {
-      var v = Math.round(Number(n[row[0]]) || 0), pct = v / 10;
+      var v = Math.round(Number(n[row[0]]) || 0), pct = Math.max(0, Math.min(100, v / 10));
       // thirst, hunger, control: low is bad. others: high is bad.
-      var lowBad = ['thirst', 'hunger', 'control'].indexOf(row[0]) >= 0;
+      var lowBad = !!LOW_BAD[row[0]];
       var bad = lowBad ? v < 250 : (row[2] && v >= row[2]);
-      h += '<div class="need' + (bad ? ' warn' : '') + '"><span>' + row[1] + '</span><span class="val">' + v + '</span>' +
-        '<div class="bar"><div style="width:' + pct + '%"></div></div></div>';
+      var ni = needInfo(row[0], v);
+      if (words && ni.text) {
+        h += '<div class="need words lvl' + ni.level + (ni.level >= 5 ? ' warn' : '') + '" title="' + row[1] + ' ' + v + ' / 1000"><span>' + row[1] + ': <span class="nw">' + esc(ni.text) + '</span></span>' +
+          '<div class="bar"><div class="lvl' + ni.level + '" style="width:' + pct + '%"></div></div></div>';
+      } else {
+        h += '<div class="need lvl' + ni.level + (bad ? ' warn' : '') + '" title="' + row[1] + ' ' + v + ' / 1000"><span>' + row[1] + '</span><span class="val">' + v + '</span>' +
+          '<div class="bar"><div class="lvl' + ni.level + '" style="width:' + pct + '%"></div></div></div>';
+      }
     });
     h += '<button id="btn-char">Character</button>';
     h += '<div class="sysbtns"><button id="btn-saves">Saves</button><button id="btn-help">How to play</button><button id="btn-settings">Settings</button></div>';
     el('panel').innerHTML = h;
+    try { renderMobileBar(n, t); } catch (e) { console.error('mbar', e); }
   }
 
   function openCharMenu(tabId) {
@@ -355,10 +510,77 @@
         (started ? '<button data-ov="save" data-n="' + n + '">Save here</button>' : '') + (st ? ' <button data-ov="del" data-n="' + n + '">Delete</button>' : '') + '</td></tr>';
     }
     h += '</table>';
+    h += saveReminder();
+    h += '<h3>Save files</h3><p class="flavor small0">Keep a copy outside the browser, or move your game to another device.</p><p class="savefile">' +
+      ((started || readSave(SAVE_KEY)) ? '<button data-ov="export">Download save (.json)</button> <button data-ov="showjson">Show save text</button> ' : '') +
+      '<button data-ov="importfile">Load from file</button> <button data-ov="paste">Paste save text</button>' +
+      '<input type="file" id="savefile-in" accept=".json,application/json,text/plain" hidden></p><div id="savejson"></div>';
     if (started) h += '<p><button data-ov="new">Start a new game</button></p>';
     overlay(h);
   }
   G.openSaves = openSaves;
+
+  /* ---------- save files: export / import ---------- */
+  function exportDay() { return (G.state && G.state._exportDay) || 0; }
+  function saveReminder() {
+    if (store.fallback) return '<p class="savewarn">This browser is not letting the game keep saves, so your progress disappears when the tab closes. Use <b>Download save</b> (or <b>Show save text</b> and copy it somewhere) to keep it.</p>';
+    if (started && (G.time.day || 1) - (exportDay() || 1) >= 3) return '<p class="savenote">It has been a few days since you downloaded a backup. A save file keeps your game safe if the browser clears its storage.</p>';
+    return '';
+  }
+  function exportState() { return started ? G.state : readSave(SAVE_KEY); }
+  function exportName(st) {
+    var p = (st.creation && st.creation.player && st.creation.player.name) || 'save', d = (st.world && st.world.day) || 1;
+    return 'hollowbrook-' + String(p).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-day' + d + '.json';
+  }
+  function markExported() { if (started) { G.state._exportDay = G.time.day || 1; G.save(true); } }
+  function showSaveText(st) {
+    var box = el('savejson'); if (!box) return;
+    box.innerHTML = '<p class="flavor">Copy all of this text and keep it somewhere safe. Paste it back with <b>Paste save text</b>.</p><textarea id="savejson-out" readonly rows="6"></textarea>';
+    var ta = el('savejson-out'); ta.value = JSON.stringify(st); try { ta.focus(); ta.select(); } catch (e) {}
+  }
+  G.exportSave = function () {
+    var st = exportState(); if (!st) { G.notify('Nothing to save yet.', 'info'); return false; }
+    if (started) st._savedAt = Date.now();
+    var json = JSON.stringify(st), ok = false;
+    try {
+      if (typeof Blob === 'function' && window.URL && URL.createObjectURL) {
+        var url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+        var a = document.createElement('a');
+        if ('download' in a) {
+          a.href = url; a.download = exportName(st); a.style.display = 'none'; document.body.appendChild(a); a.click();
+          setTimeout(function () { try { URL.revokeObjectURL(url); a.remove(); } catch (e) {} }, 1500);
+          ok = true;
+        }
+      }
+    } catch (e) { ok = false; }
+    if (!ok) showSaveText(st);
+    markExported();
+    return ok;
+  };
+  function validSave(st) { return !!(st && typeof st === 'object' && !Array.isArray(st) && (st.creation || st.world || st.stats)); }
+  G.importSave = function (text) {
+    var st; try { st = JSON.parse(String(text || '').replace(/^\uFEFF/, '').trim()); } catch (e) { st = null; }
+    if (!validSave(st)) { alert('That does not look like a Hollowbrook save.'); return false; }
+    var p = (st.creation && st.creation.player && st.creation.player.name) || 'Unnamed', d = (st.world && st.world.day) || 1;
+    if (!confirm('Load ' + p + ', day ' + d + ' from this save?' + (started ? ' Anything since your last save in this session will be lost.' : ''))) return false;
+    st._exportDay = (st.world && st.world.day) || 1;
+    store.set(SAVE_KEY, JSON.stringify(st));
+    resume(st, '<p>You pick up where you left off.</p>');
+    return true;
+  };
+  function readFileInput(inp) {
+    var f = inp.files && inp.files[0]; if (!f) return;
+    if (typeof FileReader !== 'function') { alert('This browser cannot read files. Use Paste save text instead.'); return; }
+    var r = new FileReader();
+    r.onload = function () { G.importSave(r.result); inp.value = ''; };
+    r.onerror = function () { alert('Could not read that file.'); };
+    r.readAsText(f);
+  }
+  function showPaste() {
+    var box = el('savejson'); if (!box) return;
+    box.innerHTML = '<p class="flavor">Paste the save text below.</p><textarea id="savejson-in" rows="6"></textarea><p><button data-ov="loadpaste">Load pasted save</button></p>';
+    try { el('savejson-in').focus(); } catch (e) {}
+  }
 
   var HELP = [
     ['The basics', 'The story text at the top describes what just happened. Below it are your choices, sorted into Dialogue, Actions, Travel and Other. Click one, or press its number key (1 to 9). Every choice takes some time, and the clock in the side panel moves on.'],
@@ -374,11 +596,16 @@
   }
   G.openHelp = openHelp;
 
+  function titleTip() {
+    var t = ''; try { t = typeof G.randomTip === 'function' ? G.randomTip() : ''; } catch (e) { t = ''; }
+    return t ? '<p class="tip"><b>Tip:</b> ' + esc(t) + '</p>' : '';
+  }
   function openTitle() {
     var auto = readSave(SAVE_KEY), hasAuto = auto && auto.creation && auto.creation.done;
     overlay('<div class="title"><h1>Hollowbrook</h1><p class="flavor">A quiet college town, a rainy autumn, and a year that is entirely yours.</p>' +
       (hasAuto ? '<button data-ov="continue">Continue <span class="flavor">(' + saveSummary(auto) + ')</span></button>' : '') +
       '<button data-ov="begin">New game</button><button data-ov="saves">Load a save</button><button data-ov="help">How to play</button>' +
+      titleTip() +
       '<p class="flavor small">All characters are adults (18+). Version ' + G.version + '</p></div>');
     el('overlay').classList.add('titlemode');
   }
@@ -402,7 +629,8 @@
   document.addEventListener('DOMContentLoaded', function () {
     document.body.addEventListener('click', function (e) {
       var a = e.target.closest('.opt');
-      if (a) { e.preventDefault(); var o = current[a.dataset.g][+a.dataset.i]; G.act(o); return; }
+      if (a) { e.preventDefault(); var o = current[a.dataset.g][+a.dataset.i]; G.act(o, { k: a.dataset.g }); return; }
+      if (e.target.closest('#mbar')) { document.body.classList.toggle('panel-open'); var mb = el('mbar'); if (mb) mb.setAttribute('aria-expanded', document.body.classList.contains('panel-open') ? 'true' : 'false'); return; }
       if (e.target.id === 'btn-char') return openCharMenu();
       if (e.target.closest('#chartabs') && e.target.dataset.tab) return openCharMenu(e.target.dataset.tab);
       if (e.target.id === 'charclose' || e.target.id === 'charmenu') { el('charmenu').hidden = true; return; }
@@ -421,10 +649,17 @@
         else if (act === 'save') G.saveSlot(n);
         else if (act === 'del') { if (confirm('Delete slot ' + n + '?')) { store.remove(SLOT_KEY(n)); openSaves(); } }
         else if (act === 'new') G.newGame();
+        else if (act === 'export') G.exportSave();
+        else if (act === 'showjson') { var sj = exportState(); if (sj) { showSaveText(sj); markExported(); } }
+        else if (act === 'importfile') { var fi = el('savefile-in'); if (fi) fi.click(); }
+        else if (act === 'paste') showPaste();
+        else if (act === 'loadpaste') { var pi = el('savejson-in'); if (pi) G.importSave(pi.value); }
         return;
       }
     });
+    document.body.addEventListener('change', function (e) { if (e.target && e.target.id === 'savefile-in') readFileInput(e.target); });
     document.addEventListener('keydown', function (e) {
+      if (e.target && e.target.id === 'mbar' && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); e.target.click(); return; }
       if (e.key === 'Escape') { el('charmenu').hidden = true; if (started) closeOverlay(); }
       var n = parseInt(e.key, 10); // number keys pick the nth visible option
       var ovl = el('overlay'), menuOpen = !el('charmenu').hidden || (ovl && !ovl.hidden);

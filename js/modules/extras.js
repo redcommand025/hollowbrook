@@ -6,20 +6,62 @@
   var G = window.G, SET_KEY = 'hollowbrook_settings_v1';
 
   /* ---------- settings ---------- */
-  var settings = { textSize: 16, daySummary: true, numberHints: true };
+  var DEFAULTS = { textSize: 16, daySummary: true, numberHints: true, clock24: true, tempUnit: 'C', lineHeight: 'normal', readableFont: false,
+    reducedMotion: false, icons: true, needDisplay: 'words', changeStyle: 'pips' };
+  var CHOICES = { tempUnit: ['C', 'F'], lineHeight: ['normal', 'relaxed'], needDisplay: ['words', 'numbers'], changeStyle: ['pips', 'numbers'] };
+  var settings = Object.assign({}, DEFAULTS);
   try { Object.assign(settings, JSON.parse(G.store.get(SET_KEY) || '{}')); } catch (e) {}
-  function applySettings() { document.documentElement.style.setProperty('--text-size', settings.textSize + 'px'); document.body && (document.body.style.fontSize = settings.textSize + 'px'); }
+  Object.keys(CHOICES).forEach(function (k) { if (CHOICES[k].indexOf(settings[k]) < 0) settings[k] = DEFAULTS[k]; });
+  function setClass(name, on) { var r = document.documentElement; if (!r) return; if (on) r.classList.add(name); else r.classList.remove(name); }
+  function applySettings() {
+    document.documentElement.style.setProperty('--text-size', settings.textSize + 'px'); document.body && (document.body.style.fontSize = settings.textSize + 'px');
+    setClass('hb-relaxed', settings.lineHeight === 'relaxed');
+    setClass('hb-readable', !!settings.readableFont);
+    setClass('hb-reduced-motion', !!settings.reducedMotion);
+    setClass('hb-noicons', settings.icons === false);
+  }
   function saveSettings() { G.store.set(SET_KEY, JSON.stringify(settings)); applySettings(); }
   G.settings = settings;
+  applySettings();
 
+  /* Clock and temperature helpers: everyone should format through these so the player's settings apply. */
+  function pad2(n) { n = Math.floor(Math.abs(Number(n) || 0)); return (n < 10 ? '0' : '') + n; }
+  G.fmtClock = function (h, m) {
+    h = ((Math.floor(Number(h) || 0) % 24) + 24) % 24; m = Math.floor(Number(m) || 0) % 60;
+    if (settings.clock24 !== false) return pad2(h) + ':' + pad2(m);
+    return ((h % 12) || 12) + ':' + pad2(m) + (h < 12 ? ' am' : ' pm');
+  };
+  G.fmtTemp = function (c) {
+    c = Number(c); if (!isFinite(c)) return '';
+    return settings.tempUnit === 'F' ? Math.round(c * 9 / 5 + 32) + '\u00b0F' : Math.round(c) + '\u00b0C';
+  };
+
+  function btns(key, vals) {
+    return vals.map(function (p) {
+      var v = p[0], cur = settings[key], on = typeof cur === 'boolean' ? (cur ? '1' : '0') === v : String(cur) === v;
+      return '<button data-set="' + key + '" data-v="' + v + '"' + (on ? ' class="on"' : '') + '>' + p[1] + '</button>';
+    }).join(' ');
+  }
+  var ONOFF = [['1', 'On'], ['0', 'Off']];
   function openSettings() {
     var pace = (G.state.creation && G.state.creation.world && G.state.creation.world.needsPace) || 'normal';
     var h = '<button class="x" data-ov="close">×</button><h2>Settings</h2><p class="flavor">Small adjustments for a comfortable read.</p>';
+    h += '<h3>Reading</h3>';
     h += '<p><b>Text size</b><br>' + [14, 16, 18, 20, 22].map(function (s) { return '<button data-set="textSize" data-v="' + s + '"' + (settings.textSize === s ? ' class="on"' : '') + '>' + s + '</button>'; }).join(' ') + '</p>';
+    h += '<p><b>Line spacing</b><br>' + btns('lineHeight', [['normal', 'Normal'], ['relaxed', 'Relaxed']]) + '</p>';
+    h += '<p><b>Readable font</b> <span class="flavor">(plain sans-serif with wider spacing)</span><br>' + btns('readableFont', ONOFF) + '</p>';
+    h += '<p><b>Reduce motion</b><br>' + btns('reducedMotion', ONOFF) + '</p>';
+    h += '<h3>Display</h3>';
+    h += '<p><b>Needs shown as</b><br>' + btns('needDisplay', [['words', 'Words'], ['numbers', 'Numbers']]) + '</p>';
+    h += '<p><b>Stat changes shown as</b> <span class="flavor">(money is always shown in dollars)</span><br>' + btns('changeStyle', [['pips', 'Pips (+ ++ +++)'], ['numbers', 'Numbers']]) + '</p>';
+    h += '<p><b>Clock</b><br>' + btns('clock24', [['1', '24-hour (' + pad2(17) + ':30)'], ['0', '12-hour (5:30 pm)']]) + '</p>';
+    h += '<p><b>Temperature</b><br>' + btns('tempUnit', [['C', '\u00b0C'], ['F', '\u00b0F']]) + '</p>';
+    h += '<p><b>Icons on choices</b><br>' + btns('icons', ONOFF) + '</p>';
+    h += '<p><b>Number-key hints on choices</b><br>' + btns('numberHints', ONOFF) + '</p>';
+    h += '<h3>Game</h3>';
     h += '<p><b>Needs pace</b> <span class="flavor">(how quickly hunger, thirst, bladder and the rest build up; saved with this game)</span><br>' +
       ['gentle', 'normal', 'harsh'].map(function (p) { return '<button data-set="needsPace" data-v="' + p + '"' + (pace === p ? ' class="on"' : '') + '>' + p.charAt(0).toUpperCase() + p.slice(1) + '</button>'; }).join(' ') + '</p>';
-    h += '<p><b>End-of-day summary</b><br><button data-set="daySummary" data-v="1"' + (settings.daySummary ? ' class="on"' : '') + '>On</button> <button data-set="daySummary" data-v="0"' + (!settings.daySummary ? ' class="on"' : '') + '>Off</button></p>';
-    h += '<p><b>Number-key hints on choices</b><br><button data-set="numberHints" data-v="1"' + (settings.numberHints ? ' class="on"' : '') + '>On</button> <button data-set="numberHints" data-v="0"' + (!settings.numberHints ? ' class="on"' : '') + '>Off</button></p>';
+    h += '<p><b>End-of-day summary</b><br>' + btns('daySummary', ONOFF) + '</p>';
     var o = document.getElementById('overlay'); if (!o) { o = document.createElement('div'); o.id = 'overlay'; document.body.appendChild(o); }
     o.className = ''; o.innerHTML = '<div class="sheet">' + h + '</div>'; o.hidden = false;
   }
@@ -31,9 +73,32 @@
     var k = b.dataset.set, v = b.dataset.v;
     if (k === 'textSize') settings.textSize = +v;
     else if (k === 'needsPace') { if (G.state.creation) { G.state.creation.world = G.state.creation.world || {}; G.state.creation.world.needsPace = v; G.save(true); } }
+    else if (CHOICES[k]) { if (CHOICES[k].indexOf(v) >= 0) settings[k] = v; }
     else settings[k] = v === '1';
     saveSettings(); openSettings(); G.render();
   });
+
+  /* ---------- tips ---------- */
+  var TIPS = [
+    'Press the number keys 1 to 9 to pick a choice without reaching for the mouse.',
+    'The Journal tab in the Character menu has your class timetable and every open favour.',
+    'Cooking your own meals at home costs far less than eating out every day.',
+    'A jacket keeps the worst of the rain off the clothes underneath.',
+    'If this browser cannot keep saves, use Saves, then Download save, before you close the tab.',
+    'Classes start at 09:00 and 13:00 on weekdays. Skipping them raises delinquency.',
+    'Use the restroom before a long class or shift, not after.',
+    'Thirst and hunger creep down all day. A bottle of water is cheap insurance.',
+    'Fatigue past 700 makes everything harder. An early night pays off the next morning.',
+    'Townsfolk keep schedules, so check back at a different hour if someone is not around.',
+    'The Stats tab shows where your money and hours went this week.',
+    'Check the forecast in your room before heading out for the day.',
+    'Wet clothes chill you and raise stress. Change into something dry when you can.',
+    'Tags like "Hard" next to a choice show how likely it is to go your way.',
+    'Groceries go off eventually. Buy what you will cook this week.',
+    'Waiting until a set time is a quick way to skip ahead, but your needs keep building.'
+  ];
+  G.TIPS = TIPS;
+  G.randomTip = function () { return TIPS[Math.floor(Math.random() * TIPS.length)]; };
 
   /* ---------- end-of-day summary ---------- */
   function snapshot() {
@@ -55,7 +120,7 @@
     if (b.rep - a.rep >= 5) lines.push('People around town seem to like you a little more.');
     else if (b.rep - a.rep <= -5) lines.push('A few people think a little less of you today.');
     if (!lines.length) lines.push('A quiet day. Sometimes that is enough.');
-    return '<div class="daysum"><b>Looking back on day ' + day + ':</b> ' + lines.join(' ') + '</div>';
+    return '<div class="daysum"><b>Looking back on day ' + day + ':</b> ' + lines.join(' ') + '<div class="tip"><b>Tip:</b> ' + G.esc(G.randomTip()) + '</div></div>';
   }
 
   /* ---------- achievements ---------- */

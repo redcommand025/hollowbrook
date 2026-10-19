@@ -248,12 +248,16 @@
     return clamp(best, 0, 4);
   }
   function baggyBonus() { return [0, 0.02, 0.04, 0.07, 0.1][baggyLevel()]; }
-  function pickpocket() {
-    var t = TARGETS[loc()]; if (!t) return { text: 'Nothing worth taking here.', minutes: 1 };
+  function pickP() {
+    var t = TARGETS[loc()]; if (!t) return 0;
     var sk = skill('skulduggery'), aw = statVal('awareness');
     var weather = (G.state.world && G.state.world.weather) || '';
     var crowd = /rain|storm|snow/.test(weather) ? -0.05 : 0; // fewer people around in bad weather
-    var p = clamp(0.35 + sk / 1600 + aw / 4000 - t.risk + crowd + baggyBonus() / 2, 0.08, 0.95);
+    return clamp(0.35 + sk / 1600 + aw / 4000 - t.risk + crowd + baggyBonus() / 2, 0.08, 0.95);
+  }
+  function pickpocket() {
+    var t = TARGETS[loc()]; if (!t) return { text: 'Nothing worth taking here.', minutes: 1 };
+    var sk = skill('skulduggery'), p = pickP();
     var s = S(); s.thefts++;
     need('stats.needs.stress', 30);
     if (chance(p)) {
@@ -499,6 +503,7 @@
     if (fat > 700) out += '<p>You\'re running on fumes, and it shows in your work.</p>';
     m.perf = clamp(m.perf + perf, 0, 100);
     var pay = rate * hrs + tips; cash(pay);
+    logJob(id, hrs, pay, tips);
     need('stats.needs.fatigue', 110); need('stats.needs.stress', 25); need('stats.needs.thirst', -60); need('stats.needs.hunger', -50);
     fame(j.fame, 3); if (j.skill) gainSkill(j.skill, rnd(8, 14));
     if (id === 'library') { var sj = pick(Object.keys(SUBJECTS)); if (chance(0.4)) grade(sj, 1); train('awareness', 6); }
@@ -509,6 +514,23 @@
     out = checkPromotion(id, out);
     if (m.perf < 15) { delete S().jobs[id]; out += '<p>At the end of the shift, ' + j.boss.split(',')[0] + ' tells you, kindly but firmly, not to come back.</p>'; G.notify('Fired from ' + j.name, 'down'); }
     return { text: out, minutes: hrs * 60 };
+  }
+  // per-job earnings log for the Stats tab (survives quitting or being fired)
+  function logJob(id, hrs, pay, tips) {
+    var s = S(); s.jobLog = s.jobLog || {};
+    var l = s.jobLog[id] = s.jobLog[id] || { name: JOBS[id].name, title: JOBS[id].title, shifts: 0, hours: 0, earned: 0, tips: 0, firstDay: time().day, lastDay: 0 };
+    l.shifts++; l.hours += hrs; l.earned += pay; l.tips += tips || 0; l.lastDay = time().day;
+    if (G.log) { try { G.log('earn', JOBS[id].name, pay); G.log('hours', JOBS[id].name, hrs); } catch (e) {} }
+    if (S().jobs[id]) l.title = RANKS[id] ? RANKS[id][S().jobs[id].rank || 0] : JOBS[id].title;
+  }
+  function jobStats() {
+    var s = S(), log = (s && s.jobLog) || {}, out = [], tot = { shifts: 0, hours: 0, earned: 0, tips: 0 };
+    Object.keys(log).forEach(function (k) {
+      var l = log[k], cur = !!(s.jobs[k] && s.jobs[k].hired);
+      out.push({ id: k, name: l.name, title: l.title, current: cur, shifts: l.shifts, hours: l.hours, earned: l.earned, tips: l.tips, perHour: l.hours ? Math.round(l.earned / l.hours * 100) / 100 : 0 });
+      tot.shifts += l.shifts; tot.hours += l.hours; tot.earned += l.earned; tot.tips += l.tips;
+    });
+    return { jobs: out, total: tot };
   }
   function quitJob(id) { delete S().jobs[id]; return { text: '<p>You hand back your apron, gloves, or lanyard, and say your thanks. ' + cap(JOBS[id].boss.split(',')[0]) + ' wishes you well.</p>', minutes: 10 }; }
 
@@ -649,11 +671,15 @@
     clothing_store: { name: 'Threadbare & Co.', items: ['a pair of wool socks', 'a silk scarf', 'a leather belt'], value: [8, 25], risk: 0.4 },
     furniture_store: { name: 'Hearth & Home', items: ['a scented candle', 'a little brass hook', 'a set of coasters'], value: [4, 14], risk: 0.35 }
   };
-  function shoplift() {
-    var sh = SHOPS[loc()], s = S();
+  function shopP() {
+    var sh = SHOPS[loc()]; if (!sh) return 0;
     var sk = skill('skulduggery'), aw = statVal('awareness');
     var lf = G.stats && G.stats.hasTrait && G.stats.hasTrait('lightFingers') ? 0.08 : 0;
-    var p = clamp(0.3 + sk / 1500 + aw / 4000 + lf + baggyBonus() - sh.risk, 0.06, 0.92);
+    return clamp(0.3 + sk / 1500 + aw / 4000 + lf + baggyBonus() - sh.risk, 0.06, 0.92);
+  }
+  function shoplift() {
+    var sh = SHOPS[loc()], s = S();
+    var sk = skill('skulduggery'), p = shopP();
     need('stats.needs.stress', 35); s.thefts++;
     var item = pick(sh.items);
     if (chance(p)) {
@@ -666,11 +692,12 @@
     s.bannedFrom[loc()] = time().day + 3;
     return { text: '<p>A hand lands on your shoulder at the door. The manager of ' + sh.name + ' takes back ' + item + ', takes your name, takes $' + fine + ', and tells you not to come back this week.</p>', minutes: 40 };
   }
+  function lockerP() { return clamp(0.25 + skill('skulduggery') / 1200, 0.1, 0.9); }
   function lockers() {
     var s = S(), sk = skill('skulduggery');
     if (s.lockersDay === time().day) return { text: '<p>You\'ve pushed your luck with the lockers enough for one night.</p>', minutes: 1 };
     s.lockersDay = time().day; need('stats.needs.stress', 40);
-    if (chance(clamp(0.25 + sk / 1200, 0.1, 0.9))) {
+    if (chance(lockerP())) {
       var found = pick([{ name: 'a pair of wireless earbuds', value: 30 }, { name: 'a forgotten textbook', value: 18 }, { name: 'an envelope with $12 inside', cash: 12 }, { name: 'a fancy fountain pen', value: 22 }]);
       if (found.cash) cash(found.cash); else s.loot.push(found);
       gainSkill('skulduggery', rnd(14, 22)); crime(rnd(10, 20));
@@ -1042,7 +1069,41 @@
     [/^Quit your job/, 'self'],
     [/^Sell your produce|^Sell .* to /, 'shop']
   ];
+  // difficulty tags (engine `check:`), labelled from our real odds with the same bands as stats.js
+  function diffWord(p) { return p >= 0.9 ? 'Simple' : p >= 0.75 ? 'Easy' : p >= 0.55 ? 'Reasonable' : p >= 0.35 ? 'Challenging' : p >= 0.15 ? 'Hard' : 'Very Hard'; }
+  function examP() {
+    var s = S(), g = s.grades, ks = Object.keys(g), avg = 0; ks.forEach(function (k) { avg += g[k]; }); avg = ks.length ? avg / ks.length : 50;
+    var stress = (G.state.stats && G.state.stats.needs && G.state.stats.needs.stress) || 0;
+    var exp = avg - 4 + Math.floor(statVal('willpower') / 200) - Math.floor(stress / 200) + Math.min(5, Math.floor((s.studiedTerm || 0) / 3));
+    return clamp((exp - 50) / 30 + 0.5, 0, 1); // rough chance of a passing (60%+) average
+  }
+  function shiftP(o) {
+    var id = null; Object.keys(JOBS).forEach(function (k) { if (JOBS[k].loc === loc()) id = k; }); if (!id) return 0.7;
+    var fat = (G.state.stats && G.state.stats.needs && G.state.stats.needs.fatigue) || 0;
+    var n = Math.floor(statVal(JOBS[id].needStat) / 250) - (fat > 700 ? 8 : 0), ok = 0;
+    for (var r = -5; r <= 8; r++) if (r + n >= 0) ok++;
+    return ok / 14; // chance the shift goes well
+  }
+  var CHECKS = [
+    [/^Lift /, 'Skulduggery', pickP], [/^Pocket something/, 'Skulduggery', shopP], [/^Try the corridor lockers/, 'Skulduggery', lockerP],
+    [/^Sit your /, 'Exam', examP], [/^Work a \d-hour/, 'Shift', shiftP]
+  ];
+  var ICONS = [
+    [/^Attend /, '🎓'], [/^Focus/, '📖'], [/^Sit your /, '📝'], [/homework|^Study/i, '📚'], [/extra credit/i, '✏️'],
+    [/^Work a \d-hour/, '💼'], [/^Ask about (work|a stocking)/, '💼'], [/^Quit your job/, '🚪'],
+    [/^Join in with|^Take part in/, '🎭'], [/^Join |^Leave /, '🎭'], [/club fair/i, '📌'], [/noticeboard/i, '📌'],
+    [/^Lift /, '🫳'], [/^Pocket /, '🫳'], [/lockers/i, '🔐'], [/^Sell /, '🧺'], [/stall/i, '🧺'], [/community service/i, '🧹'],
+    [/plot|plant|water the|harvest/i, '🌱'], [/gossip|whisper|chat/i, '💬']
+  ];
   function tagSections(opts) {
+    ['actions', 'other', 'dialogue'].forEach(function (g) {
+      (opts[g] || []).forEach(function (o) {
+        if (!o || typeof o.label !== 'string') return;
+        if (!o.icon) for (var k = 0; k < ICONS.length; k++) if (ICONS[k][0].test(o.label)) { o.icon = ICONS[k][1]; break; }
+        if (o.check) return;
+        for (var i = 0; i < CHECKS.length; i++) if (CHECKS[i][0].test(o.label)) { (function (c, opt) { opt.check = function () { try { return c[1] + ': ' + diffWord(c[2](opt)); } catch (e) { return null; } }; })(CHECKS[i], o); return; }
+      });
+    });
     ['dialogue', 'actions', 'other'].forEach(function (g) {
       (opts[g] || []).forEach(function (o) {
         if (!o || o.section || typeof o.label !== 'string') return;
@@ -1340,7 +1401,7 @@
     });
     G.school = mod.api;
     G.school.nextClass = nextClassInfo;
-    G.school.studentRep = studentRep; G.school.studentRepValue = srep; G.school.studentRepText = repText; G.school.isStudent = isStudent;
+    G.school.studentRep = studentRep; G.school.studentRepValue = srep; G.school.studentRepText = repText; G.school.isStudent = isStudent; G.school.jobStats = jobStats;
     // Banner: refresh whenever the story text changes or time moves.
     if (G.addBanner) G.addBanner(function () { var i = G.state && G.state.school && onCampus() ? nextClassInfo() : null; return i ? i.html : null; });
     else if (G.on) { G.on('action', refreshClassBanner); G.on('tick', refreshClassBanner); G.on('start', function () { setTimeout(refreshClassBanner, 0); }); G.on('arrive', function () { setTimeout(refreshClassBanner, 0); }); }

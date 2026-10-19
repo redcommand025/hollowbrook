@@ -128,6 +128,7 @@
     return false;
   }
 
+  function logMoney() {}   // the engine logs spending by location, so nothing to do here
   function stylistLine() {
     var lines = ['"Lovely thick hair, you\'re lucky," the stylist says, snipping away.',
       'The stylist hums along to the radio and tells you about her sister\'s wedding.',
@@ -155,7 +156,7 @@
         var price = id === 'curly' ? 45 : 25, enough = h.length >= s.min;
         out.actions.push(opt('Ask for a ' + s.label + ' ($' + price + ')', function () {
           if (money() < price) return { text: '<p>You check your wallet and pretend you were only asking.</p>', minutes: 1 };
-          G_().change('money', -price); h.mode = null;
+          G_().change('money', -price); logMoney('spend', 'Hair salon', price); h.mode = null;
           var lostDye = cutTo(Math.min(h.length, s.ideal)); p.hairStyle = id; h.scruffyTold = false;
           G_().change('stats.needs.stress', -10); train(id === 'curly' ? 8 : 6); emit('cut');
           return { text: '<p>' + esc(stylistLine()) + '</p><p>' + (id === 'curly' ? 'An hour of rollers and a sharp chemical smell later, you have bouncy curls.' : 'Snip by snip, a ' + esc(s.label) + ' takes shape.') +
@@ -170,7 +171,7 @@
         var natural = c[0] === h.natural, price = natural ? 30 : 40;
         out.actions.push(opt(natural ? 'Go back to your natural ' + c[1].toLowerCase() + ' ($30)' : 'Dye it ' + c[1].toLowerCase() + ' ($40)', function () {
           if (money() < price) return { text: '<p>Dye is not cheap. Maybe next week.</p>', minutes: 1 };
-          G_().change('money', -price); h.mode = null; p.hairColor = c[0];
+          G_().change('money', -price); logMoney('spend', 'Hair salon', price); h.mode = null; p.hairColor = c[0];
           if (natural) { h.dyed = false; h.dyeDays = 0; } else { h.dyed = true; h.dyeDays = 0; }
           G_().change('stats.needs.stress', -8); train(5); emit('dye');
           return { text: '<p>Foils, a timer, and a long wait under the heat lamp with a celebrity magazine from three summers ago. When the towel comes off, your hair is ' + esc(c[1].toLowerCase()) + '.</p>' +
@@ -183,7 +184,7 @@
     var grown = !cur.tied && (h.length > cur.ideal + 1 || scruffy());
     out.actions.push(opt('Ask for a trim ($12)', function () {
       if (money() < 12) return { text: '<p>Not even enough for a trim.</p>', minutes: 1 };
-      G_().change('money', -12); var lost = cutTo(Math.min(h.length, cur.ideal)); h.scruffyTold = false;
+      G_().change('money', -12); logMoney('spend', 'Hair salon', 12); var lost = cutTo(Math.min(h.length, cur.ideal)); h.scruffyTold = false;
       G_().change('stats.needs.stress', -8); train(3); emit('cut');
       return { text: '<p>' + esc(stylistLine()) + '</p><p>A neat tidy-up that keeps your ' + esc(cur.label) + ' looking sharp.' + (lost ? ' The dyed ends are gone.' : '') + '</p>', minutes: 30 };
     }, { time: 30, disabled: !grown || money() < 12, hint: grown ? 'Tidies your current cut.' : 'Your cut still looks fresh.' }));
@@ -191,23 +192,23 @@
     out.actions.push(opt('Look at hair colours', function () { h.mode = 'dye'; return { text: '<p>' + ['A fan of swatches, from honest browns to a blue the stylist calls "mermaid".', 'The stylist fans out a ring of dyed hair samples. "Bold is fun," she says, "but brown forgives you."', 'A laminated colour chart, a little faded at the edges where people keep pointing at the reds.'][Math.floor(Math.random() * 3)] + '</p>', minutes: 2 }; }));
     out.actions.push(opt('Get clip-in extensions ($70)', function () {
       if (money() < 70) return { text: '<p>Seventy dollars is a lot of instant noodles.</p>', minutes: 1 };
-      G_().change('money', -70); h.length = Math.min(90, h.length + 20); train(4); emit('cut');
+      G_().change('money', -70); logMoney('spend', 'Hair salon', 70); h.length = Math.min(90, h.length + 20); train(4); emit('cut');
       if (STYLES[p.hairStyle].next && h.length >= STYLES[p.hairStyle].at) p.hairStyle = h.length >= 33 ? 'long' : 'shoulder';
       return { text: '<p>Two hours, a lot of careful blending, and suddenly there is a lot more of you. ' + esc(hairNote()) + '</p>', minutes: 120 };
     }, { time: 120, disabled: money() < 70 || h.length >= 60, hint: 'Adds about 20 cm of length.' }));
     out.actions.push(opt('Get a professional makeover ($20)', function () {
       if (money() < 20) return { text: '<p>Maybe for a special occasion.</p>', minutes: 1 };
-      G_().change('money', -20); applyLook('glam', 14); train(5); G_().change('stats.needs.stress', -10);
+      G_().change('money', -20); logMoney('spend', 'Hair salon', 20); applyLook('glam', 14); train(5); G_().change('stats.needs.stress', -10);
       return { text: '<p>The stylist tilts your chin to the light and gets to work with a dozen brushes. ' + esc(LOOKS.glam.desc) + '</p>', minutes: 45 };
     }, { time: 45, disabled: money() < 20 }));
     if (!h.makeupKit) out.actions.push(opt('Buy a makeup kit ($25)', function () {
       if (money() < 25) return { text: '<p>Not today.</p>', minutes: 1 };
-      G_().change('money', -25); h.makeupKit = true;
+      G_().change('money', -25); logMoney('spend', 'Hair salon', 25); h.makeupKit = true;
       return { text: '<p>A zip bag of the basics: concealer, mascara, liner, a few lipsticks and a palette. You can do your own makeup at any mirror now.</p>', minutes: 3 };
     }, { time: 3, disabled: money() < 25, hint: 'Do your own makeup at home or at any mirror.' }));
     out.actions.push(opt('Wash and blow-dry ($15)', function () {
       if (money() < 15) return { text: '<p>You can wash it at home for free.</p>', minutes: 1 };
-      G_().change('money', -15); G_().change('stats.needs.stress', -25); train(3);
+      G_().change('money', -15); logMoney('spend', 'Hair salon', 15); G_().change('stats.needs.stress', -25); train(3);
       var s = G_().state.stats; if (s && s.flags) s.flags.dirty = false;
       return { text: '<p>Warm water, a scalp massage that nearly puts you to sleep, and a blow-dry with real volume. You walk out feeling expensive.</p>', minutes: 40 };
     }, { time: 40, disabled: money() < 15 }));
@@ -250,7 +251,8 @@
       name: 'Snip & Curl Salon', district: 'Shopping Centre', indoor: true, open: [9, 18], tags: ['mirror', 'public'],
       desc: 'Three chairs, a wall of mirrors, a shelf of dye swatches in every shade, and a radio tuned to golden oldies.'
     }, [['shopping_centre', 1]]);
-  (function (gofn, pick) { mod.getOptions = function (state) { var out = gofn.apply(this, arguments); if (out) ['actions', 'other', 'dialogue'].forEach(function (k) { (out[k] || []).forEach(function (o) { if (o && !o.section) o.section = pick(o, state); }); }); return out; }; })(mod.getOptions, function (o, st) { return /\(\$\d+\)|binder|colours|haircut|Never mind/.test(o.label || '') ? 'shop' : 'self'; });
+  var ICON = function (o) { var l = o.label || ''; return /makeup|makeover/i.test(l) ? '💄' : /colour|dye/i.test(l) ? '🎨' : /ponytail|Braid|down|Restyle|Leave it/.test(l) ? '💇' : /Never mind|Put the makeup bag/.test(l) ? '↩️' : /Wash/.test(l) ? '🚿' : '✂️'; };
+  (function (gofn, pick) { mod.getOptions = function (state) { var out = gofn.apply(this, arguments); if (out) ['actions', 'other', 'dialogue'].forEach(function (k) { (out[k] || []).forEach(function (o) { if (o && !o.section) o.section = pick(o, state); if (o && !o.icon) o.icon = ICON(o); }); }); return out; }; })(mod.getOptions, function (o, st) { return /\(\$\d+\)|binder|colours|haircut|Never mind/.test(o.label || '') ? 'shop' : 'self'; });
     g.register(mod);
     if (g.on) {
       g.on('start', function () { if (P()) H(); });

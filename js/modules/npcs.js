@@ -2317,6 +2317,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       if (iv.done || iv.day !== t.day || here !== iv.loc || t.hour < iv.hour || t.hour >= iv.hour + 2) return 1; // continue
       out.push({
         label: "Meet " + BY_ID[id].name + " (invitation)",
+        icon: '✉️',
         run: function run(s) {
           iv.done = true;
           _changeRep(s, id, 6);
@@ -2997,10 +2998,125 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     benny: 'smoked fish'
   };
 
+  // ---------- Chance checks (ask-out, persuasion, favours) ----------
+  // Engine shows `check` after the time and colours it by the last difficulty word. We roll with the same p we display.
+  var SOCIAL_STAT = 'Charm';
+  var nowMin = function nowMin() {
+    var t = time();
+    return (t.day || 0) * 1440 + (t.hour || 0) * 60 + (t.minute || 0);
+  };
+  // Player's social ability 0..1 from Jimmy's Charm skill (stats.js chance('charm', 500) == charm/1000).
+  function socialChance(state) {
+    try {
+      var St = window.G.stats;
+      if (St && typeof St.chance === 'function') {
+        var c = St.chance('charm', 500);
+        if (typeof c === 'number' && isFinite(c)) return clamp(c, 0, 1);
+      }
+    } catch (e) {}
+    try {
+      var v = state && state.stats && state.stats.skills && state.stats.skills.charm;
+      if (typeof v === 'number' && isFinite(v)) return clamp(v / 1000, 0, 1);
+    } catch (e) {}
+    return 0;
+  }
+  function diffLabel(p) {
+    try {
+      var St = window.G.stats;
+      if (St && typeof St.difficultyFromChance === 'function') {
+        var r = St.difficultyFromChance(p);
+        var l = r && typeof r === 'object' ? r.label : r;
+        if (typeof l === 'string' && l) return l;
+      }
+    } catch (e) {}
+    return p >= 0.9 ? 'Simple' : p >= 0.75 ? 'Easy' : p >= 0.55 ? 'Reasonable' : p >= 0.35 ? 'Challenging' : p >= 0.15 ? 'Hard' : 'Very Hard';
+  }
+  function askOutChance(state, id) {
+    var r = rel(state, id);
+    return clamp(0.15 + r.aff / 100 * 0.5 + Math.max(0, r.rep) / 100 * 0.1 + socialChance(state) * 0.3, 0.05, 0.95);
+  }
+  function persuadeChance(state, id) {
+    var r = rel(state, id);
+    return clamp(0.35 + r.rep / 100 * 0.4 + socialChance(state) * 0.35, 0.1, 0.95);
+  }
+  function favourChance(state, id) {
+    var r = rel(state, id);
+    return clamp(0.25 + r.rep / 100 * 0.5 + socialChance(state) * 0.3, 0.05, 0.95);
+  }
+  var PERSUADE_RE = /\b(persuade|convince|coax|sweet-talk|talk \w+ into)\b/i;
+  var isPersuade = function isPersuade(st) {
+    return !!st && (PERSUADE_RE.test(st.text || '') || PERSUADE_RE.test(st.label || ''));
+  };
+  var PERSUADE_RETRY = 60; // minutes before a failed persuasion can be retried
+  function persuadeReady(state, key) {
+    var f = ns(state).persuadeFail;
+    return !f || !f[key] || nowMin() >= f[key];
+  }
+  function canAskOut(state, id) {
+    var r = rel(state, id);
+    if (!r || r.romance !== 1 && r.romance !== 2 || !QUESTS['rom_' + id]) return false;
+    var a = (ns(state).askOut || {})[id],
+      t = time();
+    if (a && (a.day === t.day || typeof a.coolUntil === 'number' && t.day < a.coolUntil)) return false;
+    return true;
+  }
+  var verb = function verb(id, v) {
+    return pronouns(id).be === 'are' ? v : v + 's';
+  };
+  // Small favours: { item } from ITEMS or { money }, or a custom fx. Anyone not listed gives a few dollars.
+  var FAVOURS = {
+    dot: {
+      item: 'chocolate',
+      line: 'Dot glances at the till, then slips you a bar of chocolate from the reduced bin. "Dented wrapper. Officially."'
+    },
+    marcus: {
+      money: 5,
+      line: 'Marcus sighs, opens the till and hands you five dollars. "Loyalty refund. Don\'t make it a habit."'
+    },
+    dunn: {
+      fx: function fx(s) {
+        ns(s).dunnWarn = -99;
+      },
+      line: 'Dunn taps his notebook. "Fine. Your slate\'s clean. Next time it\'s a warning, not a ticket. Once."'
+    },
+    jules: {
+      item: 'pastry',
+      line: 'Jules pulls a pastry out of a paper bag. "Slightly squashed. Still the best thing you\'ll eat today."'
+    },
+    rosa: {
+      money: 5,
+      line: 'Rosa presses five dollars into your hand and folds your fingers over it. "For the bus. Don\'t argue."'
+    },
+    kit: {
+      item: 'herbal_tea',
+      line: 'Kit tucks a tin of herbal tea into your bag. Her ears twitch. "Chamomile. For the bad nights."'
+    },
+    nell: {
+      item: 'herbal_tea',
+      line: 'Nell hands you a tin of something that smells of meadow. "Steep it five minutes. Not six."'
+    },
+    hart: {
+      item: 'book',
+      line: 'Hart pulls a battered paperback from his coat. "I have three copies. Don\'t ask why."'
+    },
+    theo: {
+      item: 'coffee',
+      line: 'Theo hands you his spare coffee. "Ordered two by mistake. Team captain perks."'
+    },
+    mina: {
+      item: 'coffee',
+      line: 'Mina gives you the coffee from her council meeting. "Untouched. I had three already."'
+    },
+    okafor: {
+      item: 'water',
+      line: 'Coach Okafor tosses you a bottle of water from her bag. "Hydrate. That\'s the favour."'
+    }
+  };
   // ---------- Dialogue trees (topics) ----------
   // Each topic: { label, need(state,id)->bool, run(state,id)->{text,minutes} }
   var TOPICS = [{
     label: 'Chat',
+    icon: '💬',
     need: function need() {
       return true;
     },
@@ -3023,6 +3139,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     }
   }, {
     label: 'Ask about them',
+    icon: '💬',
     need: function need(s, id) {
       return rel(s, id).rep >= -10;
     },
@@ -3043,6 +3160,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     }
   }, {
     label: 'Ask who they\'re close to',
+    icon: '💬',
     need: function need(s, id) {
       return rel(s, id).rep >= 10 && links(id).length > 0;
     },
@@ -3065,6 +3183,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     }
   }, {
     label: 'Compliment',
+    icon: '💬',
     need: function need(s, id) {
       return rel(s, id).rep >= 0;
     },
@@ -3088,6 +3207,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     }
   }, {
     label: 'Flirt',
+    icon: '❤️',
     need: function need(s, id) {
       return rel(s, id).rep >= 15;
     },
@@ -3117,6 +3237,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     }
   }, {
     label: 'Talk about something real',
+    icon: '💬',
     need: function need(s, id) {
       var k = rel(s, id).heart || 0;
       return HEART[id] && k < 3 && rel(s, id).rep >= [15, 40, 70][k] && rel(s, id).heartDay !== time().day;
@@ -3124,6 +3245,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     heart: true
   }, {
     label: 'Give a gift',
+    icon: '🎁',
     need: function need(s, id) {
       return Object.keys(ITEMS).some(function (it) {
         return has(s, it);
@@ -3132,6 +3254,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     sub: true
   }, {
     label: 'Ask on a date',
+    icon: '❤️',
     need: function need(s, id) {
       return rel(s, id).romance >= 3;
     },
@@ -3156,6 +3279,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     }
   }, {
     label: 'End things',
+    icon: '💬',
     need: function need(s, id) {
       return rel(s, id).romance >= 3;
     },
@@ -3172,7 +3296,82 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       };
     }
   }, {
+    label: 'Ask them out for coffee',
+    icon: '❤️',
+    time: 60,
+    need: function need(s, id) {
+      return canAskOut(s, id);
+    },
+    check: function check(s, id) {
+      return SOCIAL_STAT + ": " + diffLabel(askOutChance(s, id));
+    },
+    run: function run(state, id) {
+      var N = ns(state),
+        t = time(),
+        r = rel(state, id);
+      if (!canAskOut(state, id)) return {
+        text: nm(id) + " smiles. \"Let's not rush it.\"",
+        minutes: 1
+      };
+      var p = askOutChance(state, id);
+      N.askOut = N.askOut || {};
+      if (Math.random() < p) {
+        N.askOut[id] = {
+          day: t.day
+        };
+        changeAff(state, id, 6);
+        safeChange('stats.needs.stress', -30);
+        return {
+          text: pick([nm(id) + " says yes. You share a pot of coffee at the cafe, and the hour goes by far too quickly.", "\"I'd like that.\" You walk the long way along the river path together, talking the whole time.", nm(id) + " grins and grabs a coat. Two takeaway coffees and a slow lap of the park later, neither of you wants to say goodbye."]),
+          minutes: 60
+        };
+      }
+      N.askOut[id] = {
+        day: t.day,
+        coolUntil: t.day + 3
+      };
+      changeAff(state, id, -2);
+      return {
+        text: pick([nm(id) + " " + verb(id, 'smile') + ", a little apologetically. \"That's sweet of you. I'm just not there yet. Maybe another time?\"", nm(id) + " " + verb(id, 'look') + " genuinely touched. \"Not this week. But I'm glad you asked.\"", "\"Oh! I... can I think about it?\" " + nm(id) + " " + verb(id, 'squeeze') + " your arm kindly. It's a no, for now."]),
+        minutes: 5
+      };
+    }
+  }, {
+    label: 'Ask for a favour',
+    icon: '💬',
+    time: 10,
+    need: function need(s, id) {
+      return rel(s, id).rep >= 15 && (rel(s, id).favourDay === undefined || time().day - rel(s, id).favourDay >= 7);
+    },
+    check: function check(s, id) {
+      return SOCIAL_STAT + ": " + diffLabel(favourChance(s, id));
+    },
+    run: function run(state, id) {
+      var r = rel(state, id),
+        p = favourChance(state, id);
+      r.favourDay = time().day;
+      if (Math.random() < p) {
+        var F = FAVOURS[id] || {
+          money: 5,
+          line: nm(id) + " digs in a pocket and presses five dollars into your hand. \"Pay me back in coffee.\""
+        };
+        if (F.item && ITEMS[F.item]) addItem(state, F.item);
+        if (F.money) safeChange('money', F.money);
+        if (F.fx) F.fx(state);
+        return {
+          text: F.line,
+          minutes: 10
+        };
+      }
+      _changeRep(state, id, -1);
+      return {
+        text: pick([nm(id) + " " + verb(id, 'wince') + ". \"I'd love to, honestly, but I can't swing it this week.\"", nm(id) + " " + verb(id, 'shake') + " " + pronouns(id).pos + " head kindly. \"Not this time. Ask me again in a bit.\""]),
+        minutes: 10
+      };
+    }
+  }, {
     label: 'Insult',
+    icon: '💬',
     need: function need() {
       return true;
     },
@@ -3187,6 +3386,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     }
   }, {
     label: 'Say goodbye',
+    icon: '💬',
     need: function need() {
       return true;
     },
@@ -5090,8 +5290,9 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       if (questStatus(state, Q.id) !== 'active') return;
       Q.steps.forEach(function (st, i) {
         if (flag(state, qxFlag(Q.id, i)) || !qxPrevDone(state, Q, i)) return;
-        if (st.kind === 'talk' && st.to === id) out.push({
+        if (st.kind === 'talk' && st.to === id && !isPersuade(st)) out.push({
           label: st.label,
+          icon: '📌',
           run: function run(s) {
             setFlag(s, qxFlag(Q.id, i));
             return {
@@ -5100,8 +5301,35 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
             };
           }
         });
+        if (st.kind === 'talk' && st.to === id && isPersuade(st) && persuadeReady(state, qxFlag(Q.id, i))) out.push({
+          label: st.label,
+          icon: '📌',
+          time: 10,
+          check: function check(s) {
+            return "Persuasion: " + diffLabel(persuadeChance(s || state, id));
+          },
+          run: function run(s) {
+            var key = qxFlag(Q.id, i);
+            if (Math.random() < persuadeChance(s, id)) {
+              setFlag(s, key);
+              if (ns(s).persuadeFail) delete ns(s).persuadeFail[key];
+              return {
+                text: nm(id) + ": " + st.reply,
+                minutes: 10
+              };
+            }
+            var f = ns(s).persuadeFail = ns(s).persuadeFail || {};
+            f[key] = nowMin() + PERSUADE_RETRY;
+            _changeRep(s, id, -1);
+            return {
+              text: pick([nm(id) + " " + verb(id, 'hear') + " you out, then " + verb(id, 'shake') + " " + pronouns(id).pos + " head. \"Not today. Come back with a better pitch.\"", "You make your case. " + nm(id) + " " + verb(id, 'look') + " unconvinced. \"Give me some time to think.\""]) + ' <i>(You can try again in an hour.)</i>',
+              minutes: 10
+            };
+          }
+        });
         if (st.kind === 'item' && (st.to || Q.giver) === id && has(state, st.item)) out.push({
           label: "Give " + BY_ID[id].name + " the " + ITEMS[st.item].name + " (" + Q.title + ")",
+          icon: '📌',
           run: function run(s) {
             ns(s).items[st.item]--;
             setFlag(s, qxFlag(Q.id, i));
@@ -5133,14 +5361,29 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
           } catch (e) {}
           if (!live) return;
         }
-        out.push({
+        var key = qxFlag(Q.id, i),
+          pers = isPersuade(st);
+        if (pers && !persuadeReady(state, key)) return;
+        var o = {
           label: st.label,
+          icon: '📌',
           time: st.minutes,
           run: function run(s) {
             if (st.cost && money(s) < st.cost) return {
               text: 'You check your wallet. Not enough.',
               minutes: 1
             };
+            if (pers && !(Math.random() < persuadeChance(s, Q.giver))) {
+              var f = ns(s).persuadeFail = ns(s).persuadeFail || {};
+              f[key] = nowMin() + PERSUADE_RETRY;
+              _changeRep(s, Q.giver, -1);
+              var fail = Q.id === 'morrow_goats' ? 'Duchess plants all four hooves and stares at you, chewing. She is not going anywhere yet.' : 'It doesn\'t work this time. You\'ll need another go.';
+              return {
+                text: fail + ' <i>(You can try again in an hour.)</i>',
+                minutes: Math.max(10, Math.round(st.minutes / 2))
+              };
+            }
+            if (pers && ns(s).persuadeFail) delete ns(s).persuadeFail[key];
             if (st.cost) safeChange('money', -st.cost);
             setFlag(s, qxFlag(Q.id, i));
             if (st.fatigue) safeChange('stats.needs.fatigue', st.fatigue);
@@ -5152,7 +5395,11 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
               minutes: st.minutes
             };
           }
-        });
+        };
+        if (pers) o.check = function (s) {
+          return "Persuasion: " + diffLabel(persuadeChance(s || state, Q.giver));
+        };
+        out.push(o);
       });
     });
     return out;
@@ -5203,6 +5450,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       if (I.shop !== here) return 1; // continue
       out.push({
         label: "Buy a " + I.name + " ($" + I.price + ")",
+        icon: '🎁',
         run: function run(s) {
           if (money(s) < I.price) return {
             text: 'You check your wallet. Not enough.',
@@ -5348,6 +5596,9 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         };
       });
     });
+    out.forEach(function (o) {
+      if (!o.icon) o.icon = /^(Sit for Sam|Row out with|Wait for the moonflower|Climb to Wren|Meet |Have dinner with)/.test(o.label) ? '❤️' : '📌';
+    });
     return out;
   }
 
@@ -5364,6 +5615,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         })) return 0; // continue
         if (canOffer) out.push({
           label: def.romance ? "(Romance) Talk about " + def.title.toLowerCase() : "Ask if " + pronouns(id).sub + " need" + (pronouns(id).be === 'are' ? '' : 's') + " help",
+          icon: def.romance ? '❤️' : '📌',
           run: function run(s) {
             startQuest(s, q);
             return {
@@ -5388,6 +5640,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         if (st.kind !== 'item' || flag(state, 'rom_' + id + '_s' + i) || !has(state, st.item)) return;
         out.push({
           label: "Give " + BY_ID[id].name + " the " + ITEMS[st.item].name,
+          icon: '❤️',
           run: function run(s) {
             ns(s).items[st.item]--;
             setFlag(s, 'rom_' + id + '_s' + i);
@@ -5412,6 +5665,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     });
     if (id === 'hazel' && flag(state, 'exotics_unlocked')) out.push({
       label: 'Ask about the back room',
+      icon: '💬',
       run: function run(s) {
         return {
           text: '"The exotics are in the back. I\'ll introduce you properly. Every one of them is rescued or ethically bred, and I check in on them after they go home."',
@@ -5421,6 +5675,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     });
     if (id === 'dee' && rel(state, id).rep >= 5 && rel(state, id).gossipDay !== time().day) out.push({
       label: 'Ask for the latest gossip',
+      icon: '💬',
       run: function run(s) {
         rel(s, 'dee').gossipDay = time().day;
         var others = ROSTER.filter(function (n) {
@@ -5459,6 +5714,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       } catch (e) {}
       if (note && rel(state, id).hairDay !== time().day) out.push({
         label: 'Ask Dee what she thinks of your hair',
+        icon: '💬',
         run: function run(s) {
           rel(s, 'dee').hairDay = time().day;
           return {
@@ -5491,6 +5747,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     });
     if (id === 'rosa' && questStatus(state, 'rom_kit') === 'active' && !flag(state, 'rom_kit_rosa')) out.push({
       label: 'Ask about the moonflower patch',
+      icon: '❤️',
       run: function run(s) {
         setFlag(s, 'rom_kit_rosa');
         return {
@@ -5501,6 +5758,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     });
     if (id === 'sam' && questStatus(state, 'rom_sam') === 'active' && has(state, 'sketchbook') && !flag(state, 'rom_sam_gift')) out.push({
       label: 'Give Sam the sketchbook',
+      icon: '❤️',
       run: function run(s) {
         ns(s).items.sketchbook--;
         setFlag(s, 'rom_sam_gift');
@@ -5511,12 +5769,16 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         };
       }
     });
+    out.forEach(function (o) {
+      if (!o.icon) o.icon = '📌';
+    });
     return out;
   }
   function giftOptions(state, id) {
     return giftOptionsBase(state, id).map(function (o) {
       return o.label === 'Never mind' ? o : {
         label: o.label,
+        icon: '🎁',
         time: 5,
         run: function run(s) {
           var res = o.run(s);
@@ -5636,6 +5898,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       if (!tp.need(state, id)) return;
       if (tp.heart) opts.push({
         label: tp.label,
+        icon: tp.icon,
         run: function run(s) {
           ns(s).talking = {
             id: id,
@@ -5648,6 +5911,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         }
       });else if (tp.sub) opts.push({
         label: tp.label,
+        icon: tp.icon,
         time: 1,
         run: function run(s) {
           ns(s).talking = {
@@ -5659,13 +5923,20 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
             minutes: 0
           };
         }
-      });else opts.push({
-        label: tp.label,
-        time: guessMins(tp.run),
-        run: function run(s) {
-          return tp.run(s, id);
-        }
-      });
+      });else {
+        var o = {
+          label: tp.label,
+          icon: tp.icon,
+          time: tp.time || guessMins(tp.run),
+          run: function run(s) {
+            return tp.run(s, id);
+          }
+        };
+        if (tp.check) o.check = function (s) {
+          return tp.check(s || state, id);
+        };
+        opts.push(o);
+      }
     });
     return opts;
   }
@@ -5681,6 +5952,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       if (t.hour >= d.hour && t.hour < d.hour + 3) {
         out.push({
           label: "Go on your date with " + BY_ID[_id].name,
+          icon: '❤️',
           run: function run(s) {
             d.done = true;
             changeAff(s, _id, 6);
@@ -5745,7 +6017,164 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         rivals: 'rivals',
         exes: 'exes'
       }[r[2]] + ". " + r[3] + "</li>";
-    }).join('') || '<li>You don\'t know who\'s close to whom yet. Ask around.</li>') + "</ul>\n      <h4>People</h4><ul>" + (people.join('') || '<li>You haven\'t really met anyone yet.</li>') + "</ul>";
+    }).join('') || '<li>You don\'t know who\'s close to whom yet. Ask around.</li>') + "</ul>\n      <h4>People</h4><ul>" + (people.join('') || '<li>You haven\'t really met anyone yet.</li>') + "</ul>\n      " + notesHTML(state);
+  }
+
+  // ---------- Journal: free-text Notes (state.npcs.notes = { pages: [{ title, text }], cur }) ----------
+  var NOTES_MAX_PAGES = 20,
+    NOTES_MAX_TITLE = 80,
+    NOTES_MAX_TEXT = 5000;
+  function notesEsc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      }[c];
+    });
+  }
+  function ensureNotes(state) {
+    var N = state && state.npcs;
+    if (!N) return null;
+    var nt = N.notes;
+    if (!nt || typeof nt !== 'object' || !Array.isArray(nt.pages)) nt = N.notes = {
+      pages: [],
+      cur: 0
+    };
+    nt.pages = nt.pages.filter(function (p) {
+      return p && typeof p === 'object';
+    }).slice(0, NOTES_MAX_PAGES).map(function (p) {
+      return {
+        title: String(p.title == null ? '' : p.title).slice(0, NOTES_MAX_TITLE),
+        text: String(p.text == null ? '' : p.text).slice(0, NOTES_MAX_TEXT)
+      };
+    });
+    if (!nt.pages.length) nt.pages.push({
+      title: '',
+      text: ''
+    });
+    nt.cur = Math.max(0, Math.min(nt.pages.length - 1, nt.cur | 0));
+    return nt;
+  }
+  var NOTE_BTN = 'background:#2a2e37;color:var(--ink);border:1px solid #3a3f4a;border-radius:6px;padding:4px 10px;cursor:pointer;font:inherit;font-size:13px';
+  function notesInner(state) {
+    var nt = ensureNotes(state);
+    if (!nt) return '<p>Nothing yet.</p>';
+    var pg = nt.pages[nt.cur];
+    var tabs = nt.pages.map(function (p, i) {
+      return "<button type=\"button\" data-note-act=\"go\" data-note-i=\"" + i + "\" class=\"" + (i === nt.cur ? 'on' : '') + "\" style=\"" + NOTE_BTN + (i === nt.cur ? ';border-color:var(--accent);color:var(--accent)' : '') + "\" title=\"" + notesEsc(p.title || 'Page ' + (i + 1)) + "\">" + notesEsc((p.title || 'Page ' + (i + 1)).slice(0, 18)) + "</button>";
+    }).join(' ');
+    return "<div class=\"note-tabs\" style=\"display:flex;gap:6px;flex-wrap:wrap;margin:6px 0;font-family:system-ui,sans-serif\">" + tabs + "</div>\n      <div style=\"display:flex;gap:6px;align-items:center;margin:6px 0;font-family:system-ui,sans-serif\">\n        <button type=\"button\" data-note-act=\"prev\" style=\"" + NOTE_BTN + "\"" + (nt.cur <= 0 ? ' disabled' : '') + ">&larr; Prev</button>\n        <span class=\"flavor\" data-note-pos>Page " + (nt.cur + 1) + " of " + nt.pages.length + "</span>\n        <button type=\"button\" data-note-act=\"next\" style=\"" + NOTE_BTN + "\"" + (nt.cur >= nt.pages.length - 1 ? ' disabled' : '') + ">Next &rarr;</button>\n        <span style=\"flex:1\"></span>\n        <button type=\"button\" data-note-act=\"new\" style=\"" + NOTE_BTN + "\"" + (nt.pages.length >= NOTES_MAX_PAGES ? ' disabled title="Notebook full (' + NOTES_MAX_PAGES + ' pages)"' : '') + ">New page</button>\n        <button type=\"button\" data-note-act=\"del\" style=\"" + NOTE_BTN + "\">" + (nt.pages.length > 1 ? 'Delete page' : 'Clear page') + "</button>\n      </div>\n      <input type=\"text\" class=\"note-title\" data-note-field=\"title\" maxlength=\"" + NOTES_MAX_TITLE + "\" placeholder=\"Page title\" value=\"" + notesEsc(pg.title) + "\" style=\"width:100%;box-sizing:border-box;margin:4px 0;padding:6px;background:#14161b;color:var(--ink);border:1px solid #3a3f4a;border-radius:6px;font:inherit\">\n      <textarea class=\"note-text\" data-note-field=\"text\" maxlength=\"" + NOTES_MAX_TEXT + "\" rows=\"10\" placeholder=\"Write anything you want to remember...\" style=\"width:100%;box-sizing:border-box;padding:6px;background:#14161b;color:var(--ink);border:1px solid #3a3f4a;border-radius:6px;font:inherit;resize:vertical\">" + notesEsc(pg.text) + "</textarea>\n      <div class=\"flavor\" data-note-count style=\"font-size:12px;text-align:right\">" + pg.text.length + " / " + NOTES_MAX_TEXT + "</div>";
+  }
+  function notesHTML(state) {
+    return "<h4>Notes</h4><div id=\"npc-notes\" class=\"npc-notes\">" + notesInner(state) + "</div>";
+  }
+  var notesTimer = null,
+    notesEditState = null;
+  function notesFlush() {
+    if (notesTimer) {
+      clearTimeout(notesTimer);
+      notesTimer = null;
+    }
+    var box = document.getElementById('npc-notes'),
+      st = window.G && window.G.state;
+    if (!box || !st) return;
+    if (notesEditState && notesEditState !== st) {
+      notesEditState = null;
+      return;
+    } // a save was loaded since the edit: don't write stale text into it
+    var nt = ensureNotes(st);
+    if (!nt) return;
+    var t = box.querySelector('[data-note-field="title"]'),
+      x = box.querySelector('[data-note-field="text"]');
+    var pg = nt.pages[nt.cur];
+    if (t) pg.title = String(t.value).slice(0, NOTES_MAX_TITLE);
+    if (x) pg.text = String(x.value).slice(0, NOTES_MAX_TEXT);
+  }
+  function notesPersist() {
+    notesFlush();
+    try {
+      if (window.G && window.G.save) window.G.save(true);
+    } catch (e) {}
+  }
+  function notesRerender(focusText) {
+    var box = document.getElementById('npc-notes');
+    if (!box || !window.G) return;
+    box.innerHTML = notesInner(window.G.state);
+    if (focusText) {
+      var x = box.querySelector('[data-note-field="text"]');
+      if (x) x.focus();
+    }
+  }
+  function notesKey(e) {
+    if (e.key !== 'Escape') e.stopPropagation();
+  }
+  function hookNotesUI() {
+    if (typeof document === 'undefined' || window.G._npcNotesHooked) return;
+    window.G._npcNotesHooked = true;
+    // Stop game key shortcuts while typing: bind keydown/keyup/keypress on each notes field as it gains focus.
+    document.addEventListener('focusin', function (e) {
+      var f = e.target && e.target.closest && e.target.closest('#npc-notes [data-note-field]');
+      if (!f || f._npcKeys) return;
+      f._npcKeys = true;
+      ['keydown', 'keyup', 'keypress'].forEach(function (k) {
+        return f.addEventListener(k, notesKey);
+      });
+    });
+    document.addEventListener('input', function (e) {
+      var f = e.target && e.target.closest && e.target.closest('#npc-notes [data-note-field]');
+      if (!f) return;
+      var box = document.getElementById('npc-notes');
+      if (f.dataset.noteField === 'text') {
+        var c = box.querySelector('[data-note-count]');
+        if (c) c.textContent = f.value.length + ' / ' + NOTES_MAX_TEXT;
+      }
+      notesEditState = window.G.state;
+      if (notesTimer) clearTimeout(notesTimer);
+      notesTimer = setTimeout(notesPersist, 400);
+    });
+    document.addEventListener('focusout', function (e) {
+      if (notesTimer && e.target && e.target.closest && e.target.closest('#npc-notes [data-note-field]')) notesPersist();
+    });
+    document.addEventListener('change', function (e) {
+      if (e.target && e.target.closest && e.target.closest('#npc-notes [data-note-field]')) notesPersist();
+    });
+    document.addEventListener('click', function (e) {
+      var b = e.target && e.target.closest && e.target.closest('#npc-notes [data-note-act]');
+      if (!b || b.disabled) return;
+      e.preventDefault();
+      notesFlush();
+      var nt = ensureNotes(window.G.state);
+      if (!nt) return;
+      var act = b.dataset.noteAct;
+      if (act === 'go') nt.cur = Math.max(0, Math.min(nt.pages.length - 1, +b.dataset.noteI || 0));else if (act === 'prev') nt.cur = Math.max(0, nt.cur - 1);else if (act === 'next') nt.cur = Math.min(nt.pages.length - 1, nt.cur + 1);else if (act === 'new') {
+        if (nt.pages.length >= NOTES_MAX_PAGES) return;
+        nt.pages.push({
+          title: '',
+          text: ''
+        });
+        nt.cur = nt.pages.length - 1;
+      } else if (act === 'del') {
+        var pg = nt.pages[nt.cur],
+          name = pg.title || 'Page ' + (nt.cur + 1);
+        if (nt.pages.length <= 1) {
+          if (!pg.title && !pg.text) return;
+          if (!window.confirm('Clear "' + name + '"? This is your last page, so it will be emptied rather than deleted.')) return;
+          pg.title = '';
+          pg.text = '';
+        } else {
+          if (!window.confirm('Delete "' + name + '"? This cannot be undone.')) return;
+          nt.pages.splice(nt.cur, 1);
+          nt.cur = Math.min(nt.cur, nt.pages.length - 1);
+        }
+      } else return;
+      notesRerender(act === 'new');
+      try {
+        window.G.save(true);
+      } catch (err) {}
+    });
   }
   function ensureRels(state) {
     var N = state.npcs;
@@ -5762,6 +6191,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         known: false
       };
     });
+    if (!N.notes || !Array.isArray(N.notes.pages) || !N.notes.pages.length) ensureNotes(state);
   }
   function marketGreet(state, id) {
     if (!MARKET_STALLS[id] || whereIs(id) !== 'town_square') return '';
@@ -6220,6 +6650,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       hookSightings();
       if (state.npcs) {
         ensureRels(state);
+        ensureNotes(state);
         return;
       }
       var rels = {};
@@ -6242,7 +6673,14 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         counters: {},
         items: {},
         dates: {},
-        talking: null
+        talking: null,
+        notes: {
+          pages: [{
+            title: '',
+            text: ''
+          }],
+          cur: 0
+        }
       };
     },
     onTick: function onTick(minutes, state) {
@@ -6294,6 +6732,8 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
         if (tm) w.time = tm;
         w.section = o.section || 'people';
         if (o.sub) w.sub = o.sub;
+        if (o.icon) w.icon = o.icon;
+        if (o.check) w.check = o.check;
         return w;
       };
       if (ns(state).talking) {
@@ -6306,6 +6746,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       present(state).forEach(function (id) {
         var r = rel(state, id);
         res.dialogue.push(wrap({
+          icon: '💬',
           time: r.met ? 1 : 5,
           label: r.met ? "Talk to " + BY_ID[id].name : "Approach " + (r.known ? BY_ID[id].name : 'the ' + BY_ID[id].role.toLowerCase()),
           run: function run(s) {
@@ -6334,6 +6775,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
       // Who's around (flavor), shown under Other
       var here = present(state);
       if (here.length) res.other.push({
+        icon: '👀',
         time: 1,
         section: 'people',
         label: "Look around (" + here.length + " familiar face" + (here.length > 1 ? 's' : '') + ")",
@@ -6386,6 +6828,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
     quests: QUESTS,
     items: ITEMS,
     journalHTML: journalHTML,
+    notesHTML: notesHTML,
     present: present,
     pronouns: pronouns,
     whereIs: whereIs,
@@ -6419,6 +6862,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
   });
   function hook() {
     window.G.register(mod);
+    hookNotesUI();
     if (window.G.addTab) window.G.addTab({
       id: 'journal',
       label: 'Journal',

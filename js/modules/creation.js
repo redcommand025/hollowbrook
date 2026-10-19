@@ -496,7 +496,7 @@
   };
 
   window.Creation = { open: open, paperdollSVG: paperdollSVG, describe: describe, npcLook: npcLook, OPTIONS: OPT, module: mod };
-  (function (gofn, pick) { mod.getOptions = function (state) { var out = gofn.apply(this, arguments); if (out) ['actions', 'other', 'dialogue'].forEach(function (k) { (out[k] || []).forEach(function (o) { if (o && !o.section) o.section = pick(o, state); }); }); return out; }; })(mod.getOptions, function () { return 'self'; });
+  (function (gofn, pick) { mod.getOptions = function (state) { var out = gofn.apply(this, arguments); if (out) ['actions', 'other', 'dialogue'].forEach(function (k) { (out[k] || []).forEach(function (o) { if (o && !o.section) o.section = pick(o, state); if (o && !o.icon) o.icon = '🪞'; }); }); return out; }; })(mod.getOptions, function () { return 'self'; });
   if (window.G && typeof window.G.register === 'function') window.G.register(mod);
   if (window.G && typeof window.G.addTab === 'function') window.G.addTab({
     id: 'appearance', label: 'Appearance', order: 5,
